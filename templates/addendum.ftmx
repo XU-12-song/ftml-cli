@@ -1,0 +1,4 @@
+[[div class="addendum" title]]
+[[span class="addendum-title"]]{ title }[[/span]]
+{ children }
+[[/div]]
