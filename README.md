@@ -24,6 +24,7 @@ npm test           # 运行测试（node:test，零额外依赖）
 | `ftml list` | 列出可用模板 |
 | `ftml validate` | 校验 div/style/code 配对、模板调用、展开残留 |
 | `ftml watch` | 监听源文件 / 模板变化，自动重建 |
+| `ftml preview` | 构建并渲染为 HTML 预览（@wdprlib/render） |
 | `ftml submit` | 构建并提交到 Wikidot 页面 |
 | `ftml deploy` | 构建 + 校验 + 提交（一步部署） |
 | `ftml revert` | 从 Wikidot 拉取线上 / 历史版本覆盖本地 |
@@ -66,6 +67,22 @@ ftml watch -s index.ftml -o dist/index.ftml --debounce 300
 
 监听源文件、模板目录、源文件同目录的 `.ftml` 组件，变化后防抖自动重建。
 
+### preview
+
+```bash
+ftml preview                          # 构建 → 渲染 HTML → 写入 build 产物同名 .html（dist/index.ftml → dist/index.html）
+ftml preview -o preview.html          # 指定输出文件
+ftml preview --open                   # 生成后用系统浏览器打开
+ftml preview --site scpsandboxcn --page my-page   # 提供页面上下文，正确解析站内引用
+```
+
+用 `@wdprlib/parser` + `@wdprlib/render` 把展开后的 FTML 渲染为 HTML：
+- `[[module CSS]]`（由 `[[style]]` 构建而来）收集为 `<style>` 内联进 HTML
+- 解析/渲染诊断（如未闭合块）以 `警告` 输出到 stderr，不阻断生成
+- `[[include]]` 按**源文件所在目录**解析本地 `.ftml`（`component:box` → `component/box.ftml`）；目标文件先展开模板再渲染，嵌套 include 递归展开。遵守 Wikidot 规则：`[[include]]` 必须出现在行首
+- 跨站 include（如 `[[include :scp-wiki-cn:theme:parallel]]`）按本地镜像解析：优先 `<site>/<page 斜杠化>.ftml`（→ `scp-wiki-cn/theme/parallel.ftml`），回退到普通位置（→ `theme/parallel.ftml`）；越界路径（`../`）一律拒绝
+- **本地找不到的 include 自动远程拉取**：已登录（有凭证）时用 `@ukwhatn/wikidot` 客户端直接拉取页面源码（如 `:scp-wiki-cn:theme:parallel` → scp-wiki-cn 站点的 `theme:parallel` 页），渲染前同样先展开模板。未登录或拉取失败则渲染「页面不存在」占位，失败会输出 `remote-include-failed` 警告到 stderr
+
 ### submit / deploy / revert
 
 ```bash
@@ -76,6 +93,8 @@ ftml deploy --no-validate -m "跳过校验"
 ftml revert --site scpsandboxcn --page mypage          # 拉线上版覆盖本地
 ftml revert --to 3 --output /tmp/old.ftml              # 拉历史修订到指定文件
 ```
+
+site / page 对象按客户端缓存（`src/utils/wikidot.js`）：同一进程内重复获取不发网络请求。缓存以客户端实例为键，`client.close()` 登出后自动失效；页面不存在（null）不缓存。
 
 ## 配置
 

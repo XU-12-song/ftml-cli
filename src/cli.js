@@ -24,6 +24,7 @@ import { watch } from './commands/watch.js';
 import { submit } from './commands/submit.js';
 import { deploy } from './commands/deploy.js';
 import { revert } from './commands/revert.js';
+import { preview } from './commands/preview.js';
 
 const program = new Command();
 
@@ -122,6 +123,20 @@ program
   .option('--no-validate', '跳过校验')
   .action(async (opts) => {
     await run(() => deploy(opts));
+  });
+
+// ---- preview ----
+program
+  .command('preview')
+  .description('构建并渲染为 HTML 预览（@wdprlib/render）')
+  .option('-s, --source <file>', '输入源文件')
+  .option('-o, --output <file>', 'HTML 输出文件（默认 build 产物同名 .html）')
+  .option('-t, --templates <dir>', '模板目录')
+  .option('--site <site>', '站点名（用于解析站内引用）')
+  .option('--page <page>', '页面名（用于解析站内引用）')
+  .option('--open', '生成后用系统浏览器打开')
+  .action(async (opts) => {
+    await run(() => preview(opts));
   });
 
 // ---- revert ----

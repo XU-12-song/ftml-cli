@@ -1,0 +1,12 @@
+[[div class="addendum"]]
+[[span class="addendum-title"]]附录A[[/span]]
+
+内容 **加粗** 和 //斜体//
+
+[[code type="ftml"]]
+[[div class="box"]]示例[[/div]]
+[[/code]]
+
+[[footnote]]脚注内容[[/footnote]]
+
+[[/div]]
