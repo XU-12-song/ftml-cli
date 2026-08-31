@@ -27,7 +27,8 @@ npm test           # 运行测试（node:test，零额外依赖）
 | `ftml preview` | 构建并渲染为 HTML 预览（@wdprlib/render） |
 | `ftml submit` | 构建并提交到 Wikidot 页面 |
 | `ftml deploy` | 构建 + 校验 + 提交（一步部署） |
-| `ftml revert` | 从 Wikidot 拉取线上 / 历史版本覆盖本地 |
+| `ftml revert` | git revert 撤销提交，并把恢复的产物回推 Wikidot |
+| `ftml init` | 初始化项目结构（`.ftml/`、`.gitignore`、`git init`） |
 
 ### login
 
@@ -81,7 +82,7 @@ ftml preview --site scpsandboxcn --page my-page   # 提供页面上下文，正�
 - 解析/渲染诊断（如未闭合块）以 `警告` 输出到 stderr，不阻断生成
 - `[[include]]` 按**源文件所在目录**解析本地 `.ftml`（`component:box` → `component/box.ftml`）；目标文件先展开模板再渲染，嵌套 include 递归展开。遵守 Wikidot 规则：`[[include]]` 必须出现在行首
 - 跨站 include（如 `[[include :scp-wiki-cn:theme:parallel]]`）按本地镜像解析：优先 `<site>/<page 斜杠化>.ftml`（→ `scp-wiki-cn/theme/parallel.ftml`），回退到普通位置（→ `theme/parallel.ftml`）；越界路径（`../`）一律拒绝
-- **本地找不到的 include 自动远程拉取**：已登录（有凭证）时用 `@ukwhatn/wikidot` 客户端直接拉取页面源码（如 `:scp-wiki-cn:theme:parallel` → scp-wiki-cn 站点的 `theme:parallel` 页），渲染前同样先展开模板。未登录或拉取失败则渲染「页面不存在」占位，失败会输出 `remote-include-failed` 警告到 stderr
+- **本地找不到的 include 自动远程拉取**：已登录（有凭证）时用 `@ukwhatn/wikidot` 客户端直接拉取页面源码（如 `:scp-wiki-cn:theme:parallel` → scp-wiki-cn 站点的 `theme:parallel` 页），渲染前同样先展开模板。拉取成功会写入**磁盘缓存** `~/.ftml-cli/cache/<site>/<page>.ftml`（跨项目共享），下次直接命中缓存不再请求网络。未登录或拉取失败则渲染「页面不存在」占位，失败会输出 `remote-include-failed` 警告到 stderr
 
 ### submit / deploy / revert
 
@@ -90,11 +91,22 @@ ftml submit -m "更新文档"              # 构建并提交（-m 必填编辑�
 ftml submit -s out.ftml --no-build -m "直接提交产物"
 ftml deploy -m "上线 v2"               # build + validate + submit
 ftml deploy --no-validate -m "跳过校验"
-ftml revert --site scpsandboxcn --page mypage          # 拉线上版覆盖本地
-ftml revert --to 3 --output /tmp/old.ftml              # 拉历史修订到指定文件
+ftml revert                            # git revert HEAD，并把恢复的产物回推线上
+ftml revert --to HEAD~2                # 回退到指定 git 提交
+ftml revert --no-wikidot               # 只做本地 git revert，不回推线上
 ```
 
-site / page 对象按客户端缓存（`src/utils/wikidot.js`）：同一进程内重复获取不发网络请求。缓存以客户端实例为键，`client.close()` 登出后自动失效；页面不存在（null）不缓存。
+- `submit` / `revert` 成功后：本地 `git commit`、把记录追加到 `.ftml/history.json`、把 site/page/lastRev 写入 `.ftml/<源文件名>.json` 元数据
+- `revert` 前置要求：项目是 git 仓库、工作区干净、已有构建产物。它做两件事——① `git revert <commit>` 生成反向提交恢复源文件与产物；② 把恢复后的构建产物 `edit` 回 Wikidot 页面（与 submit 对称，线上同步回退）
+- site/page 对象按客户端缓存（`src/utils/wikidot.js`）：同一进程内重复获取不发网络请求。缓存以客户端实例为键，`client.close()` 登出后自动失效；页面不存在（null）不缓存
+
+### init
+
+```bash
+ftml init
+```
+
+幂等初始化项目结构（可重复执行）：`.ftml/`（隐藏数据目录，含 `history.json`）、`components/`、`templates/`、`.gitignore`（忽略 `dist/` 与 `.ftml/`）、`.ftmlrc.json` 占位、`git init`（若还不是仓库）。
 
 ## 配置
 
@@ -112,6 +124,31 @@ site / page 对象按客户端缓存（`src/utils/wikidot.js`）：同一进程�
 ```
 
 命令行选项优先于配置；相对路径以配置文件所在目录为准。
+
+### site / page 元数据
+
+`site` / `page` 来源（优先级从高到低）：
+
+1. 命令行 `--site` / `--page`
+2. 配置文件 `ftml.config.json` / `.ftmlrc.json` / `.ftmlrc`
+3. 项目元数据 `.ftml/<源文件名>.json`（`index.ftml` ↔ `index.json`，submit/revert 时自动写入）
+
+### 目录结构
+
+```
+<项目根>/
+  .ftml/                    项目级隐藏数据目录
+    history.json            提交历史（submit/revert 追加）
+    <源文件名>.json         site/page 元数据
+  dist/                     构建产物（gitignore）
+  components/  templates/   源文件与模板
+  .ftmlrc.json              项目配置
+~/.ftml-cli/                用户级共享目录（跨 ftml 项目）
+  credentials.json          登录凭证（0600）
+  cache/<site>/<page>.ftml  远程拉取的 include 源码缓存
+```
+
+测试 / 隔离可用环境变量 `FTML_CLI_HOME` 重定向用户级目录。
 
 ## 模板与组件语法
 

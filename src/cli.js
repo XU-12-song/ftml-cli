@@ -11,7 +11,8 @@
  *   watch     监听源文件/模板变化，自动重新构建
  *   submit    构建并提交到 Wikidot 页面（-m 编辑注释）
  *   deploy    构建 + 校验 + 提交（一步部署）
- *   revert    从 Wikidot 拉取线上/历史版本覆盖本地
+ *   revert    git revert 并回推 Wikidot（撤销提交 + 线上同步回退）
+ *   init      初始化 ftml 项目（.ftml/ 结构）
  */
 
 import { Command } from 'commander';
@@ -25,6 +26,7 @@ import { submit } from './commands/submit.js';
 import { deploy } from './commands/deploy.js';
 import { revert } from './commands/revert.js';
 import { preview } from './commands/preview.js';
+import { init } from './commands/init.js';
 
 const program = new Command();
 
@@ -142,13 +144,21 @@ program
 // ---- revert ----
 program
   .command('revert')
-  .description('从 Wikidot 拉取线上/历史版本覆盖本地')
+  .description('git revert 并回推 Wikidot（撤销提交 + 线上同步回退）')
   .option('--site <site>', '站点名（覆盖配置）')
   .option('--page <page>', '页面名（覆盖配置）')
-  .option('--to <rev>', '历史修订号（revNo 或 id）')
-  .option('--output <file>', '写入指定文件而不是覆盖本地 source')
+  .option('--to <commit>', 'git 提交（hash / HEAD~n，默认 HEAD）')
+  .option('--no-wikidot', '只做本地 git revert，不回推 Wikidot')
   .action(async (opts) => {
     await run(() => revert(opts));
+  });
+
+// ---- init ----
+program
+  .command('init')
+  .description('初始化 ftml 项目')
+  .action(async () => {
+    await run(() => init());
   });
 
 /** 统一错误处理与退出码 */

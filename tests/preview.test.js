@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -6,6 +6,22 @@ import path from 'node:path';
 import { renderPreview, resolveIncludeFile } from '../src/utils/preview.js';
 import { getSite, getPage } from '../src/utils/wikidot.js';
 import { parseFtmx } from '../src/core/parse-ftmx.js';
+import { readPageCache } from '../src/utils/cache.js';
+
+// 远程 include 的磁盘缓存落在 FTML_CLI_HOME（默认 ~/.ftml-cli/cache）。
+// 每个用例隔离到独立临时目录，避免污染真实主目录、也避免用例间缓存串扰。
+let oldHome;
+let homeDir;
+beforeEach(() => {
+  oldHome = process.env.FTML_CLI_HOME;
+  homeDir = mkdtempSync(path.join(os.tmpdir(), 'ftml-home-'));
+  process.env.FTML_CLI_HOME = homeDir;
+});
+afterEach(() => {
+  rmSync(homeDir, { recursive: true, force: true });
+  if (oldHome === undefined) delete process.env.FTML_CLI_HOME;
+  else process.env.FTML_CLI_HOME = oldHome;
+});
 
 function tmpdir(files) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'ftml-pv-'));
@@ -189,6 +205,39 @@ test('远程拉取失败产生警告诊断并渲染占位（不抛出）', async
     });
     assert.ok(html.includes('error-block'));
     assert.ok(diagnostics.some((d) => d.code === 'remote-include-failed'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('远程拉取成功后写入磁盘缓存，下次命中缓存不再请求网络', async () => {
+  const templates = new Map([
+    ['addendum', parseFtmx(`[[div class="addendum"]]{ children }[[/div]]`, 'addendum')],
+  ]);
+  const client = fakeRemoteClient({
+    'theme:parallel': {
+      getSource: async () => ({ isOk: () => true, value: `[[addendum]]来自远程[[/addendum]]` }),
+    },
+  });
+  const dir = tmpdir({});
+  const page = { fullName: 'mysite:main', unixName: 'main', tags: [], site: 'mysite' };
+  try {
+    // 第一次：网络拉取 + 落盘 ~/.ftml-cli/cache/remote/theme/parallel.ftml
+    const first = await renderPreview(`[[include :remote:theme:parallel]]`, {
+      page, includeBaseDir: dir, includeTemplates: templates, client,
+    });
+    assert.ok(first.html.includes('来自远程'));
+    assert.ok(readPageCache('remote', 'theme:parallel')?.includes('来自远程'));
+
+    // 第二次：换一个必然失败的 client，缓存命中则不会发起请求
+    const broken = {
+      site: { get: async () => { throw new Error('不应请求网络'); } },
+    };
+    const second = await renderPreview(`[[include :remote:theme:parallel]]`, {
+      page, includeBaseDir: dir, includeTemplates: templates, client: broken,
+    });
+    assert.ok(second.html.includes('来自远程'));
+    assert.ok(!second.diagnostics.some((d) => d.code === 'remote-include-failed'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

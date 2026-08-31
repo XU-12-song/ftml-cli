@@ -1,35 +1,24 @@
 /**
  * config.js — 项目配置加载
  *
- * 配置来源（优先级从低到高）：
- *   - ftml.config.json / .ftmlrc.json（项目根目录）
- *   - 命令行选项
+ * site/page 来源（优先级从低到高）：
+ *   1. <root>/.ftml/<源文件名>.json  元数据（submit/revert 时写入）
+ *   2. ftml.config.json / .ftmlrc.json / .ftmlrc（项目根）
+ *   3. 命令行选项
  *
- * 配置字段：
+ * 其余配置字段：
  *   source       输入 .ftml（含模板调用）
  *   output       构建产物输出路径
  *   templatesDir 模板目录（默认: ./templates）
- *   site         Wikidot 站点名（如 scpsandboxcn）
- *   page         Wikidot 页面名
- *   deploy.watch watch 默认开关
+ *   lastRev      submit 时记录的线上修订号（元数据，仅供扩展）
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { findConfigDir, CONFIG_FILES, projectMetaPath } from './paths.js';
+import { fileURLToPath } from 'node:url';
 
-export const CONFIG_FILES = ['ftml.config.json', '.ftmlrc.json', '.ftmlrc'];
-
-export function findConfigDir(start = process.cwd()) {
-  let dir = path.resolve(start);
-  for (;;) {
-    for (const name of CONFIG_FILES) {
-      if (fs.existsSync(path.join(dir, name))) return dir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
+export { findConfigDir };
 
 /** 加载配置：无配置文件时返回默认值 */
 export function loadConfig(cliOptions = {}) {
@@ -56,6 +45,7 @@ export function loadConfig(cliOptions = {}) {
     templatesDir: file.templatesDir ?? 'templates',
     site: file.site ?? null,
     page: file.page ?? null,
+    lastRev: file.lastRev ?? null,
     watch: file.watch ?? false,
   };
 
@@ -73,16 +63,39 @@ export function loadConfig(cliOptions = {}) {
   config.outputAbs = path.resolve(config.root, config.output);
   config.templatesDirAbs = path.resolve(config.root, config.templatesDir);
 
+  // 最低优先级：.ftml/<源文件名>.json 元数据（site/page）
+  const meta = loadProjectMeta(config.sourceAbs, config.root);
+  if (meta) {
+    if (!config.site) config.site = meta.site ?? null;
+    if (!config.page) config.page = meta.page ?? null;
+    if (config.lastRev == null) config.lastRev = meta.lastRev ?? null;
+  }
+
   return config;
 }
 
+/** 读取 <root>/.ftml/<源文件名>.json 元数据；不存在或损坏返回 null */
+export function loadProjectMeta(sourceAbs, root = process.cwd()) {
+  try {
+    return JSON.parse(fs.readFileSync(projectMetaPath(sourceAbs, root), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** 写入/更新某源文件的元数据（site/page/lastRev 合并，保留已有字段） */
+export function saveProjectMeta(sourceAbs, fields, root = process.cwd()) {
+  const p = projectMetaPath(sourceAbs, root);
+  const prev = loadProjectMeta(sourceAbs, root) ?? {};
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify({ ...prev, ...fields }, null, 2) + '\n', 'utf8');
+}
+
 /** 解析模板目录：优先项目配置；回退输入文件同级 templates/；再回退内置模板 */
-export function resolveTemplatesDir(config, inputFile) {
+export default function resolveTemplatesDir(config, inputFile) {
   const projectDir = path.resolve(config.root, config.templatesDir);
   if (fs.existsSync(projectDir)) return projectDir;
   const nearInput = path.join(path.dirname(path.resolve(inputFile)), 'templates');
   if (fs.existsSync(nearInput)) return nearInput;
   return path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates');
 }
-
-import { fileURLToPath } from 'node:url';

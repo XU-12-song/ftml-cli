@@ -19,6 +19,7 @@ import { processWikitext } from '@wdprlib/parser';
 import { renderWikitext, createSettings } from '@wdprlib/render';
 import { expand } from '../core/expand.js';
 import { getSite, getPage, fetchPageSource } from './wikidot.js';
+import { readPageCache, writePageCache } from './cache.js';
 
 /**
  * 把 include 的 pageRef 解析为本地 .ftml 文件。
@@ -68,6 +69,9 @@ export function resolveIncludeFile(pageRef, baseDir, currentSite) {
 /**
  * 远程回退：本地找不到 include 时，用已登录的 Wikidot 客户端拉取页面源码。
  *
+ * 磁盘缓存（~/.ftml-cli/cache/<site>/<page>.ftml，跨项目共享）优先：
+ * 命中直接返回；未命中才走网络，拉取成功后写回缓存。
+ *
  * 站点名取 pageRef.site ?? page.site（同站 include 用当前页面所属站点）。
  * 页面不存在或请求失败返回 null（渲染「页面不存在」占位），失败信息记为警告诊断。
  *
@@ -82,11 +86,19 @@ async function fetchRemoteInclude(pageRef, { page, client, warnings }) {
   const siteName = pageRef.site ?? page?.site;
   if (!siteName || !client) return null;
   const label = pageRef.site ? `${pageRef.site}:${pageRef.page}` : pageRef.page;
+
+  // 1. 磁盘缓存命中 → 直接返回
+  const cached = readPageCache(siteName, pageRef.page);
+  if (cached != null) return cached;
+
+  // 2. 未命中 → 网络拉取，成功后写回缓存
   try {
     const siteObj = await getSite(client, siteName);
     const pageObj = await getPage(siteObj, pageRef.page);
     if (!pageObj) return null;
-    return await fetchPageSource(pageObj);
+    const source = await fetchPageSource(pageObj);
+    writePageCache(siteName, pageRef.page, source);
+    return source;
   } catch (e) {
     warnings.push({
       severity: 'warning',
