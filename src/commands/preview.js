@@ -14,6 +14,7 @@ import { build } from './build.js';
 import { loadTemplates } from '../core/expand.js';
 import { loadConfig } from '../utils/config.js';
 import { renderPreview } from '../utils/preview.js';
+import { buildPreviewDocument } from '../utils/preview-page.js';
 import { createClient } from '../utils/wikidot.js';
 
 /** 构造渲染用的页面上下文（未配置 site/page 时给占位值） */
@@ -73,21 +74,28 @@ export async function preview(options) {
     console.error(`警告${loc}: ${d.message}（${d.code}）`);
   }
 
-  // 4. 输出：默认 build 产物同目录的 .html（如 dist/index.ftml → dist/index.html）
+  // 4. 输出：默认 build 产物同目录的 .html（如 dist/index.ftml → dist/index.html）。
+  //    用 buildPreviewDocument 包装为完整文档：@wdprlib/render 只给正文 fragment，
+  //    缺 <meta charset>/<body>，浏览器打开会乱码；再内联 @wdprlib/runtime 让
+  //    tabview/collapsible/脚注等小部件在浏览器里可交互
   const defaultOut = config.outputAbs.endsWith('.ftml')
     ? config.outputAbs.slice(0, -'.ftml'.length) + '.html'
     : config.outputAbs + '.html';
   const outAbs = options.output ? path.resolve(options.output) : defaultOut;
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
-  fs.writeFileSync(outAbs, html, 'utf8');
-  const size = Buffer.byteLength(html, 'utf8');
+  const document = buildPreviewDocument({
+    html,
+    title: config.page || page.fullName,
+  });
+  fs.writeFileSync(outAbs, document, 'utf8');
+  const size = Buffer.byteLength(document, 'utf8');
   const stylesNote = styles.length ? `，${styles.length} 段样式` : '';
   console.log(`✓ 预览已生成 → ${outAbs}（${size} 字节${stylesNote}）`);
   if (options.open) {
     await openInBrowser(outAbs);
   }
 
-  return { html, styles, bytes: Buffer.byteLength(html, 'utf8') };
+  return { html: document, styles, bytes: Buffer.byteLength(document, 'utf8') };
 }
 
 /** 用系统默认浏览器打开文件（跨平台） */

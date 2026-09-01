@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { renderPreview, resolveIncludeFile } from '../src/utils/preview.js';
+import { buildPreviewDocument } from '../src/utils/preview-page.js';
 import { getSite, getPage } from '../src/utils/wikidot.js';
 import { parseFtmx } from '../src/core/parse-ftmx.js';
 import { readPageCache } from '../src/utils/cache.js';
@@ -328,4 +329,39 @@ test('页面不存在（null）不缓存', async () => {
   assert.equal(p1, null);
   assert.equal(p2, null);
   assert.equal(siteCalls.n, 2);
+});
+
+// ---------- buildPreviewDocument：完整文档包装 + runtime 注入 ----------
+
+test('buildPreviewDocument 包装为完整文档并内联 runtime', () => {
+  const doc = buildPreviewDocument({ html: '<p>你好</p>', title: '测试 <页>' });
+  // 文档外壳
+  assert.ok(doc.startsWith('<!DOCTYPE html>'));
+  assert.ok(doc.includes('<html lang="zh">'));
+  assert.ok(doc.includes('<meta charset="utf-8">'));
+  assert.ok(doc.includes('<title>测试 &lt;页&gt;</title>'));
+  assert.ok(doc.includes('<div id="page-content">\n<p>你好</p>'));
+  // runtime 以 <script type="module"> 内联，自包含（无外部 import），保留 export
+  assert.ok(doc.includes('<script type="module">'));
+  assert.ok(doc.includes('function initWdprRuntime'));
+  assert.ok(!doc.includes('import.meta'));
+  assert.ok(!doc.includes(' from '));
+  // 引导脚本在源码之后调用
+  assert.ok(doc.includes("initWdprRuntime({ root: document.getElementById('page-content') });"));
+  // script 标签配对闭合
+  assert.equal((doc.match(/<script/g) || []).length, (doc.match(/<\/script>/g) || []).length);
+});
+
+test('buildPreviewDocument 附带小部件基础样式', () => {
+  const doc = buildPreviewDocument({ html: '<p>x</p>' });
+  for (const sel of [
+    '.collapsible-block',
+    '.yui-navset .yui-nav',
+    'a.footnoteref',
+    '#odialog-hovertips .hovertip',
+    '#toc',
+    '.foldable-list-container .foldable-list-toggle',
+  ]) {
+    assert.ok(doc.includes(sel), `widget css 缺少 ${sel}`);
+  }
 });

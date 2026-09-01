@@ -83,6 +83,7 @@ ftml preview --site scpsandboxcn --page my-page   # 提供页面上下文，正�
 - `[[include]]` 按**源文件所在目录**解析本地 `.ftml`（`component:box` → `component/box.ftml`）；目标文件先展开模板再渲染，嵌套 include 递归展开。遵守 Wikidot 规则：`[[include]]` 必须出现在行首
 - 跨站 include（如 `[[include :scp-wiki-cn:theme:parallel]]`）按本地镜像解析：优先 `<site>/<page 斜杠化>.ftml`（→ `scp-wiki-cn/theme/parallel.ftml`），回退到普通位置（→ `theme/parallel.ftml`）；越界路径（`../`）一律拒绝
 - **本地找不到的 include 自动远程拉取**：已登录（有凭证）时用 `@ukwhatn/wikidot` 客户端直接拉取页面源码（如 `:scp-wiki-cn:theme:parallel` → scp-wiki-cn 站点的 `theme:parallel` 页），渲染前同样先展开模板。拉取成功会写入**磁盘缓存** `~/.ftml-cli/cache/<site>/<page>.ftml`（跨项目共享），下次直接命中缓存不再请求网络。未登录或拉取失败则渲染「页面不存在」占位，失败会输出 `remote-include-failed` 警告到 stderr
+- **输出为完整 HTML 文档并内联客户端 runtime**：生成的不是正文 fragment，而是带 `<!DOCTYPE html>` / `<meta charset="utf-8">` 的完整页面，并在 `<script type="module">` 中**内联 `@wdprlib/runtime`**（自包含 ESM，无网络依赖）并调用 `initWdprRuntime()`。浏览器打开后 tabview 切换、collapsible 折叠、TOC 折叠/展开、脚注悬浮提示、折叠列表、画廊灯箱、数学渲染等小部件可交互；另注入一份小部件基础 CSS（runtime 只自带 gallery 样式）
 
 ### submit / deploy / revert
 
