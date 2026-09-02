@@ -28,6 +28,7 @@ const el = {
   sourceList: $('source-list'),
   newTemplateBtn: $('new-template-btn'),
   newComponentBtn: $('new-component-btn'),
+  newSourceBtn: $('new-source-btn'),
   editor: $('editor'),
   autocomplete: $('autocomplete'),
   preview: $('preview'),
@@ -58,6 +59,7 @@ const state = {
   isRepo: false,
   saveTimer: null,
   ac: null, // 当前自动补全 { items, kind, replaceFrom, onPick }
+  creatingStarter: false, // 空项目自动创建 index.ftml 的防重入锁
 };
 
 // ---------------- API ----------------
@@ -180,7 +182,7 @@ async function refreshSidebar() {
     el.initProjectBtn.textContent = `初始化 git（${data.name}）`;
   }
 
-  renderList(el.templateList, data.templates, (t) => t.name, (t) => t.keys.join(' '), `templates/${t.name}.ftmx`);
+  renderList(el.templateList, data.templates, (t) => t.name, (t) => t.keys.join(' '), (t) => `templates/${t.name}.ftmx`);
   renderList(el.componentList, data.components, (c) => c.name, null, (c) => `components/${c.name}.ftml`);
   renderList(el.sourceList, data.sources, (s) => s, null, (s) => s);
 
@@ -195,6 +197,21 @@ async function refreshSidebar() {
   } else if (state.filePath) {
     state.filePath = null;
     clearEditor();
+  }
+
+  // 空项目：自动创建 index.ftml 并打开，避免"看不到源文件列表/无法预览"
+  if (data.sources.length === 0 && !state.filePath && !state.creatingStarter) {
+    state.creatingStarter = true;
+    try {
+      await saveFile('index.ftml', STARTER_SOURCE);
+      setStatus('项目为空，已自动创建 index.ftml');
+      await refreshSidebar();
+      await openFile('index.ftml');
+    } catch (e) {
+      setError(`自动创建 index.ftml 失败: ${e.message}`);
+    } finally {
+      state.creatingStarter = false;
+    }
   }
 }
 
@@ -269,7 +286,13 @@ function highlightActive() {
   if (path?.startsWith('components/')) mark(el.componentList, path.slice('components/'.length, -'.ftml'.length));
 }
 
-// ---------------- 新建模板 / 组件 ----------------
+// ---------------- 新建模板 / 组件 / 源文件 ----------------
+/** 新页面/组件的默认骨架（多行：[[div]] 独占一行才被 @wdprlib/parser 解析为块标签） */
+const STARTER_SOURCE = `[[div class="page-block"]]
+
+[[/div]]
+`;
+
 function openNameDialog(title, placeholder, okText) {
   return new Promise((resolve) => {
     el.nameDialogTitle.textContent = title;
@@ -310,10 +333,25 @@ el.newComponentBtn.addEventListener('click', async () => {
   const name = await openNameDialog('新建组件', '组件名（如 box）', '创建');
   if (!name) return;
   const file = `components/${name}.ftml`;
-  const skeleton = `[[div class="page-block"]][[/div]]\n`;
   try {
-    await saveFile(file, skeleton);
+    await saveFile(file, STARTER_SOURCE);
     setStatus(`已创建组件 ${name}`);
+    await refreshSidebar();
+    openFile(file);
+  } catch (e) {
+    setError(e.message);
+  }
+});
+
+el.newSourceBtn.addEventListener('click', async () => {
+  const name = await openNameDialog('新建页面（源文件）', '页面名（如 index）', '创建');
+  if (!name) return;
+  let file = name.trim();
+  if (!file) return;
+  if (!file.endsWith('.ftml')) file += '.ftml';
+  try {
+    await saveFile(file, STARTER_SOURCE);
+    setStatus(`已创建页面 ${file}`);
     await refreshSidebar();
     openFile(file);
   } catch (e) {
@@ -326,9 +364,16 @@ async function saveFile(relPath, source) {
   await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/save`, { path: relPath, source });
 }
 
+/** 把编辑器当前内容落盘（render/validate/deploy/revert 都从磁盘读，必须先存） */
+async function persistEditor() {
+  if (!state.projectId || !state.filePath) return;
+  await saveFile(state.filePath, el.editor.value);
+}
+
 async function render() {
   if (!state.projectId || !state.filePath) return;
   try {
+    await persistEditor();
     const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/render`, {
       path: state.filePath,
       site: el.siteInput.value.trim() || undefined,
@@ -396,6 +441,7 @@ el.saveTargetBtn.addEventListener('click', async () => {
 el.validateBtn.addEventListener('click', async () => {
   if (!state.projectId || !state.filePath) return;
   try {
+    await persistEditor();
     const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/validate`, { path: state.filePath });
     const { errors, warnings } = r;
     if (errors.length === 0 && warnings.length === 0) {
@@ -423,6 +469,7 @@ el.deployBtn.addEventListener('click', async () => {
     return;
   }
   try {
+    await persistEditor();
     setStatus('部署中…');
     const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/deploy`, {
       path: state.filePath, site, page,
@@ -440,6 +487,7 @@ el.revertBtn.addEventListener('click', async () => {
   const site = el.siteInput.value.trim();
   const page = el.pageInput.value.trim();
   try {
+    await persistEditor();
     setStatus('回退中…');
     const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/revert`, {
       path: state.filePath, site, page,
@@ -690,3 +738,4 @@ async function boot() {
 }
 
 boot();
+

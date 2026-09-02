@@ -15,6 +15,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 
 import { addProject, removeProject, loadProjects } from '../src/web/projects.js';
 import {
+  listProjects,
+  createProject,
   getSidebar,
   saveProjectFile,
   readProjectFile,
@@ -130,7 +132,45 @@ test('sidebar：真实 drafts 项目只读断言（2 模板 / 10 组件）', asy
     assert.deepEqual(sb.templates.map((t) => t.name).sort(), ['file-item', 'gh-empty']);
     assert.equal(sb.components.length, 10);
     assert.ok(sb.sources.includes('index.ftml'));
-    assert.equal(sb.isRepo, false); // /public/drafts 不是 git 仓库
+    assert.equal(sb.isRepo, true); // /public/drafts 已是 git 仓库（早前 web init 过，空仓库无提交）
+  } finally {
+    delete process.env.FTML_CLI_HOME;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('listProjects：注册表含失效目录条目时跳过（simple-git 对不存在目录会抛错）', async () => {
+  const home = tmpdir();
+  const root = makeFixtureProject();
+  const ghost = tmpdir();
+  process.env.FTML_CLI_HOME = home;
+  try {
+    // 先注册 ghost，再删掉它的目录 → 变成一个"幽灵"条目
+    addProject(ghost);
+    addProject(root);
+    rmSync(ghost, { recursive: true, force: true });
+
+    const list = await listProjects();
+    const ids = list.map((p) => p.id);
+    assert.ok(!ids.includes(ghost), '失效目录不应出现在列表');
+    assert.ok(ids.includes(root), '正常项目应保留');
+    const live = list.find((p) => p.id === root);
+    assert.equal(live.isRepo, false);
+  } finally {
+    delete process.env.FTML_CLI_HOME;
+    rmSync(home, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('getSidebar：目录已被删除的项目返回 410 提示，而不是 simple-git 崩溃', async () => {
+  const home = tmpdir();
+  const ghost = tmpdir();
+  process.env.FTML_CLI_HOME = home;
+  try {
+    addProject(ghost);
+    rmSync(ghost, { recursive: true, force: true });
+    await assert.rejects(() => getSidebar(ghost), /项目目录不存在，请在列表中移除/);
   } finally {
     delete process.env.FTML_CLI_HOME;
     rmSync(home, { recursive: true, force: true });

@@ -92,16 +92,19 @@ function findProject(id) {
 // ---------------- projects ----------------
 
 export async function listProjects() {
-  const git = projectGit(process.cwd());
-  return Promise.all(loadProjects().map(async (p) => {
+  const list = loadProjects();
+  const results = await Promise.all(list.map(async (p) => {
+    // 目录已不存在（被删/移动）：跳过 git 探测（simple-git 对不存在目录直接抛错）
+    if (!fs.existsSync(p.root) || !fs.statSync(p.root).isDirectory()) return null;
     const g = projectGit(p.root);
-    const isRepoResult = await isRepo(g);
+    const isRepoResult = await isRepo(g).catch(() => false);
     return {
       ...p,
       isRepo: isRepoResult,
-      isClean: isRepoResult ? await isClean(g) : true,
+      isClean: isRepoResult ? await isClean(g).catch(() => false) : true,
     };
   }));
+  return results.filter(Boolean);
 }
 
 export async function createProject(body) {
@@ -120,6 +123,9 @@ export async function deleteProject(id) {
 export async function getSidebar(id) {
   const p = findProject(id);
   const { root } = p;
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    throw new HttpError(410, `项目目录不存在，请在列表中移除: ${root}`);
+  }
   const config = loadConfig({ root });
 
   const templates = [];

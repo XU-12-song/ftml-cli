@@ -280,3 +280,37 @@ dialog input {
     padding: 6px 14px;
   }
 }
+/* CodeMirror 容器自适应 */
+#editor-container {
+  width: 50%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.cm-editor {
+  height: 100% !important;
+  font-size: 13px;
+  font-family: "SF Mono", Consolas, "JetBrains Mono", Menlo, monospace;
+}
+.cm-scroller {
+  overflow: auto !important;
+}
+.cm-tooltip-autocomplete {
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  color: var(--fg) !important;
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+/* 移动端适配：编辑器容器随布局变化 */
+@media (max-width: 768px) {
+  #editor-container {
+    width: 100% !important;
+    height: 50% !important;
+  }
+}
