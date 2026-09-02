@@ -20,6 +20,60 @@ function count(str, re) {
   return (str.match(re) ?? []).length;
 }
 
+/**
+ * 校验 FTML 源码，返回错误与警告。
+ * 与 validate 命令共用同一套检查逻辑；web 编辑器用它做实时诊断。
+ */
+export function collectProblems(src, templates, baseDir) {
+  const errors = [];
+  const warnings = [];
+
+  // div 平衡（组件本身可能刻意不平衡，≤10 记为警告，超出才报错）
+  const divOpen = count(src, /\[\[div(?=\s|\]|$)/g);
+  const divClose = count(src, /\[\[\/div\]\]/g);
+  const divDiff = divOpen - divClose;
+  if (divDiff !== 0) {
+    const msg = `div 不平衡: 开 ${divOpen} / 闭 ${divClose}（差 ${Math.abs(divDiff)}）`;
+    if (Math.abs(divDiff) <= 10) {
+      warnings.push(msg);
+    } else {
+      errors.push(msg);
+    }
+  }
+
+  // style 配对
+  const styleOpen = count(src, /\[\[style\s*\]\]/g);
+  const styleClose = count(src, /\[\[\/style\]\]/g);
+  if (styleOpen !== styleClose) {
+    errors.push(`[[style]] 未配对: 开 ${styleOpen} / 闭 ${styleClose}`);
+  }
+
+  // code 配对
+  const codeOpen = count(src, /\[\[code(?:\s|])/g);
+  const codeClose = count(src, /\[\[\/code\]\]/g);
+  if (codeOpen !== codeClose) {
+    errors.push(`[[code]] 未配对: 开 ${codeOpen} / 闭 ${codeClose}`);
+  }
+
+  // 尝试展开，捕获缺参/未闭合/循环等错误
+  let expanded = null;
+  try {
+    expanded = expand(src, templates, { baseDir });
+  } catch (e) {
+    errors.push(`展开失败: ${e.message}`);
+  }
+
+  // 展开后残留
+  if (expanded !== null) {
+    const unresolved = findUnresolved(expanded, templates);
+    if (unresolved.length > 0) {
+      errors.push(`未解析的模板调用: ${[...new Set(unresolved)].join(', ')}`);
+    }
+  }
+
+  return { errors, warnings };
+}
+
 export async function validate(options) {
   const config = loadConfig(options);
   const inputAbs = options.source
@@ -31,56 +85,15 @@ export async function validate(options) {
     return 1;
   }
   const src = fs.readFileSync(inputAbs, 'utf8');
-  const problems = [];
+  const templates = await loadTemplates(config.templatesDirAbs);
+  const { errors, warnings } = collectProblems(src, templates, path.dirname(inputAbs));
 
-  // div 平衡（组件本身可能刻意不平衡，≤10 记为警告，超出才报错）
-  const divOpen = count(src, /\[\[div(?=\s|\]|$)/g);
-  const divClose = count(src, /\[\[\/div\]\]/g);
-  const divDiff = divOpen - divClose;
-  if (divDiff !== 0) {
-    const msg = `div 不平衡: 开 ${divOpen} / 闭 ${divClose}（差 ${Math.abs(divDiff)}）`;
-    if (Math.abs(divDiff) <= 10) {
-      console.warn(`⚠ ${msg}`);
-    } else {
-      problems.push(msg);
-    }
-  }
+  for (const w of warnings) console.warn(`⚠ ${w}`);
 
-  // style 配对
-  const styleOpen = count(src, /\[\[style\s*\]\]/g);
-  const styleClose = count(src, /\[\[\/style\]\]/g);
-  if (styleOpen !== styleClose) {
-    problems.push(`[[style]] 未配对: 开 ${styleOpen} / 闭 ${styleClose}`);
-  }
-
-  // code 配对
-  const codeOpen = count(src, /\[\[code(?:\s|])/g);
-  const codeClose = count(src, /\[\[\/code\]\]/g);
-  if (codeOpen !== codeClose) {
-    problems.push(`[[code]] 未配对: 开 ${codeOpen} / 闭 ${codeClose}`);
-  }
-
-  // 尝试展开，捕获缺参/未闭合/循环等错误
-  let expanded = null;
-  try {
-    const templates = await loadTemplates(config.templatesDirAbs);
-    expanded = expand(src, templates, { baseDir: path.dirname(inputAbs) });
-  } catch (e) {
-    problems.push(`展开失败: ${e.message}`);
-  }
-
-  // 展开后残留
-  if (expanded !== null) {
-    const unresolved = findUnresolved(expanded, await loadTemplates(config.templatesDirAbs));
-    if (unresolved.length > 0) {
-      problems.push(`未解析的模板调用: ${[...new Set(unresolved)].join(', ')}`);
-    }
-  }
-
-  if (problems.length === 0) {
+  if (errors.length === 0) {
     console.log(`✓ ${path.basename(inputAbs)} 校验通过`);
     return 0;
   }
-  for (const p of problems) console.error(`✖ ${p}`);
+  for (const p of errors) console.error(`✖ ${p}`);
   return 1;
 }

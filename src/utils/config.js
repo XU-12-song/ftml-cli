@@ -22,7 +22,8 @@ export { findConfigDir };
 
 /** 加载配置：无配置文件时返回默认值 */
 export function loadConfig(cliOptions = {}) {
-  const configDir = findConfigDir();
+  // 显式 root 优先（web 编辑器多项目场景）；否则从 cwd 向上查找配置文件
+  const configDir = cliOptions.root || findConfigDir();
   let file = {};
   if (configDir) {
     for (const name of CONFIG_FILES) {

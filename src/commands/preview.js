@@ -18,7 +18,7 @@ import { buildPreviewDocument } from '../utils/preview-page.js';
 import { createClient } from '../utils/wikidot.js';
 
 /** 构造渲染用的页面上下文（未配置 site/page 时给占位值） */
-function buildPageContext({ site, page }) {
+export function buildPageContext({ site, page }) {
   const fullName = page || 'preview';
   const unixName = fullName.includes(':') ? fullName.slice(fullName.lastIndexOf(':') + 1) : fullName;
   return {

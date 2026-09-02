@@ -27,6 +27,7 @@ import { deploy } from './commands/deploy.js';
 import { revert } from './commands/revert.js';
 import { preview } from './commands/preview.js';
 import { init } from './commands/init.js';
+import { web } from './commands/web.js';
 
 const program = new Command();
 
@@ -149,6 +150,8 @@ program
   .option('--page <page>', '页面名（覆盖配置）')
   .option('--to <commit>', 'git 提交（hash / HEAD~n，默认 HEAD）')
   .option('--no-wikidot', '只做本地 git revert，不回推 Wikidot')
+  .option('--auto-commit', '工作区有未提交改动时先自动提交再 revert')
+  .option('--rebuild', 'git revert 后重新构建产物再回推（dist/ 被 gitignore 忽略）')
   .action(async (opts) => {
     await run(() => revert(opts));
   });
@@ -159,6 +162,18 @@ program
   .description('初始化 ftml 项目')
   .action(async () => {
     await run(() => init());
+  });
+
+// ---- web ----
+program
+  .command('web')
+  .description('启动本地 web 编辑器（编辑 + 实时预览 + 自动补全）')
+  .option('--root <dir>', '默认打开的项目目录（并注册到项目列表）')
+  .option('--port <n>', '监听端口（默认 3000）')
+  .option('--host <addr>', '监听地址（默认 127.0.0.1）')
+  .option('--open', '启动后用系统浏览器打开')
+  .action(async (opts) => {
+    await run(() => web(opts));
   });
 
 /** 统一错误处理与退出码 */

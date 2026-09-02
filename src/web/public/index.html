@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ftml web 编辑器</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">ftml<span class="brand-sub">editor</span></div>
+
+    <div class="group">
+      <select id="project-select" title="项目"></select>
+      <button id="add-project-btn" class="btn" title="添加项目">＋项目</button>
+      <button id="init-project-btn" class="btn hidden" title="初始化 git 项目">init</button>
+    </div>
+
+    <div class="group">
+      <select id="file-select" title="源文件"></select>
+      <span class="sep"></span>
+      <input id="site-input" placeholder="站点" title="Wikidot 站点（如 scp-cn）">
+      <input id="page-input" placeholder="页面" title="Wikidot 页面名">
+      <button id="save-target-btn" class="btn" title="保存目标页面设置">目标</button>
+    </div>
+
+    <div class="group">
+      <button id="validate-btn" class="btn" title="校验当前文件">校验</button>
+      <button id="deploy-btn" class="btn btn-primary" title="构建+校验+提交到 Wikidot">部署</button>
+      <button id="revert-btn" class="btn btn-danger" title="git revert 并回推线上">回退</button>
+    </div>
+
+    <div class="group">
+      <span id="auth-status" class="auth">未登录</span>
+      <button id="login-btn" class="btn">登录</button>
+    </div>
+  </header>
+
+  <div id="body">
+    <aside id="sidebar">
+      <section class="sb-group">
+        <div class="sb-head">
+          <span>模板</span>
+          <button id="new-template-btn" class="sb-add" title="新建模板">＋</button>
+        </div>
+        <ul id="template-list" class="sb-list"></ul>
+      </section>
+      <section class="sb-group">
+        <div class="sb-head">
+          <span>组件</span>
+          <button id="new-component-btn" class="sb-add" title="新建组件">＋</button>
+        </div>
+        <ul id="component-list" class="sb-list"></ul>
+      </section>
+      <section class="sb-group">
+        <div class="sb-head">
+          <span>源文件</span>
+        </div>
+        <ul id="source-list" class="sb-list"></ul>
+      </section>
+    </aside>
+
+    <main id="main">
+      <textarea id="editor" spellcheck="false" placeholder="选择或新建一个文件开始编辑…"></textarea>
+      <div id="autocomplete" class="hidden"></div>
+      <div id="preview-pane">
+        <iframe id="preview" title="预览"></iframe>
+      </div>
+    </main>
+  </div>
+
+  <footer id="statusbar">
+    <span id="status-text">就绪</span>
+    <span id="status-diagnostics"></span>
+    <span id="status-error" class="err"></span>
+  </footer>
+
+  <dialog id="name-dialog">
+    <form method="dialog">
+      <h3 id="name-dialog-title">新建</h3>
+      <input id="name-input" placeholder="名称" autocomplete="off">
+      <div class="dialog-btns">
+        <button value="cancel" class="btn">取消</button>
+        <button id="name-dialog-ok" value="ok" class="btn btn-primary">创建</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="login-dialog">
+    <form method="dialog">
+      <h3>登录 Wikidot</h3>
+      <input id="login-username" placeholder="用户名" autocomplete="username">
+      <input id="login-password" type="password" placeholder="密码" autocomplete="current-password">
+      <div class="dialog-btns">
+        <button value="cancel" class="btn">取消</button>
+        <button id="login-ok" value="ok" class="btn btn-primary">登录</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="log-dialog">
+    <h3 id="log-dialog-title">输出</h3>
+    <pre id="log-content"></pre>
+    <div class="dialog-btns">
+      <button id="log-close" class="btn btn-primary" value="ok">关闭</button>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

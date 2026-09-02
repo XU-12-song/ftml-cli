@@ -15,8 +15,9 @@
 import fs from 'node:fs';
 import { loadConfig, saveProjectMeta } from '../utils/config.js';
 import { createClient, getSite, getPage, editPage } from '../utils/wikidot.js';
-import { projectGit, gitRevert, isRepo, isClean } from '../utils/git.js';
+import { projectGit, commitAll, gitRevert, isRepo, isClean } from '../utils/git.js';
 import { appendHistory } from './submit.js';
+import { build } from './build.js';
 
 export async function revert(options) {
   const config = loadConfig(options);
@@ -30,13 +31,25 @@ export async function revert(options) {
     throw new Error('当前项目不是 git 仓库，无法 revert。请先运行 `ftml init` 初始化');
   }
   if (!(await isClean(git))) {
-    throw new Error('工作区有未提交的改动。请先 commit 或 stash 再 revert');
+    if (options.autoCommit) {
+      // web 编辑器自动保存导致工作区常脏：先自动提交，再 revert
+      await commitAll(git, 'ftml-cli revert 前自动提交');
+    } else {
+      throw new Error('工作区有未提交的改动。请先 commit 或 stash 再 revert');
+    }
   }
-  if (!fs.existsSync(config.outputAbs)) {
+  // --rebuild 会在 revert 后重建产物，此时不强制要求产物已存在
+  if (!options.rebuild && !fs.existsSync(config.outputAbs)) {
     throw new Error(`构建产物不存在: ${config.outputAbs}。请先运行 ftml build`);
   }
 
   const hash = await gitRevert(git, rev);
+
+  // dist/ 被 .gitignore 忽略，git revert 不会恢复产物；
+  // --rebuild 时用回退后的源文件重新构建，避免把陈旧产物推上 Wikidot
+  if (options.rebuild) {
+    await build(options);
+  }
 
   // revert 后构建产物已被 git 恢复，读回即为上版
   const source = fs.readFileSync(config.outputAbs, 'utf8');
@@ -46,7 +59,7 @@ export async function revert(options) {
     if (!siteName || !pageName) {
       throw new Error('缺少 site/page，无法回推 Wikidot。请配置或在命令行指定 --site/--page');
     }
-    const client = await createClient();
+    const client = await (options.clientFactory || createClient)();
     try {
       const site = await getSite(client, siteName);
       const page = await getPage(site, pageName);

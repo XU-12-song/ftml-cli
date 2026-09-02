@@ -29,6 +29,7 @@ npm test           # 运行测试（node:test，零额外依赖）
 | `ftml deploy` | 构建 + 校验 + 提交（一步部署） |
 | `ftml revert` | git revert 撤销提交，并把恢复的产物回推 Wikidot |
 | `ftml init` | 初始化项目结构（`.ftml/`、`.gitignore`、`git init`） |
+| `ftml web` | 启动本地 web 编辑器（左侧编辑、右侧实时预览） |
 
 ### login
 
@@ -108,6 +109,24 @@ ftml init
 ```
 
 幂等初始化项目结构（可重复执行）：`.ftml/`（隐藏数据目录，含 `history.json`）、`components/`、`templates/`、`.gitignore`（忽略 `dist/` 与 `.ftml/`）、`.ftmlrc.json` 占位、`git init`（若还不是仓库）。
+
+### web
+
+```bash
+ftml web                        # 启动编辑器，默认 http://127.0.0.1:3000
+ftml web --root /public/drafts  # 启动并注册默认项目
+ftml web --port 8080 --host 0.0.0.0   # 自定义端口/绑定地址
+ftml web --open                 # 启动后用系统浏览器打开
+```
+
+本地 web 编辑器（`node:http` 零依赖），复用 CLI 命令作为引擎：
+
+- **布局**：左侧 textarea 编辑源文件，右侧 iframe 实时预览（各 50%）；侧边栏列出模板 / 组件 / 源文件，支持模板键自动补全
+- **保存即预览**：编辑防抖 600ms 自动保存并重渲染完整 HTML（内联 runtime），Ctrl/Cmd+S 立即保存；预览输出与 `ftml preview` 一致（`<!DOCTYPE html>` + 内联 `@wdprlib/runtime`）
+- **多项目**：项目注册表存用户级 `~/.ftml-cli/projects.json`，顶栏下拉切换；`+` 添加目录、删除仅注销不删文件
+- **目标页面**：顶栏设置 site / page，保存到 `.ftml/<源文件名>.json` 元数据（优先级不变：命令行 > 配置 > 元数据）
+- **操作**：校验（状态栏内联诊断）、部署（build + validate + editPage + git commit + history/元数据）、回退（自动提交 + 真 git revert + rebuild + 回推，对应 `revert --autoCommit --rebuild`）、init、登录/登出（凭证 0600）
+- **安全**：默认只绑 `127.0.0.1`（`--host` 覆盖）；文件读写做路径穿越校验，必须落在项目根内
 
 ## 配置
 

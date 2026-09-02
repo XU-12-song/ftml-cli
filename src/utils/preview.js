@@ -20,7 +20,6 @@ import { renderWikitext, createSettings } from '@wdprlib/render';
 import { expand } from '../core/expand.js';
 import { getSite, getPage, fetchPageSource } from './wikidot.js';
 import { readPageCache, writePageCache } from './cache.js';
-
 /**
  * 把 include 的 pageRef 解析为本地 .ftml 文件。
  *
@@ -47,15 +46,15 @@ export function resolveIncludeFile(pageRef, baseDir, currentSite) {
   const crossSite = Boolean(site) && site !== currentSite;
   const candidates = crossSite
     ? [
-        path.join(baseDir, site, `${slashRef}.ftml`),
-        path.join(baseDir, site, `${page}.ftml`),
-        path.join(baseDir, `${slashRef}.ftml`),
-        path.join(baseDir, `${page}.ftml`),
-      ]
+      path.join(baseDir, site, `${slashRef}.ftml`),
+      path.join(baseDir, site, `${page}.ftml`),
+      path.join(baseDir, `${slashRef}.ftml`),
+      path.join(baseDir, `${page}.ftml`),
+    ]
     : [
-        path.join(baseDir, `${slashRef}.ftml`),
-        path.join(baseDir, `${page}.ftml`),
-      ];
+      path.join(baseDir, `${slashRef}.ftml`),
+      path.join(baseDir, `${page}.ftml`),
+    ];
   for (const p of candidates) {
     const abs = path.resolve(p);
     if (!abs.startsWith(path.resolve(baseDir) + path.sep) && abs !== path.resolve(baseDir)) {
@@ -131,25 +130,25 @@ export async function renderPreview(
 
   const dataProvider = includeBaseDir || client
     ? {
-        fetchInclude: async (pageRef) => {
-          // 1. 本地文件（基准目录内 .ftml）
-          let source = null;
-          let fileAbs = null;
-          if (includeBaseDir) {
-            fileAbs = resolveIncludeFile(pageRef, includeBaseDir, page?.site);
-            if (fileAbs) source = readFileSync(fileAbs, 'utf8');
-          }
-          // 2. 本地缺失 → 已登录客户端远程拉取（页面源码；模板随后统一展开）
-          if (source == null && client) {
-            source = await fetchRemoteInclude(pageRef, { page, client, warnings: remoteWarnings });
-          }
-          if (source == null) return null;
-          // 先展开模板/组件，再交回 parser 解析（嵌套 include 由 parser 迭代展开）
-          return includeTemplates
-            ? expand(source, includeTemplates, { baseDir: fileAbs ? path.dirname(fileAbs) : includeBaseDir })
-            : source;
-        },
-      }
+      fetchInclude: async (pageRef) => {
+        // 1. 本地文件（基准目录内 .ftml）
+        let source = null;
+        let fileAbs = null;
+        if (includeBaseDir) {
+          fileAbs = resolveIncludeFile(pageRef, includeBaseDir, page?.site);
+          if (fileAbs) source = readFileSync(fileAbs, 'utf8');
+        }
+        // 2. 本地缺失 → 已登录客户端远程拉取（页面源码；模板随后统一展开）
+        if (source == null && client) {
+          source = await fetchRemoteInclude(pageRef, { page, client, warnings: remoteWarnings });
+        }
+        if (source == null) return null;
+        // 先展开模板/组件，再交回 parser 解析（嵌套 include 由 parser 迭代展开）
+        return includeTemplates
+          ? expand(source, includeTemplates, { baseDir: fileAbs ? path.dirname(fileAbs) : includeBaseDir })
+          : source;
+      },
+    }
     : undefined;
 
   const doc = await processWikitext(ftml, {
@@ -157,7 +156,9 @@ export async function renderPreview(
     settings,
     dataProvider,
   });
+
   const result = await renderWikitext(doc, { styleMode });
+
   return {
     html: result.html,
     styles: result.styles,

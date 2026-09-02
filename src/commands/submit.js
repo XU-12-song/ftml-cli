@@ -54,7 +54,8 @@ export async function submit(options) {
   const pageName = options.page || config.page;
   const comment = options.message || 'ftml-cli 提交';
 
-  const client = await createClient();
+  // clientFactory 注入点：web 编辑器测试时传 fake client，生产走默认 createClient
+  const client = await (options.clientFactory || createClient)();
   try {
     const site = await getSite(client, siteName);
     const page = await getPage(site, pageName);
