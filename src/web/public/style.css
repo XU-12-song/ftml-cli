@@ -232,3 +232,51 @@ dialog input {
 }
 #log-content .log-err { color: var(--danger); }
 #log-content .log-warn { color: var(--warn); }
+/* 移动端适配 */
+@media (max-width: 768px) {
+  /* 顶栏换行 */
+  #topbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 6px 8px;
+    gap: 4px 8px;
+  }
+  #topbar .group {
+    flex-wrap: wrap;
+  }
+  /* 隐藏侧边栏，改用侧滑菜单（略）或完全隐藏，这里演示直接隐藏 */
+  #sidebar {
+    display: none;
+  }
+  /* 主区域垂直排列 */
+  #main {
+    flex-direction: column;
+  }
+  #editor, #preview-pane {
+    width: 100% !important;
+    height: 50% !important;
+    border-right: none;
+  }
+  #preview-pane {
+    border-top: 1px solid var(--border);
+  }
+  /* 适当增大输入框和按钮触摸区域 */
+  select, input, .btn {
+    font-size: 14px;
+    padding: 6px 10px;
+    min-height: 36px;
+  }
+  .sb-list li {
+    padding: 6px 12px 6px 22px;
+    font-size: 14px;
+  }
+  dialog {
+    min-width: 90vw;
+    max-width: 90vw;
+  }
+  /* 如果希望显示保存按钮更突出，可以调整样式 */
+  #save-btn {
+    font-size: 14px;
+    padding: 6px 14px;
+  }
+}

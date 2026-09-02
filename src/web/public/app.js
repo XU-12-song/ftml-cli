@@ -44,6 +44,7 @@ const el = {
   logDialogTitle: $('log-dialog-title'),
   logContent: $('log-content'),
   logClose: $('log-close'),
+  saveBtn: $('save-btn'),
 };
 
 // ---------------- 状态 ----------------
@@ -430,7 +431,7 @@ el.deployBtn.addEventListener('click', async () => {
     setStatus('部署完成（' + fmtTime() + '）');
   } catch (e) {
     setError(e.message);
-    showLog('部署失败', [{ kind: 'error', msg: e.message }]);
+    showLog('部署失败', [ { kind: 'error', msg: e.message } ]);
   }
 });
 
@@ -447,7 +448,7 @@ el.revertBtn.addEventListener('click', async () => {
     setStatus('回退完成（' + fmtTime() + '）');
   } catch (e) {
     setError(e.message);
-    showLog('回退失败', [{ kind: 'error', msg: e.message }]);
+    showLog('回退失败', [ { kind: 'error', msg: e.message } ]);
   }
 });
 
@@ -510,16 +511,16 @@ function detectTrigger() {
   m = /\[\[component\s+src="([^"]*)$/.exec(before);
   if (m) {
     const items = state.components
-      .filter((c) => c.startsWith(m[1]))
+      .filter((c) => c.startsWith(m[ 1 ]))
       .map((c) => ({ label: `components/${c}.ftml`, insert: `components/${c}.ftml"`, kind: 'component' }));
-    return { items, replaceFrom: before.length - m[1].length };
+    return { items, replaceFrom: before.length - m[ 1 ].length };
   }
 
   // 2. 模板键: [[name 已输入键…
   m = /\[\[([A-Za-z][A-Za-z0-9:_-]*)(\s+[^\]]*)$/.exec(before);
-  if (m && state.templates.has(m[1])) {
-    const token = (m[2].match(/[^\s=]*$/)?.[0]) || '';
-    const items = state.templates.get(m[1])
+  if (m && state.templates.has(m[ 1 ])) {
+    const token = (m[ 2 ].match(/[^\s=]*$/)?.[ 0 ]) || '';
+    const items = state.templates.get(m[ 1 ])
       .filter((k) => k.startsWith(token))
       .map((k) => ({ label: `${k}=`, insert: `${k}=`, kind: 'key' }));
     return { items, replaceFrom: before.length - token.length };
@@ -528,13 +529,13 @@ function detectTrigger() {
   // 3. 模板名: [[前缀
   m = /\[\[([A-Za-z][A-Za-z0-9:_-]*)$/.exec(before);
   if (m) {
-    const items = [...state.templates.keys()]
-      .filter((n) => n.startsWith(m[1]))
+    const items = [ ...state.templates.keys() ]
+      .filter((n) => n.startsWith(m[ 1 ]))
       .map((n) => {
         const keys = state.templates.get(n);
         return { label: n, sub: keys.join(' '), insert: n, kind: 'name' };
       });
-    return { items, replaceFrom: before.length - m[1].length };
+    return { items, replaceFrom: before.length - m[ 1 ].length };
   }
 
   return null;
@@ -570,7 +571,7 @@ function updateAutocomplete() {
 }
 
 function renderAcSelection() {
-  [...el.autocomplete.children].forEach((d, i) => {
+  [ ...el.autocomplete.children ].forEach((d, i) => {
     d.classList.toggle('sel', i === state.ac.selected);
   });
 }
@@ -593,7 +594,7 @@ function hideAutocomplete() {
 function pickAutocomplete(idx) {
   const ac = state.ac;
   if (!ac) return;
-  const item = ac.items[idx];
+  const item = ac.items[ idx ];
   const ta = el.editor;
   const caret = ta.selectionStart;
   if (item.kind === 'name') {
@@ -670,6 +671,14 @@ function caretCoords(ta) {
 
 // ---------------- 启动 ----------------
 async function boot() {
+  el.saveBtn.addEventListener('click', () => {
+    if (!state.projectId || !state.filePath) {
+      setError('请先打开一个文件');
+      return;
+    }
+    clearTimeout(state.saveTimer);
+    render();
+  });
   await loadProjects();
   await refreshAuth();
   if (state.projects.length === 0) {

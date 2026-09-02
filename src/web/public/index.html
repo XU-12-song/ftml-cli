@@ -9,8 +9,12 @@
 <body>
   <header id="topbar">
     <div class="brand">ftml<span class="brand-sub">editor</span></div>
-
+<!-- 在 #topbar 中，登录按钮组之前 -->
+<div class="group">
+  <button id="save-btn" class="btn btn-primary" title="保存当前文件">💾 保存</button>
+</div>
     <div class="group">
+      
       <select id="project-select" title="项目"></select>
       <button id="add-project-btn" class="btn" title="添加项目">＋项目</button>
       <button id="init-project-btn" class="btn hidden" title="初始化 git 项目">init</button>
