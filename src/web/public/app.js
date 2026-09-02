@@ -3,6 +3,11 @@
  *
  * 状态: 项目列表 / 当前项目 + 源文件 / 模板·组件表（自动补全数据源）
  * 主流程: 编辑 → 防抖 600ms 保存 → 渲染 → iframe.srcdoc 刷新预览
+ *
+ * 新增功能：
+ * - 自定义 snippets（前缀触发完整标签）
+ * - 直接输入组件/模板名自动补全完整标签
+ * - 保存按钮（移动端适配）
  */
 
 'use strict';
@@ -60,6 +65,7 @@ const state = {
   saveTimer: null,
   ac: null, // 当前自动补全 { items, kind, replaceFrom, onPick }
   creatingStarter: false, // 空项目自动创建 index.ftml 的防重入锁
+  snippets: [], // 自定义代码片段
 };
 
 // ---------------- API ----------------
@@ -546,7 +552,7 @@ el.loginDialog.querySelector('form').onsubmit = async (e) => {
   }
 };
 
-// ---------------- 自动补全 ----------------
+// ---------------- 自动补全（增强版） ----------------
 function textBeforeCaret() {
   return el.editor.value.slice(0, el.editor.selectionStart);
 }
@@ -584,6 +590,37 @@ function detectTrigger() {
         return { label: n, sub: keys.join(' '), insert: n, kind: 'name' };
       });
     return { items, replaceFrom: before.length - m[ 1 ].length };
+  }
+
+  // ===== 新增：自定义 snippets + 直接组件/模板名完整标签 =====
+  // 提取光标前最后一个单词（支持点号，如 comp.box）
+  const wordMatch = /([A-Za-z][A-Za-z0-9:_-]*(?:\.[A-Za-z][A-Za-z0-9:_-]*)*)$/.exec(before);
+  if (wordMatch) {
+    const word = wordMatch[0];
+    const start = before.length - word.length;
+
+    // 4a. 自定义 snippets（前缀触发，参数为空时不触发）
+    for (const snip of state.snippets) {
+      if (word.startsWith(snip.prefix)) {
+        const param = word.slice(snip.prefix.length);
+        if (param) {
+          const insert = snip.template.replace(/\$1/g, param);
+          return { items: [{ label: snip.description || param, insert, kind: 'snippet' }], replaceFrom: start };
+        }
+      }
+    }
+
+    // 4b. 直接输入组件名 → 完整 [[component]] 标签
+    if (state.components.includes(word)) {
+      const insert = `[[component src="components/${word}.ftml"]][[/component]]$0`;
+      return { items: [{ label: `组件: ${word}`, insert, kind: 'fulltag' }], replaceFrom: start };
+    }
+
+    // 4c. 直接输入模板名 → 完整 [[name]]…[[/name]] 标签
+    if (state.templates.has(word)) {
+      const insert = `[[${word}]]$0[[/${word}]]`;
+      return { items: [{ label: `模板: ${word}`, insert, kind: 'fulltag' }], replaceFrom: start };
+    }
   }
 
   return null;
@@ -651,8 +688,16 @@ function pickAutocomplete(idx) {
     const nameEnd = ac.replaceFrom + item.insert.length;
     ta.setSelectionRange(nameEnd, nameEnd);
   } else {
-    // 用补全内容替换触发文本（[replaceFrom, caret)）
-    ta.setRangeText(item.insert, ac.replaceFrom, caret, 'end');
+    // 用补全内容替换触发文本（[replaceFrom, caret)）；支持 $0 占位符定位光标
+    const pos = item.insert.indexOf('$0');
+    if (pos !== -1) {
+      const insert = item.insert.replace(/\$0/g, '');
+      ta.setRangeText(insert, ac.replaceFrom, caret, 'end');
+      // 光标落在 $0 位置：替换起点 + 占位符下标（此前文本长度不变）
+      ta.setSelectionRange(ac.replaceFrom + pos, ac.replaceFrom + pos);
+    } else {
+      ta.setRangeText(item.insert, ac.replaceFrom, caret, 'end');
+    }
   }
   hideAutocomplete();
   scheduleSaveRender();
@@ -719,6 +764,17 @@ function caretCoords(ta) {
 
 // ---------------- 启动 ----------------
 async function boot() {
+  // 初始化 snippets（默认 + 用户自定义 localStorage 'ftml:snippets'）
+  const defaultSnippets = [
+    { prefix: 'comp.', template: '[[component src="components/$1.ftml"]][[/component]]$0', description: '组件' },
+    { prefix: 'tmpl.', template: '[[$1]]$0[[/$1]]', description: '模板' },
+  ];
+  let custom = [];
+  try {
+    custom = JSON.parse(localStorage.getItem('ftml:snippets')) || [];
+  } catch { /* ignore */ }
+  state.snippets = defaultSnippets.concat(custom);
+
   el.saveBtn.addEventListener('click', () => {
     if (!state.projectId || !state.filePath) {
       setError('请先打开一个文件');
