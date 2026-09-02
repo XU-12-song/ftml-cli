@@ -307,6 +307,26 @@ dialog input {
   color: #fff !important;
 }
 
+/* 自动补全：两行条目（名字 + 将插入的完整标签预览） */
+#autocomplete div.ac-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 10px;
+}
+#autocomplete div.ac-item .ac-label { font-weight: 600; }
+#autocomplete div.ac-item .ac-preview {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+  font-family: "SF Mono", Consolas, "JetBrains Mono", Menlo, monospace;
+  font-size: 11px;
+}
+#autocomplete div.ac-item.sel .ac-preview { color: rgba(255, 255, 255, 0.8); }
+
 /* 移动端适配：编辑器容器随布局变化 */
 @media (max-width: 768px) {
   #editor-container {

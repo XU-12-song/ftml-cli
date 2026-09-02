@@ -401,6 +401,8 @@ function scheduleSaveRender() {
 el.editor.addEventListener('input', () => {
   setError('');
   hideAutocomplete();
+  // 输入即刷新候选（IME 组合中不弹，compositionend 再刷）
+  if (!el.editor.composing) setTimeout(updateAutocomplete, 0);
   scheduleSaveRender();
 });
 
@@ -418,6 +420,7 @@ el.editor.addEventListener('keydown', (e) => {
 
 el.editor.addEventListener('click', () => setTimeout(updateAutocomplete, 0));
 el.editor.addEventListener('keyup', () => setTimeout(updateAutocomplete, 0));
+el.editor.addEventListener('compositionend', () => setTimeout(updateAutocomplete, 0));
 
 // ---------------- 诊断显示 ----------------
 function showDiagnostics(diags) {
@@ -592,34 +595,58 @@ function detectTrigger() {
     return { items, replaceFrom: before.length - m[ 1 ].length };
   }
 
-  // ===== 新增：自定义 snippets + 直接组件/模板名完整标签 =====
+  // ===== 新增：自定义 snippets + 直接输入名字补全（实时候选列表） =====
   // 提取光标前最后一个单词（支持点号，如 comp.box）
   const wordMatch = /([A-Za-z][A-Za-z0-9:_-]*(?:\.[A-Za-z][A-Za-z0-9:_-]*)*)$/.exec(before);
   if (wordMatch) {
     const word = wordMatch[0];
     const start = before.length - word.length;
 
-    // 4a. 自定义 snippets（前缀触发，参数为空时不触发）
+    // 构造候选：label 为条目名，preview 显示"将插入的完整标签"
+    const compItem = (c) => {
+      const insert = `[[component src="components/${c}.ftml"]][[/component]]$0`;
+      return { label: `组件 ${c}`, preview: insert.replace(/\$0/g, ''), insert, kind: 'fulltag' };
+    };
+    const tplItem = (n, keys) => {
+      const insert = `[[${n}]]$0[[/${n}]]`;
+      const preview = keys.length ? `[[${n} ${keys.join(' ')}]] … [[/${n}]]` : `[[${n}]] … [[/${n}]]`;
+      return { label: `模板 ${n}`, preview, insert, kind: 'fulltag' };
+    };
+
+    // 4a. 命名空间前缀（comp./tmpl.）→ 实时列出该命名空间下的候选
+    const ns = state.snippets.find((s) => s.kind && word.startsWith(s.prefix));
+    if (ns) {
+      const rest = word.slice(ns.prefix.length);
+      const items = [];
+      if (ns.kind === 'component') {
+        for (const c of state.components) if (c.startsWith(rest)) items.push(compItem(c));
+      } else if (ns.kind === 'template') {
+        for (const [n, keys] of state.templates) if (n.startsWith(rest)) items.push(tplItem(n, keys));
+      }
+      if (items.length) return { items: items.slice(0, 12), replaceFrom: start };
+    }
+
+    // 4b. 自定义 snippets（无 kind，通用 $1 替换；参数为空时不触发）
     for (const snip of state.snippets) {
-      if (word.startsWith(snip.prefix)) {
+      if (!snip.kind && word.startsWith(snip.prefix)) {
         const param = word.slice(snip.prefix.length);
         if (param) {
           const insert = snip.template.replace(/\$1/g, param);
-          return { items: [{ label: snip.description || param, insert, kind: 'snippet' }], replaceFrom: start };
+          return { items: [{ label: snip.description || param, preview: insert.replace(/\$0/g, ''), insert, kind: 'snippet' }], replaceFrom: start };
         }
       }
     }
 
-    // 4b. 直接输入组件名 → 完整 [[component]] 标签
-    if (state.components.includes(word)) {
-      const insert = `[[component src="components/${word}.ftml"]][[/component]]$0`;
-      return { items: [{ label: `组件: ${word}`, insert, kind: 'fulltag' }], replaceFrom: start };
-    }
-
-    // 4c. 直接输入模板名 → 完整 [[name]]…[[/name]] 标签
-    if (state.templates.has(word)) {
-      const insert = `[[${word}]]$0[[/${word}]]`;
-      return { items: [{ label: `模板: ${word}`, insert, kind: 'fulltag' }], replaceFrom: start };
+    // 4c. 裸单词前缀匹配组件/模板名 → 边输入边列候选。
+    //      ≥2 字符、且前一字符不是属性/值上下文（css 值、引号内容等），避免误弹
+    if (word.length >= 2 && !word.includes('.')) {
+      const prev = start > 0 ? before[start - 1] : '';
+      if (!/[:."'=,[/]/.test(prev)) {
+        const items = [];
+        for (const c of state.components) if (c.startsWith(word)) items.push(compItem(c));
+        for (const [n, keys] of state.templates) if (n.startsWith(word)) items.push(tplItem(n, keys));
+        if (items.length) return { items: items.slice(0, 12), replaceFrom: start };
+      }
     }
   }
 
@@ -637,12 +664,25 @@ function updateAutocomplete() {
   el.autocomplete.innerHTML = '';
   trigger.items.forEach((item, i) => {
     const d = document.createElement('div');
-    d.textContent = item.label;
-    if (item.sub) {
-      const s = document.createElement('span');
-      s.className = 'ac-keys';
-      s.textContent = item.sub;
-      d.appendChild(s);
+    if (item.preview !== undefined) {
+      // 两行条目：名字 + 将插入的完整标签预览
+      d.className = 'ac-item';
+      const l = document.createElement('span');
+      l.className = 'ac-label';
+      l.textContent = item.label;
+      const p = document.createElement('span');
+      p.className = 'ac-preview';
+      p.textContent = item.preview;
+      d.appendChild(l);
+      d.appendChild(p);
+    } else {
+      d.textContent = item.label;
+      if (item.sub) {
+        const s = document.createElement('span');
+        s.className = 'ac-keys';
+        s.textContent = item.sub;
+        d.appendChild(s);
+      }
     }
     d.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -766,8 +806,8 @@ function caretCoords(ta) {
 async function boot() {
   // 初始化 snippets（默认 + 用户自定义 localStorage 'ftml:snippets'）
   const defaultSnippets = [
-    { prefix: 'comp.', template: '[[component src="components/$1.ftml"]][[/component]]$0', description: '组件' },
-    { prefix: 'tmpl.', template: '[[$1]]$0[[/$1]]', description: '模板' },
+    { prefix: 'comp.', kind: 'component', template: '[[component src="components/$1.ftml"]][[/component]]$0', description: '组件' },
+    { prefix: 'tmpl.', kind: 'template', template: '[[$1]]$0[[/$1]]', description: '模板' },
   ];
   let custom = [];
   try {
