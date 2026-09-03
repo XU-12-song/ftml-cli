@@ -287,3 +287,6 @@ ftml web --open                 # 启动后用系统浏览器打开
 | 组件循环依赖 | `组件循环依赖: /x/a.ftml -> /x/b.ftml -> /x/a.ftml` |
 | 组件缺 src / 多余参数 | `[[component]] 只接受一个 src 参数（无自定义参数），收到: (无)` |
 | 模板 body 用组件 | `模板 [[t]] 的 body 中不允许使用 [[component]]，请把组件引用放在调用层 .ftml 中` |
+
+## 许可证
+ISC
