@@ -5,8 +5,9 @@
  * 主流程: 编辑 → 防抖 600ms 保存 → 渲染 → iframe.srcdoc 刷新预览
  *
  * 新增功能：
- * - 自定义 snippets（前缀触发完整标签）
- * - 直接输入组件/模板名自动补全完整标签
+ * - 自定义 snippets 管理（侧边栏增删改，localStorage 持久化）
+ * - 自定义 snippets / 组件模板名：输入即列实时候选，预览将插入的完整标签
+ * - 内置常用 Wikidot 语法默认补全（`[[` 上下文合并候选，项目模板优先）
  * - 保存按钮（移动端适配）
  */
 
@@ -51,6 +52,15 @@ const el = {
   logContent: $('log-content'),
   logClose: $('log-close'),
   saveBtn: $('save-btn'),
+  addSnippetBtn: $('add-snippet-btn'),
+  snippetList: $('snippet-list'),
+  snippetDialog: $('snippet-dialog'),
+  snippetDialogTitle: $('snippet-dialog-title'),
+  snippetForm: $('snippet-form'),
+  snippetDesc: $('snippet-desc'),
+  snippetPrefix: $('snippet-prefix'),
+  snippetTemplate: $('snippet-template'),
+  snippetDel: $('snippet-del'),
 };
 
 // ---------------- 状态 ----------------
@@ -555,6 +565,159 @@ el.loginDialog.querySelector('form').onsubmit = async (e) => {
   }
 };
 
+// ---------------- 代码片段管理 ----------------
+/** 只持久化用户自定义片段（带 kind 的内置 comp./tmpl. 不落盘） */
+function persistSnippets() {
+  const custom = state.snippets.filter((s) => !s.kind);
+  localStorage.setItem('ftml:snippets', JSON.stringify(custom));
+}
+
+let editingSnippetPrefix = null; // 正在编辑的片段前缀（null = 新建）
+
+function renderSnippetList() {
+  el.snippetList.innerHTML = '';
+  const custom = state.snippets.filter((s) => !s.kind).sort((a, b) => a.prefix.localeCompare(b.prefix));
+  if (custom.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'sb-muted';
+    li.textContent = '（无自定义片段，点 ＋ 新建）';
+    el.snippetList.appendChild(li);
+    return;
+  }
+  for (const s of custom) {
+    const li = document.createElement('li');
+    li.className = 'snip-row';
+    const name = document.createElement('span');
+    name.className = 'snip-name';
+    name.textContent = s.description || s.prefix;
+    name.title = s.template;
+    const code = document.createElement('span');
+    code.className = 'snip-prefix';
+    code.textContent = s.prefix;
+    code.title = '触发前缀';
+    const del = document.createElement('button');
+    del.className = 'sb-del';
+    del.textContent = '✕';
+    del.title = '删除此片段';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSnippet(s.prefix);
+    });
+    li.appendChild(name);
+    li.appendChild(code);
+    li.appendChild(del);
+    li.addEventListener('click', () => openSnippetDialog(s));
+    el.snippetList.appendChild(li);
+  }
+}
+
+function openSnippetDialog(s) {
+  editingSnippetPrefix = s ? s.prefix : null;
+  el.snippetDialogTitle.textContent = s ? '编辑代码片段' : '新建代码片段';
+  el.snippetDesc.value = s ? (s.description || '') : '';
+  el.snippetPrefix.value = s ? s.prefix : '';
+  el.snippetTemplate.value = s ? s.template : '';
+  el.snippetDel.classList.toggle('hidden', !s);
+  el.snippetDialog.showModal();
+  el.snippetPrefix.focus();
+}
+
+function saveSnippet() {
+  const prefix = el.snippetPrefix.value.trim();
+  const template = el.snippetTemplate.value.trim();
+  const description = el.snippetDesc.value.trim();
+  if (!prefix || !template) {
+    setError('触发前缀与模板不能为空');
+    return;
+  }
+  const builtin = state.snippets.find((s) => s.kind && s.prefix === prefix);
+  if (builtin) {
+    setError(`前缀 "${prefix}" 与内置 comp./tmpl. 冲突，请换一个`);
+    return;
+  }
+  state.snippets = state.snippets.filter((s) => s.kind || s.prefix !== prefix);
+  state.snippets.push({ prefix, template, description: description || prefix });
+  persistSnippets();
+  renderSnippetList();
+  el.snippetDialog.close();
+  setStatus(`片段 "${prefix}" 已保存`);
+}
+
+function deleteSnippet(prefix) {
+  if (!confirm(`删除片段 "${prefix}"？`)) return;
+  state.snippets = state.snippets.filter((s) => s.kind || s.prefix !== prefix);
+  persistSnippets();
+  renderSnippetList();
+  setStatus(`片段 "${prefix}" 已删除`);
+}
+
+el.addSnippetBtn.addEventListener('click', () => openSnippetDialog(null));
+el.snippetForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  saveSnippet();
+});
+el.snippetDel.addEventListener('click', () => {
+  if (editingSnippetPrefix) deleteSnippet(editingSnippetPrefix);
+  el.snippetDialog.close();
+});
+
+// ---------------- 内置 Wikidot 语法默认补全 ----------------
+// 只收录标准 Wikidot 可解析的 [[...]] 标签（依据 scp-jp wikidot-syntax 参考）。
+// close: 'block'  = 块级标签，开/闭各独占一行（否则不解析）
+//        'pair'   = 行内配对标签
+//        'single' = 自闭合标签（无配对）
+// arg:   需要参数的标签：arg===true 时选中后光标停在参数位（可续输），
+//        为字符串时作为示例参数插入开标签内。
+// attrs: 在 `[[name 已输入…` 内部可补全的属性键（case 2）。
+// 说明：[[module]] 的模块名（CSS/ListPages…）与 SCP 站点专用 include
+//（:scp-xx: 前缀）不在默认表内——模块名由 WIKI_MODULES 提供。
+const WIKI_MODULES = [
+  'CSS', 'ListPages', 'CountPages', 'Rate', 'Comments', 'NewPage',
+  'TagCloud', 'PageTree', 'PageCalendar', 'Redirect', 'Backlinks',
+  'WantedPages', 'Members', 'Categories',
+];
+
+const WIKI_DEFS = [
+  { n: 'div', close: 'block', attrs: [ 'class', 'style', 'id' ], desc: '块容器（SCP 排版常用，可配 class/style）' },
+  { n: 'span', close: 'pair', attrs: [ 'class', 'style', 'id' ], desc: '行内容器' },
+  { n: 'size', close: 'pair', arg: '150%', desc: '字号（150% / larger / 18px…）' },
+  { n: 'note', close: 'block', desc: '注记块（引用框效果，SCP 常用）' },
+  { n: 'code', close: 'block', attrs: [ 'type' ], desc: '代码块（内容原样不解析）' },
+  { n: 'collapsible', close: 'block', attrs: [ 'show', 'hide', 'hideLocation', 'folded' ], desc: '折叠块（不可嵌套）' },
+  { n: 'tabview', close: 'block', desc: '选项卡容器（内放 tab）' },
+  { n: 'tab', close: 'pair', arg: '标题', desc: '单个选项卡（标题参数，置于 tabview 内）' },
+  { n: 'toc', close: 'single', desc: '目录' },
+  { n: 'footnote', close: 'pair', desc: '脚注（悬浮小窗显示内容）' },
+  { n: 'footnoteblock', close: 'single', desc: '脚注列位置（可选）' },
+  { n: 'include', close: 'single', arg: true, desc: '包含页面/组件（必须行首）' },
+  { n: 'image', close: 'single', arg: true, attrs: [ 'link', 'alt', 'title', 'width', 'height', 'style', 'class', 'size' ], desc: '图片（link 前加 * = 新窗打开）' },
+  { n: 'iframe', close: 'single', arg: true, attrs: [ 'width', 'height', 'style', 'class', 'scrolling', 'align' ], desc: '嵌入 iframe' },
+  { n: 'module', close: 'single', arg: true, desc: '模块（CSS / ListPages / Rate…）' },
+  { n: 'table', close: 'block', attrs: [ 'class', 'style' ], desc: '表格（内放 row/cell）' },
+  { n: 'row', close: 'block', desc: '表格行（置于 table 内）' },
+  { n: 'cell', close: 'pair', attrs: [ 'colspan', 'rowspan', 'style' ], desc: '单元格（置于 row 内，表头用 hcell）' },
+  { n: 'gallery', close: 'block', attrs: [ 'size', 'order', 'viewer' ], desc: '图片画廊（行首）' },
+  { n: 'math', close: 'block', desc: '块级公式（MathJax）' },
+];
+
+const WIKI_BY_NAME = new Map(WIKI_DEFS.map((w) => [ w.n, w ]));
+
+/** [[ 之后要插入的文本（$0 = 选中后光标位置；不含开头的 [[） */
+function wikiInsertAfterOpen(w) {
+  if (w.close === 'block') return `${w.n}]]\n$0\n[[/${w.n}]]`;
+  if (w.close === 'pair') {
+    if (w.arg !== undefined) return `${w.n} ${w.arg}]]$0[[/${w.n}]]`;
+    return `${w.n}]]$0[[/${w.n}]]`;
+  }
+  // single：自闭合；arg===true 光标停在参数位
+  if (w.arg) return `${w.n} $0]]`;
+  return `${w.n}]]$0`;
+}
+
+function wikiItem(w) {
+  return { label: w.n, sub: w.desc, insert: wikiInsertAfterOpen(w), kind: 'wd' };
+}
+
 // ---------------- 自动补全（增强版） ----------------
 function textBeforeCaret() {
   return el.editor.value.slice(0, el.editor.selectionStart);
@@ -573,25 +736,48 @@ function detectTrigger() {
     return { items, replaceFrom: before.length - m[ 1 ].length };
   }
 
-  // 2. 模板键: [[name 已输入键…
+  // 2. 标签键: [[name 已输入键…
+  //    - 项目模板的声明键（.ftmx keys）
+  //    - 内置标签的常见属性键（class/style/…）
+  //    - module 特例：补全模块名（CSS / ListPages / …）
   m = /\[\[([A-Za-z][A-Za-z0-9:_-]*)(\s+[^\]]*)$/.exec(before);
-  if (m && state.templates.has(m[ 1 ])) {
+  const wiki = m ? WIKI_BY_NAME.get(m[ 1 ]) : null;
+  if (m && (state.templates.has(m[ 1 ]) || wiki)) {
     const token = (m[ 2 ].match(/[^\s=]*$/)?.[ 0 ]) || '';
-    const items = state.templates.get(m[ 1 ])
+    if (state.templates.has(m[ 1 ])) {
+      const items = state.templates.get(m[ 1 ])
+        .filter((k) => k.startsWith(token))
+        .map((k) => ({ label: `${k}=`, insert: `${k}=`, kind: 'key' }));
+      return { items, replaceFrom: before.length - token.length };
+    }
+    if (wiki.n === 'module') {
+      const items = WIKI_MODULES
+        .filter((x) => x.toLowerCase().startsWith(token.toLowerCase()))
+        .map((x) => ({ label: x, insert: x, kind: 'wd' }));
+      return { items, replaceFrom: before.length - token.length };
+    }
+    const items = (wiki.attrs || [])
       .filter((k) => k.startsWith(token))
       .map((k) => ({ label: `${k}=`, insert: `${k}=`, kind: 'key' }));
-    return { items, replaceFrom: before.length - token.length };
+    if (items.length) return { items, replaceFrom: before.length - token.length };
   }
 
-  // 3. 模板名: [[前缀
+  // 3. 标签名: [[前缀 — 项目模板优先，内置 Wikidot 标签兜底（同名去重）
   m = /\[\[([A-Za-z][A-Za-z0-9:_-]*)$/.exec(before);
   if (m) {
-    const items = [ ...state.templates.keys() ]
-      .filter((n) => n.startsWith(m[ 1 ]))
-      .map((n) => {
+    const items = [];
+    const seen = new Set();
+    for (const n of state.templates.keys()) {
+      if (n.startsWith(m[ 1 ])) {
+        seen.add(n);
         const keys = state.templates.get(n);
-        return { label: n, sub: keys.join(' '), insert: n, kind: 'name' };
-      });
+        items.push({ label: n, sub: keys.join(' '), insert: n, kind: 'name' });
+      }
+    }
+    for (const w of WIKI_DEFS) {
+      if (seen.has(w.n) || !w.n.startsWith(m[ 1 ])) continue;
+      items.push(wikiItem(w));
+    }
     return { items, replaceFrom: before.length - m[ 1 ].length };
   }
 
@@ -626,28 +812,44 @@ function detectTrigger() {
       if (items.length) return { items: items.slice(0, 12), replaceFrom: start };
     }
 
-    // 4b. 自定义 snippets（无 kind，通用 $1 替换；参数为空时不触发）
+    const snipItem = (snip, param) => {
+      // 无 $0 且含 $1（本次不带参数展开）→ caret 停在 $1 原位置，直接补参数
+      const has0 = snip.template.includes('$0');
+      const caret = (!has0 && snip.template.includes('$1') && !param)
+        ? snip.template.indexOf('$1') : -1;
+      const insert = snip.template.replace(/\$1/g, param);
+      return {
+        label: snip.description || snip.prefix,
+        preview: insert.replace(/\$0/g, ''),
+        insert, kind: 'snippet', caret,
+      };
+    };
+
+    // 4b. 自定义 snippets：列出所有匹配当前输入的前缀（键入即预览）。
+    //     - word 已含完整前缀 → 剩余部分作为 $1 参数
+    //     - 正在敲前缀本身（prefix 开头匹配 word，≥2 字符）→ 也列出，选中后光标落在参数位
+    const snips = [];
     for (const snip of state.snippets) {
-      if (!snip.kind && word.startsWith(snip.prefix)) {
-        const param = word.slice(snip.prefix.length);
-        if (param) {
-          const insert = snip.template.replace(/\$1/g, param);
-          return { items: [{ label: snip.description || param, preview: insert.replace(/\$0/g, ''), insert, kind: 'snippet' }], replaceFrom: start };
-        }
+      if (snip.kind) continue;
+      if (word.startsWith(snip.prefix) && word !== snip.prefix) {
+        snips.push(snipItem(snip, word.slice(snip.prefix.length)));
+      } else if (word.length >= 2 && snip.prefix.startsWith(word)) {
+        snips.push(snipItem(snip, ''));
       }
     }
 
     // 4c. 裸单词前缀匹配组件/模板名 → 边输入边列候选。
     //      ≥2 字符、且前一字符不是属性/值上下文（css 值、引号内容等），避免误弹
-    if (word.length >= 2 && !word.includes('.')) {
-      const prev = start > 0 ? before[start - 1] : '';
-      if (!/[:."'=,[/]/.test(prev)) {
-        const items = [];
-        for (const c of state.components) if (c.startsWith(word)) items.push(compItem(c));
-        for (const [n, keys] of state.templates) if (n.startsWith(word)) items.push(tplItem(n, keys));
-        if (items.length) return { items: items.slice(0, 12), replaceFrom: start };
-      }
+    const prev = start > 0 ? before[start - 1] : '';
+    let named = [];
+    if (word.length >= 2 && !word.includes('.') && !/[:."'=,[/]/.test(prev)) {
+      for (const c of state.components) if (c.startsWith(word)) named.push(compItem(c));
+      for (const [n, keys] of state.templates) if (n.startsWith(word)) named.push(tplItem(n, keys));
     }
+
+    // 片段与组件/模板名候选合并成同一份实时候选列表
+    const items = snips.concat(named);
+    if (items.length) return { items: items.slice(0, 12), replaceFrom: start };
   }
 
   return null;
@@ -727,6 +929,10 @@ function pickAutocomplete(idx) {
     ta.setRangeText(item.insert + ' ]]', ac.replaceFrom, caret, 'end');
     const nameEnd = ac.replaceFrom + item.insert.length;
     ta.setSelectionRange(nameEnd, nameEnd);
+  } else if (typeof item.caret === 'number' && item.caret >= 0) {
+    // 自定义 snippet 无参数展开：光标停在 $1 原位置（标签内部参数位），方便直接输入
+    ta.setRangeText(item.insert, ac.replaceFrom, caret, 'end');
+    ta.setSelectionRange(ac.replaceFrom + item.caret, ac.replaceFrom + item.caret);
   } else {
     // 用补全内容替换触发文本（[replaceFrom, caret)）；支持 $0 占位符定位光标
     const pos = item.insert.indexOf('$0');
@@ -814,6 +1020,7 @@ async function boot() {
     custom = JSON.parse(localStorage.getItem('ftml:snippets')) || [];
   } catch { /* ignore */ }
   state.snippets = defaultSnippets.concat(custom);
+  renderSnippetList();
 
   el.saveBtn.addEventListener('click', () => {
     if (!state.projectId || !state.filePath) {

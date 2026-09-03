@@ -87,12 +87,17 @@ select:focus, input:focus { border-color: var(--accent); }
 
 #sidebar {
   width: var(--sidebar-w);
+  min-width: 0;
   flex-shrink: 0;
   background: var(--bg-soft);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 8px 0;
 }
+/* 侧边栏内容横向不溢出：所有列表层允许收缩 + 超长截断 */
+.sb-group, .sb-list, .sb-list li { min-width: 0; }
 
 .sb-group { margin-bottom: 14px; }
 .sb-head {
@@ -137,6 +142,48 @@ select:focus, input:focus { border-color: var(--accent); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sb-list li.sb-muted {
+  color: var(--fg-dim);
+  cursor: default;
+  font-style: italic;
+}
+.sb-list li.sb-muted:hover { background: transparent; }
+
+/* 代码片段行：名称 + 前缀 + 悬停删除，均不横向溢出 */
+.sb-list li.snip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+}
+.sb-list li.snip-row .snip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sb-list li.snip-row .snip-prefix {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-dim);
+  font: 11px "SF Mono", Consolas, Menlo, monospace;
+}
+.sb-del {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 3px;
+  visibility: hidden;
+}
+.sb-list li:hover .sb-del { visibility: visible; }
+.sb-del:hover { color: var(--danger); background: rgba(229, 83, 75, 0.15); }
 
 #main {
   flex: 1;
@@ -174,6 +221,7 @@ select:focus, input:focus { border-color: var(--accent); }
   max-width: 320px;
   max-height: 220px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 #autocomplete div {
   padding: 4px 10px;
@@ -219,6 +267,35 @@ dialog input {
 .dialog-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 
 #log-dialog { min-width: 480px; max-width: 680px; }
+.flex-1 { flex: 1; }
+
+/* 代码片段编辑对话框 */
+#snippet-dialog { min-width: 380px; max-width: 92vw; }
+#snippet-dialog .dlg-label {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin: 4px 0 2px;
+}
+#snippet-dialog .dlg-hint {
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin: 2px 0 4px;
+}
+#snippet-dialog textarea {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  background: var(--bg-input);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font: 12px/1.5 "SF Mono", Consolas, Menlo, monospace;
+  outline: none;
+}
+#snippet-dialog textarea:focus { border-color: var(--accent); }
 #log-content {
   max-height: 360px;
   overflow-y: auto;
@@ -273,6 +350,13 @@ dialog input {
   dialog {
     min-width: 90vw;
     max-width: 90vw;
+  }
+  #snippet-dialog { min-width: 90vw; max-width: 90vw; }
+  .sb-list li.sb-muted,
+  .sb-list li.snip-row {
+    font-size: 14px;
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
   /* 如果希望显示保存按钮更突出，可以调整样式 */
   #save-btn {
@@ -333,4 +417,9 @@ dialog input {
     width: 100% !important;
     height: 50% !important;
   }
+}
+
+/* 触屏设备：无悬停，删除按钮常显 */
+@media (hover: none) {
+  .sb-del { visibility: visible; }
 }

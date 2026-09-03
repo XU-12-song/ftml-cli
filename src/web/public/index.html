@@ -63,6 +63,13 @@
         </div>
         <ul id="source-list" class="sb-list"></ul>
       </section>
+      <section class="sb-group">
+        <div class="sb-head">
+          <span>代码片段</span>
+          <button id="add-snippet-btn" class="sb-add" title="新建自定义片段">＋</button>
+        </div>
+        <ul id="snippet-list" class="sb-list"></ul>
+      </section>
     </aside>
 
     <main id="main">
@@ -109,6 +116,25 @@
     <div class="dialog-btns">
       <button id="log-close" class="btn btn-primary" value="ok">关闭</button>
     </div>
+  </dialog>
+
+  <dialog id="snippet-dialog">
+    <form method="dialog" id="snippet-form">
+      <h3 id="snippet-dialog-title">新建代码片段</h3>
+      <label class="dlg-label" for="snippet-desc">名称（侧边栏显示用，可选）</label>
+      <input id="snippet-desc" placeholder="如：引用标注" autocomplete="off">
+      <label class="dlg-label" for="snippet-prefix">触发前缀</label>
+      <input id="snippet-prefix" placeholder="如 note:" autocomplete="off">
+      <label class="dlg-label" for="snippet-template">模板</label>
+      <textarea id="snippet-template" placeholder="[[quote]]$1[[/quote]]$0"></textarea>
+      <div class="dlg-hint">$1 = 前缀后输入的内容，$0 = 插入后光标停留处</div>
+      <div class="dialog-btns">
+        <button type="button" id="snippet-del" class="btn btn-danger hidden">删除</button>
+        <span class="flex-1"></span>
+        <button value="cancel" class="btn">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
   </dialog>
 
   <script src="app.js"></script>
