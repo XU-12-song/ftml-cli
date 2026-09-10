@@ -1038,6 +1038,29 @@ async function boot() {
   if (state.projectId) {
     await refreshSidebar();
   }
+  // 在 boot() 函数内部末尾添加
+const menuToggle = document.getElementById('menu-toggle');
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('sidebar-overlay');
+const layoutToggle = document.getElementById('layout-toggle');
+
+if (menuToggle) {
+  menuToggle.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('hidden');
+  });
+}
+if (overlay) {
+  overlay.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    overlay.classList.add('hidden');
+  });
+}
+if (layoutToggle) {
+  layoutToggle.addEventListener('click', () => {
+    document.getElementById('main').classList.toggle('layout-bottom');
+  });
+}
 }
 
 boot();

@@ -191,7 +191,7 @@ export function expand(src, templates, opts = {}) {
 function assembleResult(text, cssBlocks) {
   if (cssBlocks.length === 0) return text;
   const css = cssBlocks.join('\n\n');
-  return `[[module CSS]]\n${css}\n[[/module]]\n\n${text}`;
+  return `${text}\n\n\n[[module CSS]]\n${css}\n[[/module]]\n`;
 }
 
 /** CSS 内占位符替换：只替换调用方传入的键，其余 { ... } 视为 CSS 语法原样保留 */

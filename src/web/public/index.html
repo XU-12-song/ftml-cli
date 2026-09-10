@@ -9,6 +9,13 @@
 <body>
   <header id="topbar">
     <div class="brand">ftml<span class="brand-sub">editor</span></div>
+    <!-- 在 <header id="topbar"> 中的 .brand 之后 -->
+<button id="menu-toggle" class="btn" aria-label="菜单" title="显示侧边栏">☰</button>
+
+<!-- 在登录按钮组之前（或之后）添加布局切换按钮 -->
+<div class="group">
+  <button id="layout-toggle" class="btn" title="切换编辑器/预览布局">↕</button>
+</div>
 <!-- 在 #topbar 中，登录按钮组之前 -->
 <div class="group">
   <button id="save-btn" class="btn btn-primary" title="保存当前文件">💾 保存</button>
@@ -39,7 +46,7 @@
       <button id="login-btn" class="btn">登录</button>
     </div>
   </header>
-
+<div id="sidebar-overlay" class="hidden"></div>
   <div id="body">
     <aside id="sidebar">
       <section class="sb-group">
@@ -131,7 +138,7 @@
       <div class="dialog-btns">
         <button type="button" id="snippet-del" class="btn btn-danger hidden">删除</button>
         <span class="flex-1"></span>
-        <button value="cancel" class="btn">取消</button>
+        <button type="button" value="cancel" class="btn">取消</button>
         <button type="submit" class="btn btn-primary">保存</button>
       </div>
     </form>
