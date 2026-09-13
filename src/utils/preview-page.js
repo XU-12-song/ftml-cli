@@ -281,17 +281,6 @@ ${html}
 ${runtimeInline}
 initWdprRuntime({ root: document.getElementById('page-content') });
 </script>
- <script>
-    document.addEventListener("click", function(e) {
-      let target = e.target.closest("a[href^='#']");
-      if (target) {
-        e.preventDefault(); // 关键：阻止父页面URL拼接#id
-        let id = target.getAttribute("href").substring(1);
-        let el = document.getElementById(id);
-        if (el) el.scrollIntoView(); // 默认就是瞬间直跳，无动画
-      }
-    });
-  </script>
 </body>
 </html>
 `;
