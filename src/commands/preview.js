@@ -53,7 +53,7 @@ export async function preview(options) {
     client = null; // 无凭证：远程 include 解析关闭
   }
 
-  const { html, styles, diagnostics } = await renderPreview(ftml, {
+  const { html, htmlBlocks, styles, diagnostics } = await renderPreview(ftml, {
     page,
     includeBaseDir: path.dirname(r.input),
     includeTemplates: templates,
@@ -85,6 +85,7 @@ export async function preview(options) {
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   const document = buildPreviewDocument({
     html,
+    htmlBlocks,
     title: config.page || page.fullName,
   });
   fs.writeFileSync(outAbs, document, 'utf8');

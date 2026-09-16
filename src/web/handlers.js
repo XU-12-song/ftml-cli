@@ -219,13 +219,13 @@ export async function renderProjectFile(id, body, env = {}) {
   }
 
   try {
-    const { html, styles, diagnostics } = await renderPreview(expanded, {
+    const { html, styles,htmlBlocks, diagnostics } = await renderPreview(expanded, {
       page,
       includeBaseDir: path.dirname(config.sourceAbs),
       includeTemplates: templates,
       client,
     });
-    const document = buildPreviewDocument({ html, title: config.page || page.fullName });
+    const document = buildPreviewDocument({ html, htmlBlocks,title: config.page || page.fullName });
     return { html: document, styles, diagnostics };
   } finally {
     if (ownsClient) await client.close?.();

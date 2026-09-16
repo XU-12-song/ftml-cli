@@ -161,6 +161,7 @@ export async function renderPreview(
 
   return {
     html: result.html,
+    htmlBlocks: result.htmlBlocks,
     styles: result.styles,
     diagnostics: [...(result.diagnostics ?? doc.diagnostics ?? []), ...remoteWarnings],
   };

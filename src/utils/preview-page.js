@@ -40,7 +40,7 @@ function runtimeSource() {
 /**
  * 构建预览文档 – 使用 Wikidot 沙盒站模板
  */
-export function buildPreviewDocument({ html, styles = [], title = 'ftml preview' }) {
+export function buildPreviewDocument({ html,htmlBlocks=[], styles = [], title = 'ftml preview' }) {
   const styleTags = styles.map((s) => `<style>${s}</style>`).join('\n');
   const runtimeInline = runtimeSource()
     .replace(/<\/script/gi, '<\\/script');
@@ -280,6 +280,48 @@ ${html}
 <script type="module">
 ${runtimeInline}
 initWdprRuntime({ root: document.getElementById('page-content') });
+</script>
+
+<script type="module">
+let htmlBlocks = \`
+${JSON.stringify(htmlBlocks)}
+\`
+htmlBlocks=JSON.parse(htmlBlocks);
+// 1. 移除多余的 JSON.stringify 和 JSON.parse 操作
+// 直接使用原有的 htmlBlocks 数组即可（它本身已经是对象数组了）
+console.log('htmlBlocks:', htmlBlocks);
+
+const iframes = document.querySelectorAll("iframe.html-block-iframe");
+console.log('iframes:', iframes);
+
+iframes.forEach((elem, index) => {
+    // 2. 安全查找，防止找不到导致报错
+    const block = htmlBlocks.find((pair) => pair.index == index);
+    if (!block) {
+        console.warn(\`未找到 index 为 \${index} 的 htmlBlock\`);
+        return;
+    }
+
+    const html = \`<html id="html-block-html" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><meta http-equiv="Content-type" content="text/html; charset=utf-8"><link rel="stylesheet" href="/BASE_WIKIDOT_CSS/html-block.css"></head><body style="margin-bottom: 70px;">\${block.content}</body></html>\`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+
+    // 3. 设置 sandbox 属性
+    // ⚠️ 控制台会警告：allow-scripts 和 allow-same-origin 同时存在会让 iframe 逃逸沙箱。
+    // 如果 iframe 内都是你自己写的安全代码，可以保留；否则建议移除 allow-same-origin
+    elem.sandbox = "allow-scripts allow-same-origin";
+
+    // 4. 【关键修复】将 onload 绑定在 iframe 元素本身上，而不是 elem.src（字符串）上
+    // 必须在设置 src 之前绑定，避免加载过快导致事件丢失
+    elem.onload = () => {
+        console.log(\`iframe \${index} 加载完成\`);
+        // 释放内存
+        URL.revokeObjectURL(url);
+    };
+
+    // 5. 最后再设置 src 触发加载
+    elem.src = url;
+});
 </script>
 </body>
 </html>
