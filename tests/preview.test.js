@@ -333,13 +333,17 @@ test('页面不存在（null）不缓存', async () => {
 
 // ---------- buildPreviewDocument：完整文档包装 + runtime 注入 ----------
 
-test('buildPreviewDocument 包装为完整文档并内联 runtime', () => {
+test('buildPreviewDocument 包装为 Wikidot 沙盒 XHTML 文档并内联 runtime', () => {
   const doc = buildPreviewDocument({ html: '<p>你好</p>', title: '测试 <页>' });
-  // 文档外壳
-  assert.ok(doc.startsWith('<!DOCTYPE html>'));
-  assert.ok(doc.includes('<html lang="zh">'));
-  assert.ok(doc.includes('<meta charset="utf-8">'));
+  // 外壳对齐沙盒站模板：XHTML 1.0 Transitional + 页面结构
+  assert.ok(doc.startsWith(
+    '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" '
+    + '"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'
+  ));
+  assert.ok(doc.includes('<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="cn" lang="cn">'));
+  assert.ok(doc.includes('<meta http-equiv="content-type" content="text/html;charset=UTF-8"/>'));
   assert.ok(doc.includes('<title>测试 &lt;页&gt;</title>'));
+  assert.ok(doc.includes('<div id="page-title">\n                        测试 &lt;页&gt;'));
   assert.ok(doc.includes('<div id="page-content">\n<p>你好</p>'));
   // runtime 以 <script type="module"> 内联，自包含（无外部 import），保留 export
   assert.ok(doc.includes('<script type="module">'));
@@ -352,16 +356,14 @@ test('buildPreviewDocument 包装为完整文档并内联 runtime', () => {
   assert.equal((doc.match(/<script/g) || []).length, (doc.match(/<\/script>/g) || []).length);
 });
 
-test('buildPreviewDocument 附带小部件基础样式', () => {
+test('buildPreviewDocument 引入沙盒站主题样式并追加 styles 参数', () => {
   const doc = buildPreviewDocument({ html: '<p>x</p>' });
-  for (const sel of [
-    '.collapsible-block',
-    '.yui-navset .yui-nav',
-    'a.footnoteref',
-    '#odialog-hovertips .hovertip',
-    '#toc',
-    '.foldable-list-container .foldable-list-toggle',
-  ]) {
-    assert.ok(doc.includes(sel), `widget css 缺少 ${sel}`);
-  }
+  // 主题/版式由沙盒站样式表提供（widget CSS 不再内联，交由主题 @import 处理）
+  assert.ok(doc.includes(
+    '@import url(https://d3g0gp89917ko0.cloudfront.net/v--7690939296dc/common--theme/base/css/style.css)'
+  ));
+  assert.ok(doc.includes('@import url(https://sigma9.scpwikicn.com/cn/cn/sigma9_ch_sandbox.min.css)'));
+  // render 收集到的额外 CSS 段以 <style> 追加
+  const withStyles = buildPreviewDocument({ html: '<p>x</p>', styles: ['body { color: red; }'] });
+  assert.ok(withStyles.includes('<style>body { color: red; }</style>'));
 });

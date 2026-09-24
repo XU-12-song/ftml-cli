@@ -21,9 +21,10 @@
   <button id="save-btn" class="btn btn-primary" title="保存当前文件">💾 保存</button>
 </div>
     <div class="group">
-      
+
       <select id="project-select" title="项目"></select>
-      <button id="add-project-btn" class="btn" title="添加项目">＋项目</button>
+      <button id="add-project-btn" class="btn" title="添加已有项目（输入目录路径）">＋项目</button>
+      <button id="new-repo-btn" class="btn" title="在仓库分区新建 ftml 仓库">＋仓库</button>
       <button id="init-project-btn" class="btn hidden" title="初始化 git 项目">init</button>
     </div>
 
@@ -37,11 +38,13 @@
 
     <div class="group">
       <button id="validate-btn" class="btn" title="校验当前文件">校验</button>
-      <button id="deploy-btn" class="btn btn-primary" title="构建+校验+提交到 Wikidot">部署</button>
-      <button id="revert-btn" class="btn btn-danger" title="git revert 并回推线上">回退</button>
+      <button id="deploy-btn" class="btn btn-primary" title="创建大版本 + 推送远端 + 发布 Wikidot + submit">部署</button>
+      <button id="versions-btn" class="btn" title="版本列表 / 按版本回退（显示 commit message）">版本 / 回退</button>
     </div>
 
     <div class="group">
+      <button id="doctor-btn" class="btn" title="检测 git 环境">环境</button>
+      <button id="settings-btn" class="btn" title="编辑器设置">⚙</button>
       <span id="auth-status" class="auth">未登录</span>
       <button id="login-btn" class="btn">登录</button>
     </div>
@@ -73,9 +76,14 @@
       <section class="sb-group">
         <div class="sb-head">
           <span>代码片段</span>
-          <button id="add-snippet-btn" class="sb-add" title="新建自定义片段">＋</button>
+          <span class="sb-head-btns">
+            <button id="import-snippet-btn" class="sb-add" title="导入 Ace .snippets 文件">⭳</button>
+            <button id="export-snippet-btn" class="sb-add" title="导出全部片段">⭱</button>
+            <button id="add-snippet-btn" class="sb-add" title="新建自定义片段">＋</button>
+          </span>
         </div>
         <ul id="snippet-list" class="sb-list"></ul>
+        <input id="snippet-file" type="file" accept=".snippets,.txt" class="hidden">
       </section>
     </aside>
 
@@ -99,8 +107,8 @@
       <h3 id="name-dialog-title">新建</h3>
       <input id="name-input" placeholder="名称" autocomplete="off">
       <div class="dialog-btns">
-        <button value="cancel" class="btn">取消</button>
-        <button id="name-dialog-ok" value="ok" class="btn btn-primary">创建</button>
+        <button type="button" data-cancel class="btn">取消</button>
+        <button id="name-dialog-ok" type="submit" class="btn btn-primary">创建</button>
       </div>
     </form>
   </dialog>
@@ -111,8 +119,8 @@
       <input id="login-username" placeholder="用户名" autocomplete="username">
       <input id="login-password" type="password" placeholder="密码" autocomplete="current-password">
       <div class="dialog-btns">
-        <button value="cancel" class="btn">取消</button>
-        <button id="login-ok" value="ok" class="btn btn-primary">登录</button>
+        <button type="button" data-cancel class="btn">取消</button>
+        <button id="login-ok" type="submit" class="btn btn-primary">登录</button>
       </div>
     </form>
   </dialog>
@@ -138,7 +146,64 @@
       <div class="dialog-btns">
         <button type="button" id="snippet-del" class="btn btn-danger hidden">删除</button>
         <span class="flex-1"></span>
-        <button type="button" value="cancel" class="btn">取消</button>
+        <button type="button" data-cancel class="btn">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="prompt-dialog">
+    <form method="dialog" id="prompt-form">
+      <h3 id="prompt-title">输入</h3>
+      <label class="dlg-label" id="prompt-label" for="prompt-input">说明</label>
+      <input id="prompt-input" autocomplete="off">
+      <div class="dialog-btns">
+        <button type="button" data-cancel class="btn">取消</button>
+        <button type="submit" class="btn btn-primary" id="prompt-ok">确定</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="versions-dialog">
+    <h3>版本列表</h3>
+    <div class="dlg-hint">大版本由「部署」创建；小版本由本地提交创建。回退到 x.y 时线上回到大版本 x。</div>
+    <table id="versions-table">
+      <thead>
+        <tr><th>版本</th><th>类型</th><th>提交</th><th>说明</th><th></th></tr>
+      </thead>
+      <tbody id="versions-body"></tbody>
+    </table>
+    <div class="dialog-btns">
+      <span id="versions-hint" class="flex-1 dlg-hint"></span>
+      <button id="versions-refresh" type="button" class="btn">刷新</button>
+      <button id="versions-close" type="button" class="btn btn-primary">关闭</button>
+    </div>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <h3>编辑器设置</h3>
+      <label class="dlg-label" for="settings-interval">自动预览间隔（毫秒，100–10000）</label>
+      <input id="settings-interval" type="number" min="100" max="10000" step="50">
+      <label class="dlg-row" for="settings-autopreview">
+        <input id="settings-autopreview" type="checkbox">
+        <span>编辑时自动预览</span>
+      </label>
+      <label class="dlg-row" for="settings-remoteinclude">
+        <input id="settings-remoteinclude" type="checkbox">
+        <span>允许联网解析远程 [[include]]（关闭后仅用本地缓存）</span>
+      </label>
+      <label class="dlg-label" for="settings-stylemode">预览样式模式</label>
+      <select id="settings-stylemode">
+        <option value="inline">inline（样式内联）</option>
+        <option value="module">module（独立样式表）</option>
+      </select>
+      <div class="dlg-hint">
+        include 缓存：<span id="cache-info">读取中…</span>
+        <button type="button" id="cache-clear" class="btn btn-danger">清空缓存</button>
+      </div>
+      <div class="dialog-btns">
+        <button type="button" data-cancel class="btn">取消</button>
         <button type="submit" class="btn btn-primary">保存</button>
       </div>
     </form>

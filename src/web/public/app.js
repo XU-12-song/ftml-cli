@@ -2,13 +2,15 @@
  * app.js — ftml web 编辑器前端（原生 JS，零依赖）
  *
  * 状态: 项目列表 / 当前项目 + 源文件 / 模板·组件表（自动补全数据源）
- * 主流程: 编辑 → 防抖 600ms 保存 → 渲染 → iframe.srcdoc 刷新预览
+ * 主流程: 编辑 → 防抖（间隔可配）保存 → 渲染 → iframe 刷新预览
  *
- * 新增功能：
- * - 自定义 snippets 管理（侧边栏增删改，localStorage 持久化）
- * - 自定义 snippets / 组件模板名：输入即列实时候选，预览将插入的完整标签
- * - 内置常用 Wikidot 语法默认补全（`[[` 上下文合并候选，项目模板优先）
- * - 保存按钮（移动端适配）
+ * 功能：
+ * - 自定义 snippets：侧边栏增删改，服务端持久化 + Ace .snippets 导入导出
+ * - 自动补全：snippets / 组件模板名 / 内置 Wikidot 语法（`[[` 上下文合并候选）
+ * - 部署（大版本）/ 版本列表与按版本回退 / 校验 / 保存
+ * - 新建 ftml 仓库（服务端 ~/.ftml-cli/projects 分区）
+ * - git 环境体检（启动自动检测 + 「环境」按钮看安装/配置提示）
+ * - 编辑器设置（自动预览间隔、样式模式、include 联网开关 + 缓存管理）
  */
 
 'use strict';
@@ -26,7 +28,10 @@ const el = {
   saveTargetBtn: $('save-target-btn'),
   validateBtn: $('validate-btn'),
   deployBtn: $('deploy-btn'),
-  revertBtn: $('revert-btn'),
+  versionsBtn: $('versions-btn'),
+  doctorBtn: $('doctor-btn'),
+  settingsBtn: $('settings-btn'),
+  newRepoBtn: $('new-repo-btn'),
   authStatus: $('auth-status'),
   loginBtn: $('login-btn'),
   templateList: $('template-list'),
@@ -61,7 +66,35 @@ const el = {
   snippetPrefix: $('snippet-prefix'),
   snippetTemplate: $('snippet-template'),
   snippetDel: $('snippet-del'),
+  importSnippetBtn: $('import-snippet-btn'),
+  exportSnippetBtn: $('export-snippet-btn'),
+  snippetFile: $('snippet-file'),
+  promptDialog: $('prompt-dialog'),
+  promptForm: $('prompt-form'),
+  promptTitle: $('prompt-title'),
+  promptLabel: $('prompt-label'),
+  promptInput: $('prompt-input'),
+  promptOk: $('prompt-ok'),
+  versionsDialog: $('versions-dialog'),
+  versionsBody: $('versions-body'),
+  versionsHint: $('versions-hint'),
+  versionsRefresh: $('versions-refresh'),
+  versionsClose: $('versions-close'),
+  settingsDialog: $('settings-dialog'),
+  settingsForm: $('settings-form'),
+  settingsInterval: $('settings-interval'),
+  settingsAutopreview: $('settings-autopreview'),
+  settingsRemoteinclude: $('settings-remoteinclude'),
+  settingsStylemode: $('settings-stylemode'),
+  cacheInfo: $('cache-info'),
+  cacheClear: $('cache-clear'),
 };
+
+// 取消按钮一律 type="button"（不提交 form method="dialog"），点按后手动关闭并标记 returnValue='cancel'，
+// 否则 form 的 onsubmit 会把「取消」当成「确定」处理。
+for (const btn of document.querySelectorAll('dialog button[data-cancel]')) {
+  btn.addEventListener('click', () => btn.closest('dialog').close('cancel'));
+}
 
 // ---------------- 状态 ----------------
 const state = {
@@ -75,7 +108,15 @@ const state = {
   saveTimer: null,
   ac: null, // 当前自动补全 { items, kind, replaceFrom, onPick }
   creatingStarter: false, // 空项目自动创建 index.ftml 的防重入锁
-  snippets: [], // 自定义代码片段
+  snippets: [], // 自定义代码片段（服务端 ~/.ftml-cli/snippets/snippets.json）
+  settings: {   // 服务端 ~/.ftml-cli/settings.json（自动预览间隔等）
+    previewIntervalMs: 600,
+    autoPreview: true,
+    renderStyleMode: 'inline',
+    useRemoteInclude: true,
+  },
+  lastIncludes: [], // 最近一次渲染的 include 来源（local/cache/remote/miss）
+  gitEnv: null,     // 最近一次 git 环境体检结果（detectGitEnv 响应）
 };
 
 // ---------------- API ----------------
@@ -315,17 +356,41 @@ function openNameDialog(title, placeholder, okText) {
     el.nameInput.value = '';
     el.nameInput.placeholder = placeholder || '';
     el.nameDialog.querySelector('#name-dialog-ok').textContent = okText || '创建';
+    el.nameDialog.returnValue = '';
     el.nameDialog.showModal();
     el.nameInput.focus();
-    // 提交（点击"创建"或回车）→ resolve 输入值；Esc/取消 → resolve('')
+    // 只有"创建"会提交（preventDefault 后手动 close('ok')）；取消 / Esc 不产生 'ok' → resolve('')
     el.nameDialog.querySelector('form').onsubmit = (e) => {
       e.preventDefault();
-      const v = el.nameInput.value.trim();
-      el.nameDialog.close();
-      resolve(v);
+      el.nameDialog.close('ok');
     };
     el.nameDialog.onclose = () => {
-      if (el.nameDialog.returnValue === 'cancel') resolve('');
+      resolve(el.nameDialog.returnValue === 'ok' ? el.nameInput.value.trim() : '');
+    };
+  });
+}
+
+/**
+ * 通用输入弹窗（deploy / revert 的 commit message 等）。
+ * 与 openNameDialog 同构：确定 → resolve(输入值)，取消/Esc → resolve('')。
+ */
+function openPromptDialog({ title, label, value = '', placeholder = '', okText = '确定' }) {
+  return new Promise((resolve) => {
+    el.promptTitle.textContent = title;
+    el.promptLabel.textContent = label;
+    el.promptInput.value = value;
+    el.promptInput.placeholder = placeholder;
+    el.promptOk.textContent = okText;
+    el.promptDialog.returnValue = '';
+    el.promptDialog.showModal();
+    el.promptInput.focus();
+    el.promptInput.select();
+    el.promptForm.onsubmit = (e) => {
+      e.preventDefault();
+      el.promptDialog.close('ok');
+    };
+    el.promptDialog.onclose = () => {
+      resolve(el.promptDialog.returnValue === 'ok' ? el.promptInput.value.trim() : '');
     };
   });
 }
@@ -416,16 +481,31 @@ async function render() {
     el.preview.removeAttribute('srcdoc');   // 防止残留 srcdoc 覆盖
     el.preview.src = nextUrl;
 
+    state.lastIncludes = r.includes || [];
     showDiagnostics(r.diagnostics || []);
-    setStatus(`已保存并渲染（${fmtTime()}）`);
+    setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}`);
   } catch (e) {
     setError(e.message);
   }
 }
 
+/** include 来源摘要：本地文件 / 磁盘缓存 / 远程拉取 / 未命中 */
+function includeSummary() {
+  const inc = state.lastIncludes;
+  if (!inc || inc.length === 0) return '';
+  const count = (from) => inc.filter((i) => i.from === from).length;
+  const parts = [];
+  if (count('local')) parts.push(`本地 ${count('local')}`);
+  if (count('cache')) parts.push(`缓存 ${count('cache')}`);
+  if (count('remote')) parts.push(`远程 ${count('remote')}`);
+  if (count('miss')) parts.push(`未命中 ${count('miss')}`);
+  return parts.length ? ` · include: ${parts.join(' / ')}` : '';
+}
+
 function scheduleSaveRender() {
   clearTimeout(state.saveTimer);
-  state.saveTimer = setTimeout(render, 600);
+  if (!state.settings.autoPreview) return; // 关闭自动预览：仍可用保存按钮/Ctrl+S
+  state.saveTimer = setTimeout(render, state.settings.previewIntervalMs);
 }
 
 el.editor.addEventListener('input', () => {
@@ -499,6 +579,7 @@ el.validateBtn.addEventListener('click', async () => {
   }
 });
 
+// deploy = 创建大版本 + 推送远端 + 发布 Wikidot + 一次 submit，与 submit 一样必须填 message
 el.deployBtn.addEventListener('click', async () => {
   if (!state.projectId || !state.filePath) return;
   const site = el.siteInput.value.trim();
@@ -507,11 +588,18 @@ el.deployBtn.addEventListener('click', async () => {
     setError('部署前请先填写站点与页面');
     return;
   }
+  const message = await openPromptDialog({
+    title: '部署（创建大版本）',
+    label: '提交说明（必填，写入 git commit 与版本记录）',
+    placeholder: '如：发布 v1 正式版',
+    okText: '部署',
+  });
+  if (!message) return;
   try {
     await persistEditor();
     setStatus('部署中…');
     const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/deploy`, {
-      path: state.filePath, site, page,
+      path: state.filePath, site, page, message,
     });
     showLog('部署输出', r.logs);
     setStatus('部署完成（' + fmtTime() + '）');
@@ -521,21 +609,152 @@ el.deployBtn.addEventListener('click', async () => {
   }
 });
 
-el.revertBtn.addEventListener('click', async () => {
-  if (!state.projectId) return;
+// ---------------- 版本列表 / 回退 ----------------
+/** 打开版本列表（含 commit message），可回退到大版本 x 或小版本 x.y */
+async function openVersionsDialog() {
+  if (!state.projectId) {
+    setError('请先选择项目');
+    return;
+  }
+  el.versionsDialog.showModal();
+  await loadVersions();
+}
+
+async function loadVersions() {
+  el.versionsBody.innerHTML = '';
+  el.versionsHint.textContent = '读取中…';
+  try {
+    const r = await api('GET', `/api/projects/${encodeURIComponent(state.projectId)}/versions`);
+    const rows = r.versions || [];
+    if (rows.length === 0) {
+      el.versionsHint.textContent = '暂无版本记录：deploy 创建大版本，submit 创建小版本。';
+      return;
+    }
+    el.versionsHint.textContent =
+      '回退大版本 x：本地 revert 该提交，线上回到大版本 x 的内容。回退小版本 x.y：本地 revert 该提交，线上回到大版本 x 创建时的内容。';
+    for (const v of rows) {
+      const tr = document.createElement('tr');
+
+      const ver = document.createElement('td');
+      ver.textContent = v.version;
+      ver.className = v.kind === 'major' ? 'ver-major' : 'ver-minor';
+
+      const kind = document.createElement('td');
+      kind.textContent = v.kind === 'major' ? '大版本' : '小版本';
+
+      const commit = document.createElement('td');
+      commit.className = 'ver-commit';
+      commit.textContent = v.commit ? String(v.commit).slice(0, 7) : '-';
+      commit.title = v.commit || '';
+
+      const msg = document.createElement('td');
+      msg.textContent = v.message || '';
+      msg.title = v.message || '';
+
+      const actions = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-danger';
+      btn.textContent = '回退';
+      btn.title = `回退到 ${v.version}`;
+      btn.disabled = !v.commit;
+      btn.addEventListener('click', () => revertToVersion(v));
+      actions.appendChild(btn);
+
+      tr.append(ver, kind, commit, msg, actions);
+      el.versionsBody.appendChild(tr);
+    }
+  } catch (e) {
+    el.versionsHint.textContent = `加载失败: ${e.message}`;
+  }
+}
+
+async function revertToVersion(v) {
+  if (!confirm(`回退到版本 ${v.version}？\n本地将 git revert 提交 ${String(v.commit || '').slice(0, 7)}，并按版本语义回推线上。`)) return;
   const site = el.siteInput.value.trim();
   const page = el.pageInput.value.trim();
   try {
     await persistEditor();
-    setStatus('回退中…');
+    setStatus(`回退中（${v.version}）…`);
     const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/revert`, {
-      path: state.filePath, site, page,
+      path: state.filePath, site: site || undefined, page: page || undefined, to: v.version,
     });
-    showLog('回退输出', r.logs);
-    setStatus('回退完成（' + fmtTime() + '）');
+    el.versionsDialog.close();
+    showLog(`回退到 ${v.version}`, r.logs);
+    setStatus(`已回退到 ${v.version}（${fmtTime()}）`);
+    await openFile(state.filePath);
   } catch (e) {
     setError(e.message);
     showLog('回退失败', [ { kind: 'error', msg: e.message } ]);
+  }
+}
+
+el.versionsBtn.addEventListener('click', openVersionsDialog);
+el.versionsRefresh.addEventListener('click', loadVersions);
+el.versionsClose.addEventListener('click', () => el.versionsDialog.close());
+
+// ---------------- git 环境检测 ----------------
+function fetchGitEnv() {
+  const q = state.projectId ? `?root=${encodeURIComponent(state.projectId)}` : '';
+  return api('GET', '/api/git-env' + q);
+}
+
+/** 体检结果 → 日志行（问题在前、修复命令紧随其后） */
+function gitEnvLogs(r) {
+  const logs = [
+    { kind: r.installed ? 'log' : 'error', msg: `git: ${r.installed ? `已安装（${r.version}）` : '未安装'}` },
+    { kind: 'log', msg: `user.name: ${r.userName || '（未配置）'}` },
+    { kind: 'log', msg: `user.email: ${r.userEmail || '（未配置）'}` },
+    { kind: 'log', msg: `当前目录是 git 仓库: ${r.isRepo ? '是' : '否'}` },
+  ];
+  for (const p of r.problems || []) logs.push({ kind: 'error', msg: `✖ ${p}` });
+  for (const h of r.hints || []) logs.push({ kind: 'warn', msg: `→ 修复：${h}` });
+  if ((r.problems || []).length === 0) logs.push({ kind: 'log', msg: '✓ git 环境就绪' });
+  return logs;
+}
+
+el.doctorBtn.addEventListener('click', async () => {
+  try {
+    const r = await fetchGitEnv();
+    state.gitEnv = r;
+    showLog('git 环境检测', gitEnvLogs(r));
+    setStatus('git 环境检测完成（' + fmtTime() + '）');
+  } catch (e) {
+    setError(e.message);
+  }
+});
+
+/** 启动时自动体检：有问题时在状态栏提示，点「环境」看详情与修复命令 */
+async function checkGitEnv() {
+  try {
+    const r = await fetchGitEnv();
+    state.gitEnv = r;
+    if (!r.installed) {
+      setError('未检测到 git，提交/部署/回退不可用。点「环境」查看安装方式');
+      el.doctorBtn.classList.add('btn-warn');
+    } else if ((r.problems || []).length) {
+      setError(`${r.problems.join('；')}。点「环境」查看修复命令`);
+      el.doctorBtn.classList.add('btn-warn');
+    }
+  } catch {
+    /* 体检失败不阻塞编辑器启动 */
+  }
+}
+
+// ---------------- 新建 ftml 仓库（~/.ftml-cli/projects/<名称>） ----------------
+el.newRepoBtn.addEventListener('click', async () => {
+  const name = await openNameDialog('新建 ftml 仓库（建在 ~/.ftml-cli/projects 分区）', '仓库名（如 my-scp-page）', '创建');
+  if (!name) return;
+  try {
+    setStatus('创建仓库…');
+    const r = await api('POST', '/api/projects/create', { name });
+    await loadProjects();
+    state.projectId = r.root;
+    el.projectSelect.value = r.root;
+    showLog('新建仓库', r.logs || []);
+    await refreshSidebar();
+    setStatus(`已创建仓库 ${r.name}（${r.root}）`);
+  } catch (e) {
+    setError(e.message);
   }
 });
 
@@ -585,35 +804,130 @@ el.loginDialog.querySelector('form').onsubmit = async (e) => {
   }
 };
 
+// ---------------- 编辑器设置（服务端持久化） ----------------
+function applySettings(s) {
+  state.settings = { ...state.settings, ...s };
+  el.settingsInterval.value = state.settings.previewIntervalMs;
+  el.settingsAutopreview.checked = !!state.settings.autoPreview;
+  el.settingsRemoteinclude.checked = !!state.settings.useRemoteInclude;
+  el.settingsStylemode.value = state.settings.renderStyleMode;
+}
+
+async function loadSettings() {
+  try {
+    applySettings(await api('GET', '/api/settings'));
+  } catch (e) {
+    setError(`读取设置失败: ${e.message}`);
+  }
+}
+
+async function openSettingsDialog() {
+  await loadSettings();
+  await refreshCacheInfo();
+  el.settingsDialog.showModal();
+}
+
+async function refreshCacheInfo() {
+  try {
+    const r = await api('GET', '/api/include-cache');
+    const entries = r.entries || [];
+    const bytes = entries.reduce((n, e) => n + (e.bytes || 0), 0);
+    el.cacheInfo.textContent = entries.length === 0
+      ? '（空）'
+      : `${entries.length} 个页面 / ${(bytes / 1024).toFixed(1)} KB`;
+  } catch {
+    el.cacheInfo.textContent = '（读取失败）';
+  }
+}
+
+el.settingsBtn.addEventListener('click', openSettingsDialog);
+
+el.settingsForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const patch = {
+    previewIntervalMs: Number(el.settingsInterval.value),
+    autoPreview: el.settingsAutopreview.checked,
+    useRemoteInclude: el.settingsRemoteinclude.checked,
+    renderStyleMode: el.settingsStylemode.value,
+  };
+  try {
+    applySettings(await api('POST', '/api/settings', patch));
+    el.settingsDialog.close();
+    setStatus(`设置已保存（预览间隔 ${state.settings.previewIntervalMs}ms）`);
+  } catch (err) {
+    setError(err.message);
+  }
+});
+
+el.cacheClear.addEventListener('click', async () => {
+  if (!confirm('清空 include 磁盘缓存？下次渲染将重新联网拉取。')) return;
+  try {
+    const r = await api('DELETE', '/api/include-cache');
+    await refreshCacheInfo();
+    setStatus(`已清空 include 缓存（${r.removed} 条）`);
+  } catch (e) {
+    setError(e.message);
+  }
+});
+
 // ---------------- 代码片段管理 ----------------
-/** 只持久化用户自定义片段（带 kind 的内置 comp./tmpl. 不落盘） */
-function persistSnippets() {
-  const custom = state.snippets.filter((s) => !s.kind);
-  localStorage.setItem('ftml:snippets', JSON.stringify(custom));
+/**
+ * 片段持久化在服务端 ~/.ftml-cli/snippets/snippets.json（Ace/TextMate .snippets 互转），
+ * 内置 comp./tmpl. 命名空间片段只存在于内存，不落盘、不参与导入导出。
+ */
+const BUILTIN_SNIPPETS = [
+  { prefix: 'comp.', kind: 'component', template: '[[component src="components/$1.ftml"]][[/component]]$0', description: '组件' },
+  { prefix: 'tmpl.', kind: 'template', template: '[[$1]]$0[[/$1]]', description: '模板' },
+];
+
+/** 服务端片段记录 → 补全用条目（body → template，name 兜底 prefix） */
+function normalizeSnippet(s) {
+  const prefix = s.prefix || s.name || '';
+  return {
+    name: s.name || prefix,
+    prefix,
+    template: s.body ?? s.template ?? '',
+    description: s.description || s.name || prefix,
+  };
+}
+
+async function loadSnippets() {
+  let custom = [];
+  try {
+    const r = await api('GET', '/api/snippets');
+    custom = (r.snippets || []).map(normalizeSnippet);
+  } catch (e) {
+    setError(`读取代码片段失败: ${e.message}`);
+  }
+  state.snippets = BUILTIN_SNIPPETS.concat(custom);
+  renderSnippetList();
 }
 
 let editingSnippetPrefix = null; // 正在编辑的片段前缀（null = 新建）
 
 function renderSnippetList() {
   el.snippetList.innerHTML = '';
-  const custom = state.snippets.filter((s) => !s.kind).sort((a, b) => a.prefix.localeCompare(b.prefix));
+  const custom = state.snippets
+    .filter((s) => !s.kind)
+    .sort((a, b) => (a.prefix || a.name).localeCompare(b.prefix || b.name));
   if (custom.length === 0) {
     const li = document.createElement('li');
     li.className = 'sb-muted';
-    li.textContent = '（无自定义片段，点 ＋ 新建）';
+    li.textContent = '（无自定义片段，点 ＋ 新建或 ⭳ 导入）';
     el.snippetList.appendChild(li);
     return;
   }
   for (const s of custom) {
+    const key = s.prefix || s.name;
     const li = document.createElement('li');
     li.className = 'snip-row';
     const name = document.createElement('span');
     name.className = 'snip-name';
-    name.textContent = s.description || s.prefix;
-    name.title = s.template;
+    name.textContent = s.description || key;
+    name.title = s.body || s.template || '';
     const code = document.createElement('span');
     code.className = 'snip-prefix';
-    code.textContent = s.prefix;
+    code.textContent = key;
     code.title = '触发前缀';
     const del = document.createElement('button');
     del.className = 'sb-del';
@@ -621,7 +935,7 @@ function renderSnippetList() {
     del.title = '删除此片段';
     del.addEventListener('click', (e) => {
       e.stopPropagation();
-      deleteSnippet(s.prefix);
+      deleteSnippet(key);
     });
     li.appendChild(name);
     li.appendChild(code);
@@ -632,43 +946,47 @@ function renderSnippetList() {
 }
 
 function openSnippetDialog(s) {
-  editingSnippetPrefix = s ? s.prefix : null;
+  editingSnippetPrefix = s ? (s.prefix || s.name) : null;
   el.snippetDialogTitle.textContent = s ? '编辑代码片段' : '新建代码片段';
   el.snippetDesc.value = s ? (s.description || '') : '';
-  el.snippetPrefix.value = s ? s.prefix : '';
-  el.snippetTemplate.value = s ? s.template : '';
+  el.snippetPrefix.value = s ? (s.prefix || s.name) : '';
+  el.snippetTemplate.value = s ? (s.body || s.template || '') : '';
   el.snippetDel.classList.toggle('hidden', !s);
   el.snippetDialog.showModal();
   el.snippetPrefix.focus();
 }
 
-function saveSnippet() {
+async function saveSnippet() {
   const prefix = el.snippetPrefix.value.trim();
-  const template = el.snippetTemplate.value.trim();
+  const body = el.snippetTemplate.value.trim();
   const description = el.snippetDesc.value.trim();
-  if (!prefix || !template) {
+  if (!prefix || !body) {
     setError('触发前缀与模板不能为空');
     return;
   }
-  const builtin = state.snippets.find((s) => s.kind && s.prefix === prefix);
-  if (builtin) {
-    setError(`前缀 "${prefix}" 与内置 comp./tmpl. 冲突，请换一个`);
+  if (BUILTIN_SNIPPETS.some((b) => prefix.startsWith(b.prefix))) {
+    setError(`前缀 "${prefix}" 与内置 ${BUILTIN_SNIPPETS.map((b) => b.prefix).join('/')} 命名空间冲突，请换一个`);
     return;
   }
-  state.snippets = state.snippets.filter((s) => s.kind || s.prefix !== prefix);
-  state.snippets.push({ prefix, template, description: description || prefix });
-  persistSnippets();
-  renderSnippetList();
-  el.snippetDialog.close();
-  setStatus(`片段 "${prefix}" 已保存`);
+  try {
+    await api('POST', '/api/snippets', { name: prefix, prefix, body, description });
+    await loadSnippets();
+    el.snippetDialog.close();
+    setStatus(`片段 "${prefix}" 已保存`);
+  } catch (e) {
+    setError(e.message);
+  }
 }
 
-function deleteSnippet(prefix) {
-  if (!confirm(`删除片段 "${prefix}"？`)) return;
-  state.snippets = state.snippets.filter((s) => s.kind || s.prefix !== prefix);
-  persistSnippets();
-  renderSnippetList();
-  setStatus(`片段 "${prefix}" 已删除`);
+async function deleteSnippet(name) {
+  if (!confirm(`删除片段 "${name}"？`)) return;
+  try {
+    await api('DELETE', `/api/snippets/${encodeURIComponent(name)}`);
+    await loadSnippets();
+    setStatus(`片段 "${name}" 已删除`);
+  } catch (e) {
+    setError(e.message);
+  }
 }
 
 el.addSnippetBtn.addEventListener('click', () => openSnippetDialog(null));
@@ -679,6 +997,40 @@ el.snippetForm.addEventListener('submit', (e) => {
 el.snippetDel.addEventListener('click', () => {
   if (editingSnippetPrefix) deleteSnippet(editingSnippetPrefix);
   el.snippetDialog.close();
+});
+
+// 导入 Ace .snippets 文件（浏览器读文本 → 服务端合并持久化）
+el.importSnippetBtn.addEventListener('click', () => el.snippetFile.click());
+el.snippetFile.addEventListener('change', async () => {
+  const file = el.snippetFile.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const r = await api('POST', '/api/snippets/import', { text, source: file.name });
+    await loadSnippets();
+    setStatus(`已导入 ${file.name}：新增 ${r.added} / 更新 ${r.updated}，共 ${r.total} 条`);
+  } catch (e) {
+    setError(`导入失败: ${e.message}`);
+  } finally {
+    el.snippetFile.value = '';
+  }
+});
+
+// 导出全部片段为 .snippets 文件
+el.exportSnippetBtn.addEventListener('click', async () => {
+  try {
+    const r = await api('GET', '/api/snippets/export');
+    const blob = new Blob([r.text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ftml.snippets';
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus('已导出片段文件');
+  } catch (e) {
+    setError(`导出失败: ${e.message}`);
+  }
 });
 
 // ---------------- 内置 Wikidot 语法默认补全 ----------------
@@ -1030,17 +1382,9 @@ function caretCoords(ta) {
 
 // ---------------- 启动 ----------------
 async function boot() {
-  // 初始化 snippets（默认 + 用户自定义 localStorage 'ftml:snippets'）
-  const defaultSnippets = [
-    { prefix: 'comp.', kind: 'component', template: '[[component src="components/$1.ftml"]][[/component]]$0', description: '组件' },
-    { prefix: 'tmpl.', kind: 'template', template: '[[$1]]$0[[/$1]]', description: '模板' },
-  ];
-  let custom = [];
-  try {
-    custom = JSON.parse(localStorage.getItem('ftml:snippets')) || [];
-  } catch { /* ignore */ }
-  state.snippets = defaultSnippets.concat(custom);
-  renderSnippetList();
+  // 设置（自动预览间隔等）与代码片段均由服务端持久化，启动时拉取
+  await loadSettings();
+  await loadSnippets();
 
   el.saveBtn.addEventListener('click', () => {
     if (!state.projectId || !state.filePath) {
@@ -1052,6 +1396,7 @@ async function boot() {
   });
   await loadProjects();
   await refreshAuth();
+  await checkGitEnv();
   if (state.projects.length === 0) {
     el.addProjectBtn.click();
   }

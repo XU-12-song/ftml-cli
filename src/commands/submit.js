@@ -1,21 +1,23 @@
 /**
- * submit — 构建产物提交到 Wikidot + 本地 git 提交
+ * submit — 本地提交：git commit + 创建小版本号
  *
- *   ftml submit [-m "编辑注释"] [--site <site>] [--page <page>] [--source <file>] [--no-build]
+ *   ftml submit -m "提交说明" [--site <site>] [--page <page>] [-s <file>] [--no-build]
  *
- * 默认先 build 再提交（除非 --no-build，直接提交 output 文件）。
- * 成功后：
- *   - 本地 git commit（记录与线上提交的对应关系）
- *   - 追加 .ftml/history.json
- *   - 把 site/page/lastRev 写入 .ftml/<源文件名>.json 元数据
+ * 只做本地两件事（线上发布交给 deploy）：
+ *   1. 把当前工作区 git commit
+ *   2. 在该大版本下递增一个小版本号 x.y（写入 .ftml/versions.json）
+ *
+ * dist/ 被 .gitignore 忽略，构建产物只作本地校验/预览用，不进 git。
+ * 提交前做 git 环境体检（git 是否存在、user.name/user.email 是否配置）。
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { build } from './build.js';
-import { loadConfig, saveProjectMeta } from '../utils/config.js';
-import { createClient, getSite, getPage, editPage } from '../utils/wikidot.js';
-import { projectGit, commitAll } from '../utils/git.js';
+import { loadConfig } from '../utils/config.js';
+import { projectGit, commitAll, isRepo } from '../utils/git.js';
+import { assertGitReady } from '../utils/gitenv.js';
+import { addMinor, nextMinorVersion } from '../utils/versions.js';
 import { historyPath } from '../utils/paths.js';
 
 /** 追加一条提交历史（history.json 为 JSON 数组，幂等读-改-写） */
@@ -32,58 +34,48 @@ export function appendHistory(root, entry) {
   fs.writeFileSync(p, JSON.stringify(arr, null, 2) + '\n', 'utf8');
 }
 
+/** 取提交说明：缺失时抛错（submit/deploy 都要求填写） */
+export function requireMessage(options, command) {
+  const message = String(options.message ?? '').trim();
+  if (!message) {
+    throw new Error(`${command} 需要填写提交说明。请用 -m "说明" 指定`);
+  }
+  return message;
+}
+
 export async function submit(options) {
   const config = loadConfig(options);
+  const message = requireMessage(options, 'submit');
 
-  // 构建产物
-  let fileAbs;
-  if (options.noBuild) {
-    fileAbs = options.source
-      ? path.resolve(options.source)
-      : config.outputAbs;
-    if (!fs.existsSync(fileAbs)) {
-      throw new Error(`产物不存在: ${fileAbs}。请先运行 ftml build 或用 --source 指定文件`);
-    }
-  } else {
+  // 构建：生成校验/预览用产物（dist/ 不进 git）
+  if (!options.noBuild) {
     const r = await build(options);
-    fileAbs = r.output;
+    console.log(`构建完成 → ${r.output}`);
+  } else if (options.source && !fs.existsSync(path.resolve(options.source))) {
+    throw new Error(`指定文件不存在: ${path.resolve(options.source)}`);
   }
-  const source = fs.readFileSync(fileAbs, 'utf8');
 
-  const siteName = options.site || config.site;
-  const pageName = options.page || config.page;
-  const comment = options.message || 'ftml-cli 提交';
-
-  // clientFactory 注入点：web 编辑器测试时传 fake client，生产走默认 createClient
-  const client = await (options.clientFactory || createClient)();
-  try {
-    const site = await getSite(client, siteName);
-    const page = await getPage(site, pageName);
-    if (!page) {
-      throw new Error(`页面不存在: ${pageName}。请先创建页面再提交`);
-    }
-
-    await editPage(page, { source, comment });
-    const { revisionsCount } = page;
-
-    // 本地 git 提交（记录与线上对应关系）
-    const git = projectGit(config.root);
-    const { hash } = await commitAll(git, comment);
-    appendHistory(config.root, {
-      commit_hash: hash,
-      comment,
-      wikidotVersion: revisionsCount,
-    });
-
-    // 站点/页面元数据落盘：.ftml/<源文件名>.json
-    saveProjectMeta(config.sourceAbs, {
-      site: siteName,
-      page: pageName,
-      lastRev: revisionsCount,
-    }, config.root);
-
-    console.log(`✓ 已提交 ${siteName}:${pageName}（${Buffer.byteLength(source, 'utf8')} 字节，注释: ${comment}）`);
-  } finally {
-    await client.close?.();
+  await assertGitReady({ root: config.root });
+  const git = projectGit(config.root);
+  if (!(await isRepo(git))) {
+    throw new Error('当前项目不是 git 仓库，无法提交。请先运行 `ftml init` 初始化');
   }
+
+  const { version } = nextMinorVersion(config.root);
+  const { hash, skipped } = await commitAll(git, message);
+  const entry = addMinor(config.root, { commit: hash, message });
+  appendHistory(config.root, {
+    commit_hash: hash,
+    comment: message,
+    version: entry.version,
+    type: 'submit',
+  });
+
+  const short = hash ? hash.slice(0, 7) : '（空仓库）';
+  console.log(
+    skipped
+      ? `✓ 无文件改动，创建小版本 ${entry.version}（沿用提交 ${short}）`
+      : `✓ 已本地提交（${short}），创建小版本 ${entry.version}`
+  );
+  return { version: entry.version, hash, skipped, plannedVersion: version };
 }

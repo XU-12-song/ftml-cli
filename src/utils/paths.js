@@ -4,12 +4,15 @@
  * 项目级隐藏数据目录（init 建立，结构按 init.js）：
  *   <项目根>/.ftml/
  *     history.json              提交历史（submit/revert 追加，JSON 数组）
+ *     versions.json             版本清单（大版本 x / 小版本 x.y，见 versions.js）
  *     <源文件名>.json           site/page 元数据（index.json ↔ index.ftml）
  *
  * 用户级共享目录（跨 ftml 项目共用）：
  *   ~/.ftml-cli/
  *     credentials.json          登录凭证（0600）
  *     cache/<site>/<page>.ftml  远程拉取的页面源码缓存
+ *     settings.json             web 编辑器偏好（自动预览间隔等）
+ *     snippets/                 自定义代码片段存储
  *
  * 测试可用环境变量 FTML_CLI_HOME 重定向用户级目录（避免污染真实家目录）。
  */
@@ -54,6 +57,11 @@ export function historyPath(root = projectRoot()) {
   return path.join(projectFtmlDir(root), 'history.json');
 }
 
+/** 版本清单文件：<root>/.ftml/versions.json */
+export function versionsPath(root = projectRoot()) {
+  return path.join(projectFtmlDir(root), 'versions.json');
+}
+
 /** 用户级目录：FTML_CLI_HOME 覆盖（测试用），否则 ~/.ftml-cli */
 export function homeFtmlCliDir() {
   return process.env.FTML_CLI_HOME || path.join(os.homedir(), '.ftml-cli');
@@ -67,4 +75,23 @@ export function credentialsPath() {
 /** 共享缓存目录 */
 export function homeCacheDir() {
   return path.join(homeFtmlCliDir(), 'cache');
+}
+
+/** web 编辑器偏好设置文件 */
+export function settingsPath() {
+  return path.join(homeFtmlCliDir(), 'settings.json');
+}
+
+/** 自定义代码片段存储目录 */
+export function snippetsDir() {
+  return path.join(homeFtmlCliDir(), 'snippets');
+}
+
+/**
+ * web 端「新建 ftml 仓库」的默认分区目录：~/.ftml-cli/projects/<仓库名>
+ * 与已有项目物理隔离，避免新建的仓库散落在任意路径。
+ * FTML_PROJECTS_DIR 可覆盖（测试/自定义分区用）。
+ */
+export function projectsBaseDir() {
+  return process.env.FTML_PROJECTS_DIR || path.join(homeFtmlCliDir(), 'projects');
 }

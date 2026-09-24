@@ -18,10 +18,22 @@ import { buildPreviewDocument } from '../utils/preview-page.js';
 import { buildPageContext } from '../commands/preview.js';
 import { deploy } from '../commands/deploy.js';
 import { revert } from '../commands/revert.js';
+import { listVersions } from '../utils/versions.js';
 import { collectProblems } from '../commands/validate.js';
 import { init } from '../commands/init.js';
 import { createClient } from '../utils/wikidot.js';
 import { projectGit, isRepo, isClean } from '../utils/git.js';
+import { detectGitEnv } from '../utils/gitenv.js';
+import { loadSettings, saveSettings as writeSettings } from '../utils/settings.js';
+import {
+  loadSnippets,
+  upsertSnippet,
+  removeSnippet,
+  importSnippetsText,
+  exportSnippetsText,
+} from '../utils/snippets.js';
+import { projectsBaseDir } from '../utils/paths.js';
+import { listPageCache, clearPageCache } from '../utils/cache.js';
 import {
   getCredentials,
   saveCredentials,
@@ -207,9 +219,12 @@ export async function renderProjectFile(id, body, env = {}) {
 
   const page = buildPageContext({ site: config.site, page: config.page });
 
+  const settings = loadSettings();
+  const allowNetwork = body?.allowNetwork ?? settings.useRemoteInclude;
+
   let client = env.injectClient ?? null;
   let ownsClient = false;
-  if (!client) {
+  if (!client && allowNetwork) {
     try {
       client = await createClient();
       ownsClient = true;
@@ -219,14 +234,16 @@ export async function renderProjectFile(id, body, env = {}) {
   }
 
   try {
-    const { html, styles,htmlBlocks, diagnostics } = await renderPreview(expanded, {
+    const { html, styles, htmlBlocks, diagnostics, includes } = await renderPreview(expanded, {
       page,
+      styleMode: body?.styleMode ?? settings.renderStyleMode,
       includeBaseDir: path.dirname(config.sourceAbs),
       includeTemplates: templates,
       client,
+      allowNetwork,
     });
-    const document = buildPreviewDocument({ html, htmlBlocks,title: config.page || page.fullName });
-    return { html: document, styles, diagnostics };
+    const document = buildPreviewDocument({ html, htmlBlocks, title: config.page || page.fullName });
+    return { html: document, styles, diagnostics, includes, settings };
   } finally {
     if (ownsClient) await client.close?.();
   }
@@ -334,4 +351,125 @@ export async function authLogout() {
     /* 文件不存在 */
   }
   return { ok: true };
+}
+
+// ---------------- git 环境 ----------------
+
+/**
+ * 检测 git 环境（是否安装、user.name/user.email 是否配置、是否仓库）。
+ * root 省略时检测进程 cwd。
+ */
+export async function gitEnv(root) {
+  const cwd = root ? path.resolve(root) : process.cwd();
+  if (root && !fs.existsSync(cwd)) throw new HttpError(404, `目录不存在: ${cwd}`);
+  return detectGitEnv({ root: cwd });
+}
+
+// ---------------- 全局设置 ----------------
+
+export function getSettings() {
+  return loadSettings();
+}
+
+export function saveSettings(patch) {
+  if (!patch || typeof patch !== 'object') throw new HttpError(400, '缺少设置内容');
+  return writeSettings(patch);
+}
+
+// ---------------- 代码片段 ----------------
+
+export function listSnippets() {
+  return { snippets: loadSnippets() };
+}
+
+export function saveSnippet(body) {
+  if (!body?.name) throw new HttpError(400, '缺少片段名称');
+  return upsertSnippet(body);
+}
+
+export function deleteSnippet(name) {
+  try {
+    return removeSnippet(decodeURIComponent(name));
+  } catch (e) {
+    throw new HttpError(404, e.message);
+  }
+}
+
+/** 导入 Ace .snippets：body.text 直接给内容，或 body.file 给磁盘路径 */
+export function importSnippets(body) {
+  if (typeof body?.text === 'string' && body.text.trim()) {
+    return importSnippetsText(body.text, body.source || 'web-import');
+  }
+  if (typeof body?.file === 'string' && body.file.trim()) {
+    const abs = path.resolve(body.file);
+    if (!fs.existsSync(abs)) throw new HttpError(404, `文件不存在: ${abs}`);
+    return importSnippetsText(fs.readFileSync(abs, 'utf8'), path.basename(abs));
+  }
+  throw new HttpError(400, '缺少导入内容（text 或 file）');
+}
+
+/** 导出全部片段为 Ace .snippets 文本 */
+export function exportSnippets() {
+  return { text: exportSnippetsText() };
+}
+
+// ---------------- 新建 ftml 仓库 ----------------
+
+const REPO_NAME_RE = /^[A-Za-z0-9._\u4e00-\u9fa5-]+$/;
+
+const STARTER_FTML = `[[div class="content"]]
+这里是新仓库的起始页面，用 FTML 编写。
+[[/div]]
+`;
+
+/**
+ * 在「FTML 仓库分区」下新建并初始化一个 ftml 仓库。
+ *
+ *   body.name    仓库名（必填，单层目录名）
+ *   body.parent  自定义分区目录（可选，默认 ~/.ftml-cli/projects）
+ *
+ * 目标根目录 = <parent>/<name>；已存在且非空时报错，避免覆盖用户内容。
+ */
+export async function createFtmlProject(body) {
+  const name = String(body?.name ?? '').trim();
+  if (!name) throw new HttpError(400, '缺少仓库名');
+  if (!REPO_NAME_RE.test(name) || name === '.' || name === '..') {
+    throw new HttpError(400, `仓库名不合法: ${name}（仅字母/数字/中划线/下划线/点/中文）`);
+  }
+  const parent = body?.parent ? path.resolve(body.parent) : projectsBaseDir();
+  const root = path.resolve(parent, name);
+  if (path.dirname(root) !== parent) throw new HttpError(400, '路径越界');
+
+  if (fs.existsSync(root) && fs.readdirSync(root).length > 0) {
+    throw new HttpError(409, `目录已存在且非空: ${root}`);
+  }
+  fs.mkdirSync(root, { recursive: true });
+
+  const { logs } = await captureLogs(() => init({ cwd: root }));
+
+  // 起始源文件（不存在才写，便于对已初始化目录复用）
+  const starter = path.join(root, 'index.ftml');
+  if (!fs.existsSync(starter)) fs.writeFileSync(starter, STARTER_FTML, 'utf8');
+
+  addProject(root);
+  return { ok: true, root, name, logs };
+}
+
+// ---------------- 项目版本 ----------------
+
+export function listProjectVersions(id) {
+  const p = findProject(id);
+  return { versions: listVersions(p.root) };
+}
+
+// ---------------- include 缓存 ----------------
+
+/** 列出远程 include 的磁盘缓存条目 */
+export function listIncludeCache() {
+  return { entries: listPageCache() };
+}
+
+/** 清空远程 include 缓存 */
+export function clearIncludeCache() {
+  return { removed: clearPageCache() };
 }

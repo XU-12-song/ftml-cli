@@ -31,6 +31,16 @@ function tm(ctx) {
   return new Map(ctx.map(([n, t]) => [n, t]));
 }
 
+/**
+ * 收集到的 [[style]] 统一输出为文档末尾的 [[module CSS]] 块：
+ * 断言块内容正确、位于末尾，且正文无 [[style]] 残留。
+ */
+function assertModuleCssAtEnd(out, css) {
+  assert.ok(out.includes(`[[module CSS]]\n${css}\n[[/module]]`), `缺少 CSS 块:\n${out}`);
+  assert.ok(out.trimEnd().endsWith('[[/module]]'), `CSS 块应在文档末尾:\n${out}`);
+  assert.ok(!out.includes('[[style]]'), `正文残留 [[style]]:\n${out}`);
+}
+
 test('基础展开：string 键 + children', () => {
   const templates = tm([['addendum', addendum]]);
   const out = expand(
@@ -178,7 +188,7 @@ test('escapeString 转义 [[', () => {
 
 // ---------- [[style]] → [[module CSS]] ----------
 
-test('顶层 [[style]] 收集为开头的 [[module CSS]]，正文无残留', () => {
+test('顶层 [[style]] 收集为末尾的 [[module CSS]]，正文无残留', () => {
   const out = expand(
     `[[style]]
 p { color: red; }
@@ -187,10 +197,7 @@ p { color: red; }
 正文`,
     new Map()
   );
-  assert.ok(
-    out.startsWith(`[[module CSS]]\np { color: red; }\n[[/module]]`)
-  );
-  assert.ok(!out.includes('[[style]]'));
+  assertModuleCssAtEnd(out, 'p { color: red; }');
   assert.ok(out.includes('正文'));
 });
 
@@ -248,7 +255,7 @@ test('多个 [[style]] 块按出现顺序合并', () => {
 [[style]]b{}[[/style]]`,
     new Map()
   );
-  assert.ok(out.startsWith(`[[module CSS]]\na{}\n\nb{}\n[[/module]]`));
+  assertModuleCssAtEnd(out, 'a{}\n\nb{}');
 });
 
 test('children 内的 [[style]] 也收集', () => {
@@ -261,8 +268,7 @@ test('children 内的 [[style]] 也收集', () => {
 [[/wrap]]`,
     templates
   );
-  assert.ok(out.startsWith('[[module CSS]]'));
-  assert.ok(!out.includes('[[style]]'));
+  assertModuleCssAtEnd(out, 'x{}');
   assert.ok(out.includes('[[div]]'));
 });
 
@@ -377,7 +383,7 @@ test('组件内的 [[style]] 收集进 [[module CSS]]', () => {
     const out = expand(`[[component src="a.ftml"]][[/component]]`, new Map(), {
       baseDir: dir,
     });
-    assert.ok(out.startsWith(`[[module CSS]]\np { color: red; }`));
+    assertModuleCssAtEnd(out, 'p { color: red; }');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

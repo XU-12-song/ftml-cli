@@ -76,6 +76,8 @@ select:focus, input:focus { border-color: var(--accent); }
 .btn-primary:hover { background: #6ea0ff; }
 .btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn-danger:hover { background: rgba(229, 83, 75, 0.15); }
+.btn-warn { border-color: var(--warn); color: var(--warn); }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 
 .auth { color: var(--fg-dim); font-size: 12px; }
 .auth.logged-in { color: var(--ok); }
@@ -269,20 +271,33 @@ dialog input {
 #log-dialog { min-width: 480px; max-width: 680px; }
 .flex-1 { flex: 1; }
 
-/* 代码片段编辑对话框 */
-#snippet-dialog { min-width: 380px; max-width: 92vw; }
-#snippet-dialog .dlg-label {
+/* 表单标签 / 提示（snippet、prompt、settings 对话框共用） */
+.dlg-label {
   display: block;
   font-size: 11px;
   color: var(--fg-dim);
   margin: 4px 0 2px;
 }
-#snippet-dialog .dlg-hint {
+.dlg-hint {
   font-size: 11px;
   color: var(--fg-dim);
   margin: 2px 0 4px;
+  line-height: 1.6;
 }
-#snippet-dialog textarea {
+.dlg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+.dlg-row input[type="checkbox"] {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+}
+
+dialog textarea {
   display: block;
   width: 100%;
   min-height: 76px;
@@ -295,7 +310,61 @@ dialog input {
   font: 12px/1.5 "SF Mono", Consolas, Menlo, monospace;
   outline: none;
 }
-#snippet-dialog textarea:focus { border-color: var(--accent); }
+dialog textarea:focus { border-color: var(--accent); }
+
+/* 代码片段编辑对话框 */
+#snippet-dialog { min-width: 380px; max-width: 92vw; }
+
+/* 通用输入弹窗（deploy / revert 提交说明） */
+#prompt-dialog { min-width: 380px; max-width: 92vw; }
+
+/* 版本列表 / 回退 */
+#versions-dialog { min-width: 620px; max-width: 94vw; }
+#versions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 6px 0;
+}
+#versions-table th {
+  text-align: left;
+  color: var(--fg-dim);
+  font-weight: 400;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+#versions-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(74, 77, 83, 0.5);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#versions-table tbody tr:hover { background: rgba(79, 140, 255, 0.08); }
+#versions-table .ver-major { color: var(--accent); font-weight: 600; }
+#versions-table .ver-minor { color: var(--fg-dim); }
+#versions-table .ver-commit { font-family: "SF Mono", Consolas, Menlo, monospace; color: var(--fg-dim); }
+#versions-table td:last-child, #versions-table th:last-child { text-align: right; }
+#versions-table .btn { padding: 2px 8px; }
+#versions-table .btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+#versions-body:empty + .dlg-hint, #versions-hint { color: var(--fg-dim); }
+#versions-dialog .dialog-btns { align-items: center; }
+
+/* 设置对话框 */
+#settings-dialog { min-width: 420px; max-width: 92vw; }
+#settings-dialog select { width: 100%; }
+#settings-dialog .dlg-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+#settings-dialog .dlg-hint .btn { padding: 2px 8px; }
+
+/* 侧边栏分组头部的按钮组（片段导入/导出/新建） */
+.sb-head-btns { display: flex; gap: 4px; }
 #log-content {
   max-height: 360px;
   overflow-y: auto;
@@ -372,7 +441,9 @@ dialog input {
     min-width: 90vw;
     max-width: 90vw;
   }
-  #snippet-dialog { min-width: 90vw; max-width: 90vw; }
+  #snippet-dialog, #prompt-dialog, #settings-dialog { min-width: 90vw; max-width: 90vw; }
+  #versions-dialog { min-width: 94vw; max-width: 94vw; }
+  #versions-table td { max-width: 120px; }
   .sb-list li.sb-muted,
   .sb-list li.snip-row {
     font-size: 14px;

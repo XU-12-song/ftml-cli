@@ -112,3 +112,35 @@ export async function fetchRevisionSource(rev) {
 export async function revertPage(rev) {
   return unwrap(await rev.revert(), '回退');
 }
+
+/**
+ * 用源码覆盖线上页面（提交/部署/回退共用）。
+ *
+ * 负责客户端生命周期：自己创建的客户端自己关闭；注入的 clientFactory
+ * 产生的客户端同样关闭（web 测试注入的 fake client 的 close 是空实现）。
+ *
+ * @param {object} opts
+ * @param {string} opts.siteName
+ * @param {string} opts.pageName
+ * @param {string} opts.source 要写入的完整 FTML 源码
+ * @param {string} opts.comment 编辑注释
+ * @param {Function} [opts.clientFactory] 客户端工厂（测试注入用）
+ * @returns {Promise<{ revisionsCount: number }>}
+ */
+export async function pushPageSource({ siteName, pageName, source, comment, clientFactory }) {
+  if (!siteName || !pageName) {
+    throw new Error('缺少 site/page，无法提交 Wikidot。请配置或在命令行指定 --site/--page');
+  }
+  const client = await (clientFactory || createClient)();
+  try {
+    const site = await getSite(client, siteName);
+    const page = await getPage(site, pageName);
+    if (!page) {
+      throw new Error(`页面不存在: ${pageName}。请先创建页面再提交`);
+    }
+    await editPage(page, { source, comment });
+    return { revisionsCount: page.revisionsCount };
+  } finally {
+    await client.close?.();
+  }
+}

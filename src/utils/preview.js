@@ -77,27 +77,29 @@ export function resolveIncludeFile(pageRef, baseDir, currentSite) {
  * @param {{ site: string|null, page: string }} pageRef
  * @param {object} opts
  * @param {object} [opts.page] 页面上下文（提供当前站点名）
- * @param {object} opts.client 已登录的 @ukwhatn/wikidot 客户端
+ * @param {object} [opts.client] 已登录的 @ukwhatn/wikidot 客户端
  * @param {Array} opts.warnings 收集远程拉取失败的警告诊断
- * @returns {Promise<string|null>}
+ * @param {boolean} [opts.allowNetwork] 是否允许联网补拉（false 时只用磁盘缓存）
+ * @returns {Promise<{ source: string|null, from: 'cache'|'remote'|'miss' }>}
  */
-async function fetchRemoteInclude(pageRef, { page, client, warnings }) {
+async function fetchRemoteInclude(pageRef, { page, client, warnings, allowNetwork = true }) {
   const siteName = pageRef.site ?? page?.site;
-  if (!siteName || !client) return null;
+  if (!siteName) return { source: null, from: 'miss' };
   const label = pageRef.site ? `${pageRef.site}:${pageRef.page}` : pageRef.page;
 
-  // 1. 磁盘缓存命中 → 直接返回
+  // 1. 磁盘缓存命中 → 直接用（离线也能解析 include）
   const cached = readPageCache(siteName, pageRef.page);
-  if (cached != null) return cached;
+  if (cached != null) return { source: cached, from: 'cache' };
 
   // 2. 未命中 → 网络拉取，成功后写回缓存
+  if (!client || !allowNetwork) return { source: null, from: 'miss' };
   try {
     const siteObj = await getSite(client, siteName);
     const pageObj = await getPage(siteObj, pageRef.page);
-    if (!pageObj) return null;
+    if (!pageObj) return { source: null, from: 'miss' };
     const source = await fetchPageSource(pageObj);
     writePageCache(siteName, pageRef.page, source);
-    return source;
+    return { source, from: 'remote' };
   } catch (e) {
     warnings.push({
       severity: 'warning',
@@ -105,7 +107,7 @@ async function fetchRemoteInclude(pageRef, { page, client, warnings }) {
       message: `远程拉取 [[include ${label}]] 失败: ${e.message}`,
       position: { start: { line: 1, column: 1 }, end: { line: 1, column: 1 } },
     });
-    return null;
+    return { source: null, from: 'miss' };
   }
 }
 
@@ -119,18 +121,22 @@ async function fetchRemoteInclude(pageRef, { page, client, warnings }) {
  * @param {string} [options.includeBaseDir] 解析 [[include]] 的基准目录；省略则本地解析关闭
  * @param {Map} [options.includeTemplates] 模板表，include 目标源码展开模板时使用
  * @param {object} [options.client] 已登录的 @ukwhatn/wikidot 客户端；提供后本地找不到的 include 自动远程拉取
- * @returns {{ html: string, styles: string[], diagnostics: Array }}
+ * @param {boolean} [options.allowNetwork] 是否允许联网补拉远程 include（默认 true；false 时只用磁盘缓存）
+ * @returns {{ html, styles, htmlBlocks, diagnostics, includes, dependencies }}
+ *   includes: 本次渲染解析的 [[include]] 列表 [{ site, page, from }]（from: local/cache/remote/miss）
  */
 export async function renderPreview(
   ftml,
-  { page, styleMode = 'inline', includeBaseDir, includeTemplates, client } = {}
+  { page, styleMode = 'inline', includeBaseDir, includeTemplates, client, allowNetwork = true } = {}
 ) {
   const settings = { ...createSettings('page'), allowStyleElements: true };
   const remoteWarnings = [];
+  const includes = [];
 
   const dataProvider = includeBaseDir || client
     ? {
       fetchInclude: async (pageRef) => {
+        const label = { site: pageRef.site ?? page?.site ?? null, page: pageRef.page };
         // 1. 本地文件（基准目录内 .ftml）
         let source = null;
         let fileAbs = null;
@@ -138,9 +144,18 @@ export async function renderPreview(
           fileAbs = resolveIncludeFile(pageRef, includeBaseDir, page?.site);
           if (fileAbs) source = readFileSync(fileAbs, 'utf8');
         }
-        // 2. 本地缺失 → 已登录客户端远程拉取（页面源码；模板随后统一展开）
-        if (source == null && client) {
-          source = await fetchRemoteInclude(pageRef, { page, client, warnings: remoteWarnings });
+        if (source != null) {
+          includes.push({ ...label, from: 'local', path: fileAbs });
+        } else {
+          // 2. 本地缺失 → 磁盘缓存 / 已登录客户端远程拉取（模板随后统一展开）
+          const r = await fetchRemoteInclude(pageRef, {
+            page,
+            client,
+            warnings: remoteWarnings,
+            allowNetwork,
+          });
+          source = r.source;
+          includes.push({ ...label, from: r.from });
         }
         if (source == null) return null;
         // 先展开模板/组件，再交回 parser 解析（嵌套 include 由 parser 迭代展开）
@@ -164,5 +179,7 @@ export async function renderPreview(
     htmlBlocks: result.htmlBlocks,
     styles: result.styles,
     diagnostics: [...(result.diagnostics ?? doc.diagnostics ?? []), ...remoteWarnings],
+    includes,
+    dependencies: doc.dependencies ?? [],
   };
 }

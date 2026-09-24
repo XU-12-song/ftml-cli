@@ -1,176 +1,149 @@
 /**
- * server.js — web 编辑器 http 服务器（node:http，零依赖）
+ * server.js — web 编辑器 HTTP 服务器（express）
  *
- *   静态文件服务 src/web/public/ + JSON API 路由（转发到 handlers.js）。
+ *   静态文件服务 src/web/public/ + JSON API（转发到 handlers.js）。
  *   默认绑 127.0.0.1，--host 可覆盖。
+ *
+ *   createServer(env) 的 env 透传给 handlers，测试可注入 fake wikidot client。
  */
 
-import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import express from 'express';
 
 import * as handlers from './handlers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-};
-
-function contentType(file) {
-  return MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+/** 把 async handler 包成 express 中间件，异常统一交给错误中间件 */
+function wrap(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 }
 
-/** 读请求体（JSON，限制大小防滥用） */
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > 10 * 1024 * 1024) {
-        reject(new handlers.HttpError(413, '请求体过大'));
-        req.destroy();
-        return;
-      }
-      data += chunk;
-    });
-    req.on('end', () => {
-      try {
-        resolve(data ? JSON.parse(data) : {});
-      } catch {
-        reject(new handlers.HttpError(400, '请求体不是合法 JSON'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-function send(res, status, obj) {
-  const body = JSON.stringify(obj);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(body);
-}
-
-/** 匹配 /api/projects/:id/:action，返回 { id, action } */
-function parseProjectRoute(url) {
-  const m = /^\/api\/projects\/([^/]+)\/([a-z]+)$/.exec(url);
-  return m ? { id: decodeURIComponent(m[1]), action: m[2] } : null;
-}
-
-async function handleApi(req, res, url) {
-  const method = req.method;
-  const pathname = url.pathname;
+/** 构造 API 路由（挂到 /api 下） */
+function apiRouter(env) {
+  const router = express.Router();
 
   // ---------------- auth ----------------
-  if (pathname === '/api/auth/status' && method === 'GET') {
-    return send(res, 200, handlers.authStatus());
-  }
-  if (pathname === '/api/auth/login' && method === 'POST') {
-    return send(res, 200, await handlers.authLogin(await readBody(req)));
-  }
-  if (pathname === '/api/auth/logout' && method === 'POST') {
-    return send(res, 200, handlers.authLogout());
-  }
+  router.get('/auth/status', wrap(async (req, res) => {
+    res.json(await handlers.authStatus());
+  }));
+  router.post('/auth/login', wrap(async (req, res) => {
+    res.json(await handlers.authLogin(req.body));
+  }));
+  router.post('/auth/logout', wrap(async (req, res) => {
+    res.json(await handlers.authLogout());
+  }));
+
+  // ---------------- git 环境 ----------------
+  router.get('/git-env', wrap(async (req, res) => {
+    res.json(await handlers.gitEnv(req.query.root));
+  }));
+
+  // ---------------- 全局设置 / 代码片段 ----------------
+  router.get('/settings', wrap(async (req, res) => {
+    res.json(await handlers.getSettings());
+  }));
+  router.post('/settings', wrap(async (req, res) => {
+    res.json(await handlers.saveSettings(req.body));
+  }));
+  router.get('/snippets', wrap(async (req, res) => {
+    res.json(await handlers.listSnippets());
+  }));
+  router.post('/snippets', wrap(async (req, res) => {
+    res.json(await handlers.saveSnippet(req.body));
+  }));
+  router.post('/snippets/import', wrap(async (req, res) => {
+    res.json(await handlers.importSnippets(req.body));
+  }));
+  router.get('/snippets/export', wrap(async (req, res) => {
+    res.json(await handlers.exportSnippets());
+  }));
+  router.delete('/snippets/:name', wrap(async (req, res) => {
+    res.json(await handlers.deleteSnippet(req.params.name));
+  }));
+
+  // ---------------- include 磁盘缓存 ----------------
+  router.get('/include-cache', wrap(async (req, res) => {
+    res.json(await handlers.listIncludeCache());
+  }));
+  router.delete('/include-cache', wrap(async (req, res) => {
+    res.json(await handlers.clearIncludeCache());
+  }));
 
   // ---------------- projects ----------------
-  if (pathname === '/api/projects' && method === 'GET') {
-    return send(res, 200, await handlers.listProjects());
-  }
-  if (pathname === '/api/projects' && method === 'POST') {
-    return send(res, 200, await handlers.createProject(await readBody(req)));
-  }
-  const single = /^\/api\/projects\/([^/]+)$/.exec(pathname);
-  if (single && method === 'DELETE') {
-    return send(res, 200, handlers.deleteProject(decodeURIComponent(single[1])));
-  }
-  const p = parseProjectRoute(pathname);
-  if (p) {
-    const { id, action } = p;
-    const body = ['GET', 'DELETE'].includes(method) ? {} : await readBody(req);
-    switch (action) {
-      case 'sidebar':
-        if (method !== 'GET') break;
-        return send(res, 200, await handlers.getSidebar(id));
-      case 'file':
-        if (method === 'GET') {
-          return send(res, 200, handlers.readProjectFile(id, url.searchParams.get('path')));
-        }
-        break;
-      case 'save':
-        if (method !== 'POST') break;
-        return send(res, 200, handlers.saveProjectFile(id, body));
-      case 'render':
-        if (method !== 'POST') break;
-        return send(res, 200, await handlers.renderProjectFile(id, body));
-      case 'validate':
-        if (method !== 'POST') break;
-        return send(res, 200, await handlers.validateProjectFile(id, body));
-      case 'target':
-        if (method !== 'POST') break;
-        return send(res, 200, handlers.saveTargetPage(id, body));
-      case 'deploy':
-        if (method !== 'POST') break;
-        return send(res, 200, await handlers.deployProject(id, body));
-      case 'revert':
-        if (method !== 'POST') break;
-        return send(res, 200, await handlers.revertProject(id, body));
-      case 'init':
-        if (method !== 'POST') break;
-        return send(res, 200, await handlers.initProject(id));
-      default:
-        break;
-    }
-    return send(res, 404, { error: `未知操作: ${action}` });
-  }
-  if (pathname.startsWith('/api/')) {
-    return send(res, 404, { error: `未知接口: ${method} ${pathname}` });
-  }
-  return null; // 非 API 路由，走静态文件
+  router.get('/projects', wrap(async (req, res) => {
+    res.json(await handlers.listProjects());
+  }));
+  router.post('/projects', wrap(async (req, res) => {
+    res.json(await handlers.createProject(req.body));
+  }));
+  // 在指定父目录下新建 ftml 仓库（.ftml-cli 分区）
+  router.post('/projects/create', wrap(async (req, res) => {
+    res.json(await handlers.createFtmlProject(req.body));
+  }));
+  router.delete('/projects/:id', wrap(async (req, res) => {
+    res.json(await handlers.deleteProject(req.params.id));
+  }));
+
+  // 项目作用域操作：/projects/:id/:action
+  const actions = {
+    sidebar: (req) => handlers.getSidebar(req.params.id),
+    file: (req) => handlers.readProjectFile(req.params.id, req.query.path),
+    save: (req) => handlers.saveProjectFile(req.params.id, req.body),
+    render: (req) => handlers.renderProjectFile(req.params.id, req.body, env),
+    validate: (req) => handlers.validateProjectFile(req.params.id, req.body),
+    target: (req) => handlers.saveTargetPage(req.params.id, req.body),
+    versions: (req) => handlers.listProjectVersions(req.params.id),
+    deploy: (req) => handlers.deployProject(req.params.id, req.body, env),
+    revert: (req) => handlers.revertProject(req.params.id, req.body, env),
+    init: (req) => handlers.initProject(req.params.id, env),
+  };
+
+  router.all('/projects/:id/:action', wrap(async (req, res) => {
+    const handler = actions[req.params.action];
+    if (!handler) throw new handlers.HttpError(404, `未知操作: ${req.params.action}`);
+    res.json(await handler(req));
+  }));
+
+  // 未匹配的 /api/* → 404
+  router.use((req, res) => {
+    res.status(404).json({ error: `未知接口: ${req.method} ${req.originalUrl}` });
+  });
+
+  return router;
 }
 
-function serveStatic(req, res, url) {
-  let rel = decodeURIComponent(url.pathname);
-  if (rel === '/' || rel === '') rel = '/index.html';
-  // 防目录穿越：静态资源只允许落在 PUBLIC_DIR 内
-  const abs = path.resolve(PUBLIC_DIR, '.' + rel);
-  if (!abs.startsWith(PUBLIC_DIR + path.sep)) {
-    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Forbidden');
+/** 统一错误响应：HttpError 用其状态码，其余 500 */
+function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-vars
+  if (err instanceof handlers.HttpError) {
+    res.status(err.status).json({ error: err.message });
     return;
   }
-  fs.readFile(abs, (err, data) => {
-    if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Not Found');
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': contentType(abs) });
-    res.end(data);
-  });
+  if (err?.type === 'entity.too.large') {
+    res.status(413).json({ error: '请求体过大' });
+    return;
+  }
+  // express.json 解析失败 → SyntaxError（带 status 400）
+  if (err instanceof SyntaxError && err.status === 400) {
+    res.status(400).json({ error: '请求体不是合法 JSON' });
+    return;
+  }
+  console.error(err);
+  res.status(err?.status || 500).json({ error: err?.message || '服务器内部错误' });
 }
 
-export function createServer() {
-  return http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    try {
-      const apiResult = await handleApi(req, res, url);
-      if (apiResult === null) serveStatic(req, res, url);
-    } catch (err) {
-      if (err instanceof handlers.HttpError) {
-        send(res, err.status, { error: err.message });
-      } else {
-        console.error(err);
-        send(res, 500, { error: err.message || '服务器内部错误' });
-      }
-    }
-  });
+export function createServer(env = {}) {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '10mb' }));
+  app.use('/api', apiRouter(env));
+  app.use(express.static(PUBLIC_DIR));
+  app.use(errorHandler);
+  // 返回 http.Server，保持 web.js 的 listen/once('error') 契约不变
+  return http.createServer(app);
 }

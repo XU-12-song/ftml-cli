@@ -122,20 +122,33 @@ test('sidebar：模板 keys（自动补全数据源）+ 组件 + 源文件', asy
   }
 });
 
-test('sidebar：真实 drafts 项目只读断言（2 模板 / 10 组件）', async () => {
+test('sidebar：多模板 / 多组件项目 fixture（2 模板 / 10 组件 / 已是 git 仓库）', async () => {
   const home = tmpdir();
-  const root = '/public/drafts';
+  const root = tmpdir();
+  const templateNames = ['file-item', 'gh-empty'];
   process.env.FTML_CLI_HOME = home;
   try {
+    mkdirSync(path.join(root, 'templates'), { recursive: true });
+    mkdirSync(path.join(root, 'components'), { recursive: true });
+    writeFileSync(path.join(root, 'index.ftml'), '[[div]]x[[/div]]\n');
+    for (const name of templateNames) {
+      writeFileSync(path.join(root, 'templates', `${name}.ftmx`), '[[div]]{ children }[[/div]]\n');
+    }
+    for (let i = 0; i < 10; i++) {
+      writeFileSync(path.join(root, 'components', `c${i}.ftml`), `[[div]]c${i}[[/div]]\n`);
+    }
+    await init({ cwd: root }); // 已是 git 仓库但可能无提交（isRepo 应为 true）
+
     addProject(root);
     const sb = await getSidebar(root);
-    assert.deepEqual(sb.templates.map((t) => t.name).sort(), ['file-item', 'gh-empty']);
+    assert.deepEqual(sb.templates.map((t) => t.name).sort(), templateNames);
     assert.equal(sb.components.length, 10);
     assert.ok(sb.sources.includes('index.ftml'));
-    assert.equal(sb.isRepo, true); // /public/drafts 已是 git 仓库（早前 web init 过，空仓库无提交）
+    assert.equal(sb.isRepo, true);
   } finally {
     delete process.env.FTML_CLI_HOME;
     rmSync(home, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -198,7 +211,7 @@ test('save/read 文件往返 + 路径越界拒绝', () => {
 
 // ---------- render / validate ----------
 
-test('render 端点：展开模板并返回完整文档（DOCTYPE + 内联 runtime + script 平衡）', async () => {
+test('render 端点：展开模板并返回完整文档（沙盒 XHTML 外壳 + 内联 runtime + script 平衡）', async () => {
   const home = tmpdir();
   const root = makeFixtureProject();
   process.env.FTML_CLI_HOME = home;
@@ -206,7 +219,7 @@ test('render 端点：展开模板并返回完整文档（DOCTYPE + 内联 runti
     addProject(root);
     const { client } = fakeClient();
     const r = await renderProjectFile(root, { path: 'index.ftml', site: 'scp-cn', page: 'hello' }, { injectClient: client });
-    assert.ok(r.html.startsWith('<!DOCTYPE html>'));
+    assert.ok(r.html.startsWith('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"'));
     assert.ok(r.html.includes('initWdprRuntime'));
     // 内联 runtime 里的 </script 序列已转义，script 标签必须配对
     const opens = (r.html.match(/<script/g) ?? []).length;
@@ -273,11 +286,22 @@ test('deploy：构建 + 校验 + 提交 Wikidot + git 提交 + history/元数据
     // dist 产物 + history + 元数据
     assert.ok(fs.existsSync(path.join(root, 'dist', 'index.ftml')));
     const history = JSON.parse(readFileSync(path.join(root, '.ftml', 'history.json'), 'utf8'));
-    assert.equal(history.length, 1);
+    // deploy = 大版本一条 + 后续 submit 一条
+    assert.equal(history.length, 2);
     assert.equal(history[0].comment, 'web deploy');
+    assert.equal(history[0].type, 'major');
+    assert.equal(history[1].type, 'submit');
     const meta = JSON.parse(readFileSync(path.join(root, '.ftml', 'index.json'), 'utf8'));
     assert.equal(meta.site, 'scp-cn');
     assert.equal(meta.lastRev, 7);
+
+    // 版本清单：1 个大版本 + 其下 1 个小版本 + 大版本快照
+    const versions = JSON.parse(readFileSync(path.join(root, '.ftml', 'versions.json'), 'utf8'));
+    assert.equal(versions.major.length, 1);
+    assert.equal(versions.major[0].version, '1');
+    assert.equal(versions.minor.length, 1);
+    assert.equal(versions.minor[0].version, '1.1');
+    assert.ok(fs.existsSync(path.join(root, '.ftml', 'versions', '1.ftml')));
   } finally {
     delete process.env.FTML_CLI_HOME;
     rmSync(home, { recursive: true, force: true });
@@ -323,7 +347,9 @@ test('deploy：非 git 项目报错（提示先 init）', async () => {
     addProject(root);
     const { client } = fakeClient();
     await assert.rejects(
-      () => deployProject(root, { path: 'index.ftml', site: 'scp-cn', page: 'hello' }, { injectClient: client }),
+      () => deployProject(root, {
+        path: 'index.ftml', site: 'scp-cn', page: 'hello', message: 'web deploy',
+      }, { injectClient: client }),
       (err) => /git/i.test(err.message)
     );
   } finally {

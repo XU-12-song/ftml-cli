@@ -28,6 +28,7 @@ import { revert } from './commands/revert.js';
 import { preview } from './commands/preview.js';
 import { init } from './commands/init.js';
 import { web } from './commands/web.js';
+import { detectGitEnv } from './utils/gitenv.js';
 
 const program = new Command();
 
@@ -106,12 +107,12 @@ program
 // ---- submit ----
 program
   .command('submit')
-  .description('构建并提交到 Wikidot 页面')
-  .option('-m, --message <text>', '编辑注释', 'ftml-cli 提交')
+  .description('本地提交：git commit + 创建小版本号（不发线上）')
+  .option('-m, --message <text>', '提交说明（必填）')
   .option('--site <site>', '站点名（覆盖配置）')
   .option('--page <page>', '页面名（覆盖配置）')
-  .option('-s, --source <file>', '要提交的文件（默认构建产物）')
-  .option('--no-build', '不构建，直接提交指定文件')
+  .option('-s, --source <file>', '要提交的源文件（默认配置的 source）')
+  .option('--no-build', '不构建，直接使用现有产物')
   .action(async (opts) => {
     await run(() => submit(opts));
   });
@@ -119,11 +120,12 @@ program
 // ---- deploy ----
 program
   .command('deploy')
-  .description('构建 + 校验 + 提交（一步部署）')
-  .option('-m, --message <text>', '编辑注释', 'ftml-cli 部署')
+  .description('创建大版本 + 推送远端 + 发布 Wikidot + submit')
+  .option('-m, --message <text>', '部署说明（必填）')
   .option('--site <site>', '站点名（覆盖配置）')
   .option('--page <page>', '页面名（覆盖配置）')
   .option('--no-validate', '跳过校验')
+  .option('--no-push', '不推送 git 远端')
   .action(async (opts) => {
     await run(() => deploy(opts));
   });
@@ -145,15 +147,35 @@ program
 // ---- revert ----
 program
   .command('revert')
-  .description('git revert 并回推 Wikidot（撤销提交 + 线上同步回退）')
+  .description('按版本号回退（本地 git revert + 线上回到对应版本）')
+  .option('--list', '列出可回退的版本（含 commit message）')
   .option('--site <site>', '站点名（覆盖配置）')
   .option('--page <page>', '页面名（覆盖配置）')
-  .option('--to <commit>', 'git 提交（hash / HEAD~n，默认 HEAD）')
-  .option('--no-wikidot', '只做本地 git revert，不回推 Wikidot')
+  .option('--to <version>', '版本号 x / x.y，或 git 提交（hash / HEAD~n，默认 HEAD）')
+  .option('--no-wikidot', '只做本地 git revert，不回退线上')
   .option('--auto-commit', '工作区有未提交改动时先自动提交再 revert')
-  .option('--rebuild', 'git revert 后重新构建产物再回推（dist/ 被 gitignore 忽略）')
+  .option('--rebuild', 'git revert 后重新构建产物再回退线上（dist/ 被 gitignore 忽略）')
   .action(async (opts) => {
     await run(() => revert(opts));
+  });
+
+// ---- doctor ----
+program
+  .command('doctor')
+  .description('检测 git 环境（是否安装、是否配置 user.name/user.email）')
+  .action(async () => {
+    await run(async () => {
+      const env = await detectGitEnv({ root: process.cwd() });
+      console.log(`git: ${env.installed ? `已安装（${env.version}）` : '未安装'}`);
+      if (env.installed) {
+        console.log(`user.name: ${env.userName ?? '（未配置）'}`);
+        console.log(`user.email: ${env.userEmail ?? '（未配置）'}`);
+        console.log(`当前目录是 git 仓库: ${env.isRepo ? '是' : '否'}`);
+      }
+      for (const p of env.problems) console.log(`✗ ${p}`);
+      for (const h of env.hints) console.log(`  → ${h}`);
+      if (!env.problems.length) console.log('✓ git 环境就绪');
+    });
   });
 
 // ---- init ----
