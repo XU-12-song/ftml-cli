@@ -10,7 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { homeFtmlCliDir } from '../utils/paths.js';
+import { homeFtmlCliDir } from '../infra/paths.js';
 
 function registryPath() {
   return path.join(homeFtmlCliDir(), 'projects.json');

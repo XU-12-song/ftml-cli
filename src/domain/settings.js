@@ -15,7 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { settingsPath } from './paths.js';
+import { settingsPath } from '../infra/paths.js';
 
 export const DEFAULT_SETTINGS = Object.freeze({
   previewIntervalMs: 600,

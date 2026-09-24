@@ -28,7 +28,7 @@ import { revert } from './commands/revert.js';
 import { preview } from './commands/preview.js';
 import { init } from './commands/init.js';
 import { web } from './commands/web.js';
-import { detectGitEnv } from './utils/gitenv.js';
+import { detectGitEnv } from './infra/gitenv.js';
 
 const program = new Command();
 

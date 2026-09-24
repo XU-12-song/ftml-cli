@@ -1,11 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { parseFtmx } from '../src/core/parse-ftmx.js';
 import { expand, MAX_DEPTH, findUnresolved } from '../src/core/expand.js';
 import { escapeString } from '../src/core/escape.js';
+import { makeTmpDir, cleanup } from './helpers/fixtures.js';
 
 function tpl(name, src) {
   return parseFtmx(src.trim(), name);
@@ -278,16 +276,7 @@ test('[[style]] 缺少闭合标签报错', () => {
 
 // ---------- [[component src="..."]][[/component]] ----------
 
-/** 建临时目录并写入文件（自动创建子目录），返回目录路径 */
-function tmpdir(files) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ftml-t-'));
-  for (const [name, content] of Object.entries(files)) {
-    const p = path.join(dir, name);
-    mkdirSync(path.dirname(p), { recursive: true });
-    writeFileSync(p, content);
-  }
-  return dir;
-}
+const tmpdir = (files) => makeTmpDir(files, { prefix: 'ftml-t-' });
 
 test('组件基本展开：内容替换为文件内容', () => {
   const dir = tmpdir({ 'a.ftml': '你好，组件' });
@@ -297,7 +286,7 @@ test('组件基本展开：内容替换为文件内容', () => {
     });
     assert.equal(out, '你好，组件');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -309,7 +298,7 @@ test('children 非空报错', () => {
       /children 必须为空/
     );
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -325,7 +314,7 @@ test('多余参数或缺少 src 报错', () => {
       /只接受一个 src/
     );
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -341,7 +330,7 @@ test('依赖链 a→b→c 递归展开', () => {
     });
     assert.equal(out, 'deep');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -356,7 +345,7 @@ test('循环依赖检测（a→b→a）', () => {
       /循环依赖/
     );
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -371,7 +360,7 @@ test('组件内可调用模板', () => {
     assert.ok(out.includes(`[[div class="addendum"]]`));
     assert.ok(out.includes('内容'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -385,7 +374,7 @@ test('组件内的 [[style]] 收集进 [[module CSS]]', () => {
     });
     assertModuleCssAtEnd(out, 'p { color: red; }');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -401,7 +390,7 @@ test('相对路径基于组件所在目录（嵌套目录）', () => {
     });
     assert.equal(out, 'nested-ok');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -436,7 +425,7 @@ test('组件内模板 body 的嵌套调用也展开', () => {
     assert.ok(out.includes(`[[div class="card"]]inner[[/div]]`), out);
     assert.ok(!out.includes(`[[card]]`));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 

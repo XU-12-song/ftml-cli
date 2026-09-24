@@ -18,8 +18,8 @@ import path from 'node:path';
 import { processWikitext } from '@wdprlib/parser';
 import { renderWikitext, createSettings } from '@wdprlib/render';
 import { expand } from '../core/expand.js';
-import { getSite, getPage, fetchPageSource } from './wikidot.js';
-import { readPageCache, writePageCache } from './cache.js';
+import { getSite, getPage, fetchPageSource } from '../infra/wikidot.js';
+import { readPageCache, writePageCache } from '../infra/cache.js';
 /**
  * 把 include 的 pageRef 解析为本地 .ftml 文件。
  *

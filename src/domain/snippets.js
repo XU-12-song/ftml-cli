@@ -20,7 +20,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { snippetsDir } from './paths.js';
+import { snippetsDir } from '../infra/paths.js';
 
 function snippetsFile() {
   return path.join(snippetsDir(), 'snippets.json');

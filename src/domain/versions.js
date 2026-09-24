@@ -19,7 +19,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { versionsPath } from './paths.js';
+import { versionsPath } from '../infra/paths.js';
 
 const EMPTY = () => ({ major: [], minor: [] });
 

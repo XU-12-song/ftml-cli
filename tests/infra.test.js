@@ -1,17 +1,15 @@
-import { test, beforeEach, afterEach } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { homeFtmlCliDir, credentialsPath, homeCacheDir, projectMetaPath } from '../src/utils/paths.js';
-import { cacheFilePath, readPageCache, writePageCache } from '../src/utils/cache.js';
-import { loadConfig, loadProjectMeta, saveProjectMeta } from '../src/utils/config.js';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { homeFtmlCliDir, credentialsPath, homeCacheDir, projectMetaPath } from '../src/infra/paths.js';
+import { cacheFilePath, readPageCache, writePageCache } from '../src/infra/cache.js';
+import { loadConfig, loadProjectMeta, saveProjectMeta } from '../src/infra/config.js';
 import { init } from '../src/commands/init.js';
-import { projectGit, commitAll, gitRevert, isClean, isRepo } from '../src/utils/git.js';
+import { projectGit, commitAll, gitRevert, isClean, isRepo } from '../src/infra/git.js';
+import { makeTmpDir, cleanup } from './helpers/fixtures.js';
 
-function tmpdir() {
-  return mkdtempSync(path.join(os.tmpdir(), 'ftml-ut-'));
-}
+const tmpdir = () => makeTmpDir({}, { prefix: 'ftml-ut-' });
 
 // ---------- 用户级目录（FTML_CLI_HOME 隔离，不碰真实家目录） ----------
 
@@ -40,7 +38,7 @@ test('writePageCache/readPageCache 按 site/page 落盘，冒号斜杠化', () =
     assert.equal(readPageCache('scp-wiki-cn', 'theme:parallel'), '源码[[include x]]');
     assert.equal(readPageCache('scp-wiki-cn', 'other'), null); // 站点内互不干扰
   } finally {
-    rmSync(home, { recursive: true, force: true });
+    cleanup(home);
     delete process.env.FTML_CLI_HOME;
   }
 });
@@ -62,7 +60,7 @@ test('saveProjectMeta/loadProjectMeta 合并写入，保留已有字段', () => 
     saveProjectMeta(sourceAbs, { lastRev: 42 }, root);
     assert.deepEqual(loadProjectMeta(sourceAbs, root), { site: 'mysite', page: 'repo', lastRev: 42 });
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    cleanup(root);
   }
 });
 
@@ -93,7 +91,7 @@ test('loadConfig：site/page 优先级 元数据 < 配置文件 < 命令行', ()
     assert.equal(c.page, 'meta-page');
   } finally {
     process.chdir(cwd);
-    rmSync(root, { recursive: true, force: true });
+    cleanup(root);
   }
 });
 
@@ -123,7 +121,7 @@ test('init 建立项目结构且可重复执行', async () => {
     const gi2 = readFileSync(path.join(root, '.gitignore'), 'utf8');
     assert.equal(gi2.split('\n').filter((l) => l.trim() === 'dist/').length, 1);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    cleanup(root);
   }
 });
 
@@ -151,6 +149,6 @@ test('git 封装：commitAll 提交，gitRevert 生成反向提交', async () =>
     assert.equal(readFileSync(path.join(root, 'a.txt'), 'utf8'), 'v1');
     assert.equal(await isClean(git), true); // revert 本身是提交，工作区干净
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    cleanup(root);
   }
 });

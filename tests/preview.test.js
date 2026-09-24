@@ -1,38 +1,19 @@
-import { test, beforeEach, afterEach } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { renderPreview, resolveIncludeFile } from '../src/utils/preview.js';
-import { buildPreviewDocument } from '../src/utils/preview-page.js';
-import { getSite, getPage } from '../src/utils/wikidot.js';
+import { renderPreview, resolveIncludeFile } from '../src/render/preview.js';
+import { buildPreviewDocument } from '../src/render/preview-page.js';
+import { getSite, getPage } from '../src/infra/wikidot.js';
 import { parseFtmx } from '../src/core/parse-ftmx.js';
-import { readPageCache } from '../src/utils/cache.js';
+import { readPageCache } from '../src/infra/cache.js';
+import { makeTmpDir, cleanup, useIsolatedHome } from './helpers/fixtures.js';
+import { fakeRemoteClient, fakeWorld } from './helpers/fake-wikidot.js';
 
 // 远程 include 的磁盘缓存落在 FTML_CLI_HOME（默认 ~/.ftml-cli/cache）。
 // 每个用例隔离到独立临时目录，避免污染真实主目录、也避免用例间缓存串扰。
-let oldHome;
-let homeDir;
-beforeEach(() => {
-  oldHome = process.env.FTML_CLI_HOME;
-  homeDir = mkdtempSync(path.join(os.tmpdir(), 'ftml-home-'));
-  process.env.FTML_CLI_HOME = homeDir;
-});
-afterEach(() => {
-  rmSync(homeDir, { recursive: true, force: true });
-  if (oldHome === undefined) delete process.env.FTML_CLI_HOME;
-  else process.env.FTML_CLI_HOME = oldHome;
-});
+useIsolatedHome();
 
-function tmpdir(files) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ftml-pv-'));
-  for (const [name, content] of Object.entries(files)) {
-    const p = path.join(dir, name);
-    mkdirSync(path.dirname(p), { recursive: true });
-    writeFileSync(p, content);
-  }
-  return dir;
-}
+const tmpdir = (files) => makeTmpDir(files, { prefix: 'ftml-pv-' });
 
 // ---------- renderPreview：@wdprlib 渲染管线 ----------
 
@@ -99,7 +80,7 @@ test('resolveIncludeFile：同目录 / 分类斜杠映射 / 越界 / 跨站镜�
     assert.equal(resolveIncludeFile({ site: 'nope', page: 'ghost' }, dir, 'mysite'), null);
     assert.equal(resolveIncludeFile({ site: 'mysite', page: 'box' }, dir, 'mysite'), path.join(dir, 'box.ftml'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -120,7 +101,7 @@ test('renderPreview 解析本地 [[include]]，目标内模板调用被展开', 
     assert.ok(html.includes('来自include'));
     assert.ok(!html.includes('error-block'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -130,27 +111,6 @@ test('renderPreview 未提供 includeBaseDir 时 include 渲染为占位', async
 });
 
 // ---------- 远程 include 回退（本地缺失 → 已登录客户端拉取） ----------
-
-/** 构造可远程获取页面的假 client（site.page.get 返回 page 或 null） */
-function fakeRemoteClient(pages) {
-  const site = {
-    unixName: 'remote',
-    client: null,
-    page: {
-      get: async (name) => {
-        const p = pages[name];
-        return { isOk: () => true, value: p ?? null };
-      },
-    },
-  };
-  const client = {
-    site: {
-      get: async () => ({ isOk: () => true, value: site }),
-    },
-  };
-  site.client = client;
-  return client;
-}
 
 test('本地缺失的 include 通过已登录客户端远程拉取（并展开模板）', async () => {
   const templates = new Map([
@@ -172,7 +132,7 @@ test('本地缺失的 include 通过已登录客户端远程拉取（并展开�
     assert.ok(html.includes('<div class="addendum">'));
     assert.ok(html.includes('远程主题'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -187,7 +147,7 @@ test('远程 include 页面不存在时渲染占位', async () => {
     });
     assert.ok(html.includes('error-block'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -207,7 +167,7 @@ test('远程拉取失败产生警告诊断并渲染占位（不抛出）', async
     assert.ok(html.includes('error-block'));
     assert.ok(diagnostics.some((d) => d.code === 'remote-include-failed'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -240,7 +200,7 @@ test('远程拉取成功后写入磁盘缓存，下次命中缓存不再请求�
     assert.ok(second.html.includes('来自远程'));
     assert.ok(!second.diagnostics.some((d) => d.code === 'remote-include-failed'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
@@ -258,38 +218,11 @@ test('renderPreview 嵌套 include 递归展开', async () => {
     assert.ok(html.includes('外层'));
     assert.ok(html.includes('内层'));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
 
 // ---------- site/page 缓存 ----------
-
-/** 构造可计数的假 client/site/page，验证 getSite/getPage 复用缓存 */
-function fakeWorld() {
-  let siteCalls = 0;
-  let pageCalls = 0;
-  const page = { name: 'test', fullname: 'test', title: 'T' };
-  const site = {
-    unixName: 'mysite',
-    client: null, // 下面填
-    page: {
-      get: async () => {
-        pageCalls++;
-        return { isOk: () => true, value: page };
-      },
-    },
-  };
-  const client = {
-    site: {
-      get: async () => {
-        siteCalls++;
-        return { isOk: () => true, value: site };
-      },
-    },
-  };
-  site.client = client;
-  return { client, site, counts: () => ({ siteCalls, pageCalls }) };
-}
 
 test('同一客户端重复 getSite/getPage 命中缓存', async () => {
   const { client, site, counts } = fakeWorld();

@@ -17,8 +17,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { hideSync } from 'hidefile';
-import { projectFtmlDir, historyPath } from '../utils/paths.js';
-import { projectGit, isRepo } from '../utils/git.js';
+import { projectFtmlDir, historyPath } from '../infra/paths.js';
+import { projectGit, isRepo } from '../infra/git.js';
 
 export async function init(options = {}) {
   const root = path.resolve(options.cwd || process.cwd());

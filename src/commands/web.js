@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createServer } from '../web/server.js';
 import { addProject, loadProjects } from '../web/projects.js';
-import { homeFtmlCliDir } from '../utils/paths.js';
+import { homeFtmlCliDir } from '../infra/paths.js';
 
 export async function web(options) {
   const root = options.root ? path.resolve(options.root) : null;

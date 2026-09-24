@@ -5,7 +5,7 @@
  */
 
 import { loadTemplates } from '../core/expand.js';
-import { loadConfig } from '../utils/config.js';
+import { loadConfig } from '../infra/config.js';
 
 export async function list(options) {
   const config = loadConfig(options);

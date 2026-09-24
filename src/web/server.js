@@ -1,7 +1,7 @@
 /**
  * server.js — web 编辑器 HTTP 服务器（express）
  *
- *   静态文件服务 src/web/public/ + JSON API（转发到 handlers.js）。
+ *   静态文件服务 src/web/public/ + JSON API（转发到 handlers/）。
  *   默认绑 127.0.0.1，--host 可覆盖。
  *
  *   createServer(env) 的 env 透传给 handlers，测试可注入 fake wikidot client。
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 
-import * as handlers from './handlers.js';
+import * as handlers from './handlers/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');

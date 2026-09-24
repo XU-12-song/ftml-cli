@@ -125,7 +125,7 @@ ftml revert --no-wikidot --to 1.2      # 只做本地 git revert
 - `revert --no-wikidot` 只做本地 git revert，不发线上
 - `submit` / `deploy` 成功后：本地 git commit、追加 `.ftml/history.json`、写 `.ftml/versions.json`、更新 `.ftml/<源文件名>.json` 元数据（site / page / lastRev）
 - 提交前统一做 git 环境体检，缺 git 或缺身份会直接报错并给出修复命令（见 `ftml doctor`）
-- site/page 对象按客户端缓存（`src/utils/wikidot.js`）：同一进程内重复获取不发网络请求。缓存以客户端实例为键，`client.close()` 登出后自动失效；页面不存在（null）不缓存
+- site/page 对象按客户端缓存（`src/infra/wikidot.js`）：同一进程内重复获取不发网络请求。缓存以客户端实例为键，`client.close()` 登出后自动失效；页面不存在（null）不缓存
 
 ### doctor
 

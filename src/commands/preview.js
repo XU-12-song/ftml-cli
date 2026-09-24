@@ -12,24 +12,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { build } from './build.js';
 import { loadTemplates } from '../core/expand.js';
-import { loadConfig } from '../utils/config.js';
-import { renderPreview } from '../utils/preview.js';
-import { buildPreviewDocument } from '../utils/preview-page.js';
-import { createClient } from '../utils/wikidot.js';
-
-/** 构造渲染用的页面上下文（未配置 site/page 时给占位值） */
-export function buildPageContext({ site, page }) {
-  const fullName = page || 'preview';
-  const unixName = fullName.includes(':') ? fullName.slice(fullName.lastIndexOf(':') + 1) : fullName;
-  return {
-    fullName,
-    unixName,
-    tags: [],
-    site: site || undefined,
-    domain: site ? `${site}.wikidot.com` : undefined,
-    urlPath: fullName === 'preview' ? undefined : `/${fullName}`,
-  };
-}
+import { loadConfig } from '../infra/config.js';
+import { renderPreview } from '../render/preview.js';
+import { buildPreviewDocument } from '../render/preview-page.js';
+import { buildPageContext } from '../render/context.js';
+import { createClient } from '../infra/wikidot.js';
 
 export async function preview(options) {
   const config = loadConfig(options);

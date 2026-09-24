@@ -15,11 +15,11 @@ import fs from 'node:fs';
 import { build } from './build.js';
 import { validate } from './validate.js';
 import { submit, requireMessage, appendHistory } from './submit.js';
-import { loadConfig, saveProjectMeta } from '../utils/config.js';
-import { projectGit, commitAll, isRepo, tagCommit, pushCurrent } from '../utils/git.js';
-import { assertGitReady } from '../utils/gitenv.js';
-import { addMajor, nextMajorVersion, writeMajorSnapshot } from '../utils/versions.js';
-import { pushPageSource } from '../utils/wikidot.js';
+import { loadConfig, saveProjectMeta } from '../infra/config.js';
+import { projectGit, commitAll, isRepo, tagCommit, pushCurrent } from '../infra/git.js';
+import { assertGitReady } from '../infra/gitenv.js';
+import { addMajor, nextMajorVersion, writeMajorSnapshot } from '../domain/versions.js';
+import { pushPageSource } from '../infra/wikidot.js';
 
 export async function deploy(options) {
   const config = loadConfig(options);

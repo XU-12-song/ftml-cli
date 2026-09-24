@@ -14,7 +14,7 @@ import {
   envCredentials,
   saveCredentials,
   CREDENTIALS_PATH,
-} from '../utils/credentials.js';
+} from '../infra/credentials.js';
 
 async function promptHidden(query) {
   // readline 不支持不回显，退化为普通输入（本地使用）

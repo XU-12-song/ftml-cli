@@ -14,11 +14,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { build } from './build.js';
-import { loadConfig } from '../utils/config.js';
-import { projectGit, commitAll, isRepo } from '../utils/git.js';
-import { assertGitReady } from '../utils/gitenv.js';
-import { addMinor, nextMinorVersion } from '../utils/versions.js';
-import { historyPath } from '../utils/paths.js';
+import { loadConfig } from '../infra/config.js';
+import { projectGit, commitAll, isRepo } from '../infra/git.js';
+import { assertGitReady } from '../infra/gitenv.js';
+import { addMinor, nextMinorVersion } from '../domain/versions.js';
+import { historyPath } from '../infra/paths.js';
 
 /** 追加一条提交历史（history.json 为 JSON 数组，幂等读-改-写） */
 export function appendHistory(root, entry) {

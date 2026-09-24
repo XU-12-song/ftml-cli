@@ -17,9 +17,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfig, saveProjectMeta } from '../utils/config.js';
-import { pushPageSource } from '../utils/wikidot.js';
-import { projectGit, commitAll, gitRevert, isRepo, isClean, showFileAt } from '../utils/git.js';
+import { loadConfig, saveProjectMeta } from '../infra/config.js';
+import { pushPageSource } from '../infra/wikidot.js';
+import { projectGit, commitAll, gitRevert, isRepo, isClean, showFileAt } from '../infra/git.js';
 import { loadTemplates, expand } from '../core/expand.js';
 import { appendHistory } from './submit.js';
 import { build } from './build.js';
@@ -28,7 +28,7 @@ import {
   resolveVersionTarget,
   listVersions,
   readMajorSnapshot,
-} from '../utils/versions.js';
+} from '../domain/versions.js';
 
 /** 打印版本列表（revert --list） */
 export function printVersions(root) {

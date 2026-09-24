@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expand, loadTemplates, findUnresolved } from '../core/expand.js';
-import { loadConfig } from '../utils/config.js';
+import { loadConfig } from '../infra/config.js';
 
 function count(str, re) {
   return (str.match(re) ?? []).length;
