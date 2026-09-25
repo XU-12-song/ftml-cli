@@ -1,3 +1,6 @@
+[![Dependency: wdpr](https://img.shields.io/badge/dependency-wdpr-blue)](https://github.com/r74tech/wdpr)
+[![Dependency: wikidot-ts](https://img.shields.io/badge/dependency-wikidot--ts-blue)](https://github.com/ukwhatn/wikidot-ts)
+
 # ftml-cli
 
 FTML（Wikidot 语法）工作流 CLI：模板展开构建、本地校验、监听重建、HTML 预览，以及 Wikidot 登录 / 提交 / 部署 / 回退，附带本地 web 编辑器。
@@ -5,6 +8,14 @@ FTML（Wikidot 语法）工作流 CLI：模板展开构建、本地校验、监�
 ```
 ftml <命令> [选项]
 ```
+
+## 核心依赖
+
+本项目核心功能依赖以下第三方库：
+
+- [wdpr](https://github.com/r74tech/wdpr)：用于页面解析/渲染/预览
+- [wikidot-ts](https://github.com/ukwhatn/wikidot-ts)：用于 Wikidot 组件获取与提交
+
 
 ## 安装
 
@@ -412,6 +423,12 @@ snippet 卡片
 | 组件缺 src / 多余参数 | `[[component]] 只接受一个 src 参数（无自定义参数），收到: (无)` |
 | 模板 body 用组件 | `模板 [[t]] 的 body 中不允许使用 [[component]]，请把组件引用放在调用层 .ftml 中` |
 
+
+### 致谢
+
+感谢 `wdpr` 和 `wikidot-ts` 的作者及贡献者
+
 ## 许可证
 
 ISC，详见 [LICENSE.md](LICENSE.md)。
+第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
