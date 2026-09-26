@@ -165,7 +165,6 @@ export async function renderPreview(
       },
     }
     : undefined;
-
   const doc = await processWikitext(ftml, {
     page: page ?? { fullName: 'preview', unixName: 'preview', tags: [] },
     settings,
@@ -173,7 +172,6 @@ export async function renderPreview(
   });
 
   const result = await renderWikitext(doc, { styleMode });
-
   return {
     html: result.html,
     htmlBlocks: result.htmlBlocks,
