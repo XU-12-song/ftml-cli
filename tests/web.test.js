@@ -23,6 +23,7 @@ import {
   validateProjectFile,
   deployProject,
   revertProject,
+  latestOnly,
 } from '../src/web/handlers/index.js';
 import { loadConfig } from '../src/infra/config.js';
 import { init } from '../src/commands/init.js';
@@ -196,6 +197,49 @@ test('render 端点：展开模板并返回完整文档（沙盒 XHTML 外壳 + 
   }
 });
 
+test('render 端点：展开失败不抛 500，返回 problems（带行号 + 堆栈）', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      // card 模板调用缺闭合标签 → expand 抛 FtmlError（unclosed-template-call，offset=0）
+      saveProjectFile(root, { path: 'bad.ftml', source: '[[card icon="x" title="y"]]body' });
+      const { client } = fakeClient();
+      const r = await renderProjectFile(root, { path: 'bad.ftml' }, { injectClient: client });
+      assert.equal(r.html, null);
+      assert.equal(r.problems.length, 1);
+      const p = r.problems[0];
+      assert.equal(p.severity, 'error');
+      assert.equal(p.code, 'unclosed-template-call');
+      assert.equal(p.file, 'bad.ftml');
+      assert.equal(p.position.start.line, 1);
+      assert.equal(p.position.start.offset, 0);
+      assert.ok(typeof p.stack === 'string' && p.stack.length > 0);
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render 端点：成功时附带 problems（wdpr 诊断归一，位置可用）', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      const r = await renderProjectFile(root, { path: 'index.ftml' }, { injectClient: client });
+      assert.ok(r.html);
+      assert.ok(Array.isArray(r.problems));
+      for (const p of r.problems) {
+        assert.ok(['error', 'warning', 'info'].includes(p.severity));
+        assert.equal(typeof p.code, 'string');
+      }
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
 test('validate 端点：干净文件无错误，坏文件报错', async () => {
   const root = makeFixtureProject();
   try {
@@ -357,4 +401,49 @@ test('loadConfig({ root })：任意目录解析 site/page 优先级（命令行 
   } finally {
     cleanup(root);
   }
+});
+
+// ---------- latestOnly：渲染请求“最新者胜”串行门 ----------
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test('latestOnly：排队中的中间请求被最新请求取代，不做无用功', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const ran = [];
+  const a = latestOnly('k-mid', async () => { ran.push('A'); await gate; return 'A'; });
+  await tick(); // 让 A 先跑起来
+  const b = latestOnly('k-mid', async () => { ran.push('B'); return 'B'; });
+  const c = latestOnly('k-mid', async () => { ran.push('C'); return 'C'; });
+  release();
+
+  await assert.rejects(() => b, (e) => e.superseded === true);
+  assert.equal(await a, 'A');
+  assert.equal(await c, 'C'); // 只有最新的排队请求执行
+  assert.deepEqual(ran, ['A', 'C']);
+});
+
+test('latestOnly：checkpoint 在执行途中发现更新的请求即放弃', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const ran = [];
+  const a = latestOnly('k-ck', async (checkpoint) => {
+    ran.push('A-start');
+    await gate;
+    checkpoint(); // 此时已有 B → 抛 SupersededError
+    ran.push('A-end');
+    return 'A';
+  });
+  await tick();
+  const b = latestOnly('k-ck', async () => { ran.push('B'); return 'B'; });
+  release();
+
+  await assert.rejects(() => a, (e) => e.superseded === true);
+  assert.equal(await b, 'B');
+  assert.deepEqual(ran, ['A-start', 'B']);
+});
+
+test('latestOnly：顺序调用共享同一 key 正常完成（gate 回收）', async () => {
+  assert.equal(await latestOnly('k-seq', async () => 1), 1);
+  assert.equal(await latestOnly('k-seq', async () => 2), 2);
 });

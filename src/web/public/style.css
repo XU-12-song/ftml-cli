@@ -194,18 +194,11 @@ select:focus, input:focus { border-color: var(--accent); }
   position: relative;
 }
 
-#editor {
+#editor-container {
   width: 50%;
   height: 100%;
   background: var(--bg);
-  color: var(--fg);
-  border: none;
   border-right: 1px solid var(--border);
-  resize: none;
-  padding: 12px;
-  font: 13px/1.6 "SF Mono", Consolas, "JetBrains Mono", Menlo, monospace;
-  outline: none;
-  tab-size: 2;
 }
 
 #preview-pane { width: 50%; height: 100%; }
@@ -249,6 +242,78 @@ select:focus, input:focus { border-color: var(--accent); }
 }
 #statusbar .err { color: var(--danger); }
 #status-diagnostics { color: var(--warn); }
+#status-diagnostics.has-warning { cursor: pointer; }
+#status-diagnostics.has-error { color: var(--danger); cursor: pointer; }
+#status-diagnostics.has-error:hover,
+#status-diagnostics.has-warning:hover { text-decoration: underline; }
+
+/* ---------- 问题面板（渲染错误/警告 + 位置 + 堆栈） ---------- */
+#problems-dialog { min-width: 560px; max-width: 90vw; }
+.problem-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.problem {
+  padding: 6px 8px;
+  border-left: 3px solid var(--warn);
+  border-radius: 3px;
+  margin-bottom: 4px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.problem-error { border-left-color: var(--danger); }
+.problem-info { border-left-color: var(--fg-dim); }
+.problem.jumpable { cursor: pointer; }
+.problem.jumpable:hover { background: rgba(255, 255, 255, 0.07); }
+.problem-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+.problem-loc {
+  font-family: "SF Mono", Consolas, Menlo, monospace;
+  color: var(--fg-dim);
+  flex-shrink: 0;
+  min-width: 42px;
+}
+.problem-sev { flex-shrink: 0; }
+.problem-error .problem-sev { color: var(--danger); }
+.problem-warning .problem-sev { color: var(--warn); }
+.problem-info .problem-sev { color: var(--fg-dim); }
+.problem-msg { color: var(--fg); word-break: break-word; }
+.problem-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.problem-file {
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin-top: 2px;
+  font-family: "SF Mono", Consolas, Menlo, monospace;
+}
+.problem-stack { margin-top: 4px; }
+.problem-stack summary { font-size: 11px; color: var(--fg-dim); cursor: pointer; }
+.problem-stack pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 240px;
+  overflow-y: auto;
+}
 
 /* ---------- 对话框 ---------- */
 dialog {
@@ -419,7 +484,7 @@ dialog textarea:focus { border-color: var(--accent); }
   #main {
     flex-direction: column;
   }
-  #editor, #preview-pane {
+  #editor-container, #preview-pane {
     width: 100% !important;
     height: 50% !important;
     border-right: none;
@@ -443,6 +508,7 @@ dialog textarea:focus { border-color: var(--accent); }
   }
   #snippet-dialog, #prompt-dialog, #settings-dialog { min-width: 90vw; max-width: 90vw; }
   #versions-dialog { min-width: 94vw; max-width: 94vw; }
+  #problems-dialog { min-width: 92vw; max-width: 92vw; }
   #versions-table td { max-width: 120px; }
   .sb-list li.sb-muted,
   .sb-list li.snip-row {
@@ -458,10 +524,7 @@ dialog textarea:focus { border-color: var(--accent); }
 }
 /* CodeMirror 容器自适应 */
 #editor-container {
-  width: 50%;
-  height: 100%;
   overflow: hidden;
-  background: var(--bg);
 }
 
 .cm-editor {
@@ -531,12 +594,12 @@ dialog textarea:focus { border-color: var(--accent); }
 #main.layout-bottom {
   flex-direction: column;
 }
-#main.layout-bottom #editor,
+#main.layout-bottom #editor-container,
 #main.layout-bottom #preview-pane {
   width: 100% !important;
   height: 50% !important;
 }
-#main.layout-bottom #editor {
+#main.layout-bottom #editor-container {
   border-right: none;
   border-bottom: 1px solid var(--border);
 }

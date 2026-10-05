@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 
 import * as handlers from './handlers/index.js';
+import { mapStack } from '../render/stack.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -124,6 +125,11 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
     res.status(err.status).json({ error: err.message });
     return;
   }
+  // 渲染请求被更新的同类请求取代：客户端已取消，标记 409 便于识别/静默
+  if (err?.superseded) {
+    res.status(409).json({ error: err.message, superseded: true });
+    return;
+  }
   if (err?.type === 'entity.too.large') {
     res.status(413).json({ error: '请求体过大' });
     return;
@@ -134,7 +140,16 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
     return;
   }
   console.error(err);
-  res.status(err?.status || 500).json({ error: err?.message || '服务器内部错误' });
+  // 非预期异常：把（美化过的）堆栈与 cause 一并回传，前端可展开定位；
+  // @wdprlib 打包帧会被映射回源文件（见 render/stack.js）
+  const { text: stack, hasBundled } = mapStack(err?.stack ?? '', { cwd: process.cwd() });
+  const cause = err?.cause ? (err.cause.message ?? String(err.cause)) : null;
+  res.status(err?.status || 500).json({
+    error: err?.message || '服务器内部错误',
+    stack,
+    bundled: hasBundled,
+    cause,
+  });
 }
 
 export function createServer(env = {}) {

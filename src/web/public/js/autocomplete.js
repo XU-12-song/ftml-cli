@@ -196,7 +196,7 @@ function renderAcSelection() {
 }
 
 function positionAutocomplete() {
-  const { x, y, lineHeight } = caretCoords(el.editor);
+  const { x, y, lineHeight } = el.editor.coordsAtCaret();
   const mainRect = $('main').getBoundingClientRect();
   const edRect = el.editor.getBoundingClientRect();
   const left = edRect.left - mainRect.left + x + 4;
@@ -261,41 +261,4 @@ export function handleAcKeydown(e) {
     hideAutocomplete();
     setTimeout(updateAutocomplete, 0);
   }
-}
-
-// caret 坐标（隐藏 mirror div 测量）
-function caretCoords(ta) {
-  const cs = getComputedStyle(ta);
-  const mirror = document.createElement('div');
-  Object.assign(mirror.style, {
-    position: 'absolute',
-    visibility: 'hidden',
-    whiteSpace: 'pre-wrap',
-    wordWrap: 'break-word',
-    fontFamily: cs.fontFamily,
-    fontSize: cs.fontSize,
-    lineHeight: cs.lineHeight,
-    letterSpacing: cs.letterSpacing,
-    tabSize: cs.tabSize,
-    padding: cs.padding,
-    left: '0',
-    top: '0',
-  });
-  const w = ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-  mirror.style.width = Math.max(0, w) + 'px';
-  document.body.appendChild(mirror);
-
-  const before = ta.value.slice(0, ta.selectionStart);
-  mirror.textContent = before;
-  const lineHeight = parseFloat(cs.lineHeight) || Math.round(parseFloat(cs.fontSize) * 1.6);
-  const y = Math.max(0, mirror.scrollHeight - lineHeight);
-
-  const span = document.createElement('span');
-  span.textContent = before.slice(before.lastIndexOf('\n') + 1) + '\u200b';
-  mirror.textContent = '';
-  mirror.appendChild(span);
-  const x = span.offsetWidth;
-
-  mirror.remove();
-  return { x, y, lineHeight };
 }

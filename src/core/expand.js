@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { escapeString } from './escape.js';
 import { parseFtmx } from './parse-ftmx.js';
+import { FtmlError } from './errors.js';
 
 export const MAX_DEPTH = 32;
 
@@ -83,7 +84,7 @@ function splitTokens(inner) {
 }
 
 /** 解析调用处开标签内属性：[[name k1='v' k2=v2 ...]] → { name, attrs } */
-function parseCallTag(inner) {
+function parseCallTag(inner, loc = {}) {
   const tokens = splitTokens(inner);
 
   const name = tokens[0];
@@ -91,7 +92,11 @@ function parseCallTag(inner) {
   for (const t of tokens.slice(1)) {
     const eq = t.indexOf('=');
     if (eq === -1) {
-      throw new Error(`模板调用 [[${name}]] 出现无值参数: ${t}`);
+      throw new FtmlError(`模板调用 [[${name}]] 出现无值参数: ${t}`, {
+        code: 'invalid-call-arg',
+        offset: loc.offset ?? null,
+        file: loc.file ?? null,
+      });
     }
     const key = t.slice(0, eq);
     let raw = t.slice(eq + 1);
@@ -172,7 +177,9 @@ function findClosingTag(src, openEnd, name) {
  * 展开文本中的模板调用与组件引用
  * @param {string} src 源 FTML
  * @param {Map<string, object>} templates name → parseFtmx 结果
- * @param {{ baseDir?: string }} [opts] opts.baseDir = 解析 [[component]] 相对路径的基准目录（默认 CWD）
+ * @param {{ baseDir?: string, file?: string }} [opts]
+ *   opts.baseDir = 解析 [[component]] 相对路径的基准目录（默认 CWD）
+ *   opts.file    = 源文件名（附在 FtmlError 上，供 web 端定位）
  * @returns {string} 展开后的 FTML（无模板残留；[[style]] 已并入开头的 [[module CSS]]）
  */
 /** 收集 CSS 块：相同内容只保留第一次出现（模板被多次调用时其 [[style]] 只输出一次） */
@@ -182,7 +189,7 @@ function pushCss(ctx, css) {
 }
 
 export function expand(src, templates, opts = {}) {
-  const ctx = { css: [], baseDir: opts.baseDir || process.cwd() };
+  const ctx = { css: [], baseDir: opts.baseDir || process.cwd(), file: opts.file ?? null };
   const text = expandInner(src, templates, [], 0, ctx, []);
   return assembleResult(text, ctx.css);
 }
@@ -215,7 +222,7 @@ function replaceCssPlaceholders(css, values) {
  */
 function expandInner(src, templates, stack, depth, ctx, fileStack) {
   if (depth > MAX_DEPTH) {
-    throw new Error(`模板嵌套超过最大深度 ${MAX_DEPTH}`);
+    throw new FtmlError(`模板嵌套超过最大深度 ${MAX_DEPTH}`, { code: 'max-depth', file: ctx.file });
   }
 
   let out = '';
@@ -253,7 +260,11 @@ function expandInner(src, templates, stack, depth, ctx, fileStack) {
     if (name === 'code') {
       const closeIdx = src.indexOf('[[/code]]', tagEnd);
       if (closeIdx === -1) {
-        throw new Error(`[[code]] 缺少闭合标签 [[/code]]`);
+        throw new FtmlError(`[[code]] 缺少闭合标签 [[/code]]`, {
+          code: 'unclosed-code',
+          offset: openIdx,
+          file: ctx.file,
+        });
       }
       const end = findTagEnd(src, closeIdx);
       out += src.slice(openIdx, end);
@@ -265,7 +276,11 @@ function expandInner(src, templates, stack, depth, ctx, fileStack) {
     if (name === 'style') {
       const closeIdx = findClosingTag(src, tagEnd, 'style');
       if (closeIdx === -1) {
-        throw new Error(`[[style]] 缺少闭合标签 [[/style]]`);
+        throw new FtmlError(`[[style]] 缺少闭合标签 [[/style]]`, {
+          code: 'unclosed-style',
+          offset: openIdx,
+          file: ctx.file,
+        });
       }
       pushCss(ctx, src.slice(tagEnd, closeIdx));
       i = findTagEnd(src, closeIdx);
@@ -274,28 +289,38 @@ function expandInner(src, templates, stack, depth, ctx, fileStack) {
 
     // ---- [[component src="..."]][[/component]]：按文件引用组件（无参数，children 必须为空） ----
     if (name === 'component') {
-      const { attrs } = parseCallTag(inner);
+      const { attrs } = parseCallTag(inner, { offset: openIdx, file: ctx.file });
       if (attrs.length !== 1 || attrs[0].key !== 'src') {
-        throw new Error(
+        throw new FtmlError(
           `[[component]] 只接受一个 src 参数（无自定义参数），收到: ${
             attrs.length === 0 ? '(无)' : attrs.map((a) => a.key).join(', ')
-          }`
+          }`,
+          { code: 'component-args', offset: openIdx, file: ctx.file }
         );
       }
 
       const childEnd = findClosingTag(src, tagEnd, 'component');
       if (childEnd === -1) {
-        throw new Error(`[[component]] 缺少闭合标签 [[/component]]`);
+        throw new FtmlError(`[[component]] 缺少闭合标签 [[/component]]`, {
+          code: 'unclosed-component',
+          offset: openIdx,
+          file: ctx.file,
+        });
       }
       const childrenRaw = src.slice(tagEnd, childEnd);
       if (childrenRaw.trim() !== '') {
-        throw new Error(`[[component]] 的 children 必须为空，不允许子内容`);
+        throw new FtmlError(`[[component]] 的 children 必须为空，不允许子内容`, {
+          code: 'component-children',
+          offset: tagEnd,
+          file: ctx.file,
+        });
       }
 
       const absPath = path.resolve(ctx.baseDir, attrs[0].value);
       if (fileStack.includes(absPath)) {
-        throw new Error(
-          `组件循环依赖: ${fileStack.concat(absPath).join(' -> ')}`
+        throw new FtmlError(
+          `组件循环依赖: ${fileStack.concat(absPath).join(' -> ')}`,
+          { code: 'component-cycle', offset: openIdx, file: ctx.file }
         );
       }
 
@@ -303,7 +328,12 @@ function expandInner(src, templates, stack, depth, ctx, fileStack) {
       try {
         fileSrc = readFileSync(absPath, 'utf8');
       } catch (e) {
-        throw new Error(`无法读取组件文件 ${absPath}: ${e.message}`);
+        throw new FtmlError(`无法读取组件文件 ${absPath}: ${e.message}`, {
+          code: 'component-read',
+          offset: openIdx,
+          file: ctx.file,
+          cause: e,
+        });
       }
 
       const rendered = expandInner(
@@ -311,7 +341,7 @@ function expandInner(src, templates, stack, depth, ctx, fileStack) {
         templates,
         stack,
         depth + 1,
-        { css: ctx.css, baseDir: path.dirname(absPath) },
+        { css: ctx.css, baseDir: path.dirname(absPath), file: absPath },
         fileStack.concat(absPath)
       );
 
@@ -331,18 +361,23 @@ function expandInner(src, templates, stack, depth, ctx, fileStack) {
 
     // ---- 这是一个模板调用 ----
     if (stack.includes(name)) {
-      throw new Error(
-        `模板循环调用检测到: ${stack.concat(name).join(' -> ')}`
+      throw new FtmlError(
+        `模板循环调用检测到: ${stack.concat(name).join(' -> ')}`,
+        { code: 'template-cycle', offset: openIdx, file: ctx.file }
       );
     }
 
     // 解析属性
-    const { attrs } = parseCallTag(inner);
+    const { attrs } = parseCallTag(inner, { offset: openIdx, file: ctx.file });
 
     // 找配对的闭合标签 [[/name]]
     const childEnd = findClosingTag(src, tagEnd, name);
     if (childEnd === -1) {
-      throw new Error(`模板调用 [[${name}]] 缺少闭合标签 [[/${name}]]`);
+      throw new FtmlError(`模板调用 [[${name}]] 缺少闭合标签 [[/${name}]]`, {
+        code: 'unclosed-template-call',
+        offset: openIdx,
+        file: ctx.file,
+      });
     }
 
     const childrenRaw = src.slice(tagEnd, childEnd);
@@ -397,8 +432,9 @@ function renderTemplate(tmpl, templates, values, childrenExpanded, name, ctx, st
 
   // 模板 body 中不允许组件引用：组件是文件级复用，请写在调用层 .ftml 中
   if (/\[\[component\b/.test(body)) {
-    throw new Error(
-      `模板 [[${name}]] 的 body 中不允许使用 [[component]]，请把组件引用放在调用层 .ftml 中`
+    throw new FtmlError(
+      `模板 [[${name}]] 的 body 中不允许使用 [[component]]，请把组件引用放在调用层 .ftml 中`,
+      { code: 'component-in-template' }
     );
   }
 
@@ -425,8 +461,9 @@ function renderTemplate(tmpl, templates, values, childrenExpanded, name, ctx, st
       return childrenExpanded;
     }
     if (!values.has(key)) {
-      throw new Error(
-        `模板 [[${name}]] 调用缺少参数 { ${key} }（模板声明: ${keys.join(', ') || '(无)'}）`
+      throw new FtmlError(
+        `模板 [[${name}]] 调用缺少参数 { ${key} }（模板声明: ${keys.join(', ') || '(无)'}）`,
+        { code: 'missing-param' }
       );
     }
     const v = values.get(key);

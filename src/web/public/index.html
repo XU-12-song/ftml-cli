@@ -88,7 +88,7 @@
     </aside>
 
     <main id="main">
-      <textarea id="editor" spellcheck="false" placeholder="选择或新建一个文件开始编辑…"></textarea>
+      <div id="editor-container"></div>
       <div id="autocomplete" class="hidden"></div>
       <div id="preview-pane">
         <iframe id="preview" title="预览" sandbox="allow-scripts allow-same-origin"></iframe>
@@ -98,7 +98,7 @@
 
   <footer id="statusbar">
     <span id="status-text">就绪</span>
-    <span id="status-diagnostics"></span>
+    <span id="status-diagnostics" class="status-link" title="查看问题列表"></span>
     <span id="status-error" class="err"></span>
   </footer>
 
@@ -207,6 +207,15 @@
         <button type="submit" class="btn btn-primary">保存</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="problems-dialog">
+    <h3>渲染问题</h3>
+    <div id="problems-summary" class="dlg-hint"></div>
+    <ul id="problems-list" class="problem-list"></ul>
+    <div class="dialog-btns">
+      <button id="problems-close" type="button" class="btn btn-primary">关闭</button>
+    </div>
   </dialog>
 
   <script type="module" src="js/main.js"></script>

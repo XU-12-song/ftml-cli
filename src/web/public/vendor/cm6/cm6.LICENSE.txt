@@ -1,0 +1,8 @@
+ftml web 编辑器内置的 CodeMirror 6 前端产物（vendor/cm6/cm6.js）。
+以下第三方包均以 MIT 许可分发，版权归各自作者所有。
+
+@codemirror/state@? — MIT —
+@codemirror/view@? — MIT —
+@codemirror/language@? — MIT —
+@codemirror/commands@? — MIT —
+@lezer/highlight@? — MIT —

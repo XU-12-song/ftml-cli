@@ -8,7 +8,7 @@
  * client（env.injectClient），生产走真实 createClient。
  */
 
-export { HttpError, resolveInProject, captureLogs } from './shared.js';
+export { HttpError, resolveInProject, captureLogs, latestOnly, SupersededError } from './shared.js';
 export {
   listProjects,
   createProject,

@@ -29,7 +29,8 @@ export const el = {
   newTemplateBtn: $('new-template-btn'),
   newComponentBtn: $('new-component-btn'),
   newSourceBtn: $('new-source-btn'),
-  editor: $('editor'),
+  editorContainer: $('editor-container'),
+  editor: null, // CM6 门面，initEditor() 时创建并赋值
   autocomplete: $('autocomplete'),
   preview: $('preview'),
   statusText: $('status-text'),
@@ -77,6 +78,10 @@ export const el = {
   settingsStylemode: $('settings-stylemode'),
   cacheInfo: $('cache-info'),
   cacheClear: $('cache-clear'),
+  problemsDialog: $('problems-dialog'),
+  problemsSummary: $('problems-summary'),
+  problemsList: $('problems-list'),
+  problemsClose: $('problems-close'),
 };
 
 export const state = {
@@ -88,6 +93,7 @@ export const state = {
   sources: [],
   isRepo: false,
   saveTimer: null,
+  renderAbort: null, // 在飞渲染请求的 AbortController（新渲染到来时中止旧的）
   ac: null, // 当前自动补全 { items, kind, replaceFrom, onPick }
   creatingStarter: false, // 空项目自动创建 index.ftml 的防重入锁
   snippets: [], // 自定义代码片段（服务端 ~/.ftml-cli/snippets/snippets.json）
@@ -99,6 +105,7 @@ export const state = {
   },
   lastIncludes: [], // 最近一次渲染的 include 来源（local/cache/remote/miss）
   gitEnv: null,     // 最近一次 git 环境体检结果（detectGitEnv 响应）
+  problems: [],     // 最近一次渲染的统一问题列表（含行号/堆栈）
 };
 
 // 取消按钮一律 type="button"（不提交 form method="dialog"），点按后手动关闭并标记 returnValue='cancel'，

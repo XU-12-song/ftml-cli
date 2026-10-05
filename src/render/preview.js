@@ -20,7 +20,6 @@ import { renderWikitext, createSettings } from '@wdprlib/render';
 import { expand } from '../core/expand.js';
 import { getSite, getPage, fetchPageSource } from '../infra/wikidot.js';
 import { readPageCache, writePageCache } from '../infra/cache.js';
-import { detectEmbedStructuralEscape } from '../compat/index.js';
 /**
  * 把 include 的 pageRef 解析为本地 .ftml 文件。
  *
@@ -173,9 +172,9 @@ export async function renderPreview(
   });
 
   const result = await renderWikitext(doc, { styleMode });
-  // Wikidot 处理顺序型分歧（见 compat/divergence.js: embed-structural-escape）：
-  // wdpr 单趟解析复现不了、本地渲染永远正常，故在渲染期静态告警
-  const escapes = detectEmbedStructuralEscape(ftml);
+  // 注：Wikidot 处理顺序型分歧（embed-structural-escape）的检测只在 validate
+  // 路径（collectProblems）里跑，不进热渲染路径——它需要额外一趟 tokenize，
+  // 而渲染期结果与它无关（见 compat/divergence.js）。
   return {
     html: result.html,
     htmlBlocks: result.htmlBlocks,
@@ -183,7 +182,6 @@ export async function renderPreview(
     diagnostics: [
       ...(result.diagnostics ?? doc.diagnostics ?? []),
       ...remoteWarnings,
-      ...escapes,
     ],
     includes,
     dependencies: doc.dependencies ?? [],

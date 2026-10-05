@@ -10,6 +10,8 @@
  *   - 转义：\{ \} \\ 输出字面字符
  */
 
+import { FtmlError } from './errors.js';
+
 /** 把元素名从标签内 token 中提取出来，返回 { element, literalAttrs, declaredKeys } */
 function splitTagTokens(inner) {
   const tokens = [];
@@ -48,7 +50,11 @@ export function parseFtmx(src, name) {
   // 找开标签：[[ 元素名 ... ]]
   const openMatch = text.match(/^\[\[([^\]\[]*?)\]\]/);
   if (!openMatch) {
-    throw new Error(`[${name}] .ftmx 必须以 [[元素 ...]] 开头`);
+    throw new FtmlError(`[${name}] .ftmx 必须以 [[元素 ...]] 开头`, {
+      code: 'ftmx-no-header',
+      offset: 0,
+      file: name,
+    });
   }
 
   const openInner = openMatch[1].trim();
@@ -64,7 +70,11 @@ export function parseFtmx(src, name) {
 
   const closeIdx = text.lastIndexOf(closeTag);
   if (closeIdx === -1) {
-    throw new Error(`[${name}] 缺少闭合标签 ${closeTag}`);
+    throw new FtmlError(`[${name}] 缺少闭合标签 ${closeTag}`, {
+      code: 'ftmx-unclosed',
+      offset: openMatch[0].length,
+      file: name,
+    });
   }
 
   // 开标签后到闭合标签前的部分即 body
@@ -73,20 +83,29 @@ export function parseFtmx(src, name) {
   // 校验：闭合标签之后不应再有内容（除非只剩空白）
   const after = text.slice(closeIdx + closeTag.length).trim();
   if (after.length > 0) {
-    throw new Error(
-      `[${name}] 模板必须由单个元素包裹，闭合标签后存在多余内容: ${after.slice(0, 40)}`
+    throw new FtmlError(
+      `[${name}] 模板必须由单个元素包裹，闭合标签后存在多余内容: ${after.slice(0, 40)}`,
+      { code: 'ftmx-trailing-content', offset: closeIdx + closeTag.length, file: name }
     );
   }
 
   // 校验：开标签内容必须是合法的元素标签（含 == 之类特殊情况不允许元素名带空格）
   if (element !== null && /[^A-Za-z0-9_-]/.test(element)) {
-    throw new Error(`[${name}] 非法元素名: ${JSON.stringify(element)}`);
+    throw new FtmlError(`[${name}] 非法元素名: ${JSON.stringify(element)}`, {
+      code: 'ftmx-bad-element',
+      offset: text.indexOf(element),
+      file: name,
+    });
   }
 
   // 校验声明的键名合法
   for (const k of declaredKeys) {
     if (!/^[A-Za-z0-9_-]+$/.test(k)) {
-      throw new Error(`[${name}] 非法键名: ${JSON.stringify(k)}`);
+      throw new FtmlError(`[${name}] 非法键名: ${JSON.stringify(k)}`, {
+        code: 'ftmx-bad-key',
+        offset: text.indexOf(k),
+        file: name,
+      });
     }
   }
 

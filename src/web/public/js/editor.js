@@ -3,10 +3,11 @@
  */
 import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, showLog } from './api.js';
-import { renderList, highlightActive } from './ui.js';
+import { renderList, highlightActive, renderProblems } from './ui.js';
 import { openNameDialog, openPromptDialog } from './dialogs.js';
 import { saveFile, persistEditor, render, scheduleSaveRender } from './preview.js';
 import { updateAutocomplete, hideAutocomplete, handleAcKeydown } from './autocomplete.js';
+import { createFtmlEditor } from './cm-editor.js';
 
 /** 新页面/组件的默认骨架（多行：[[div]] 独占一行才被 @wdprlib/parser 解析为块标签） */
 export const STARTER_SOURCE = `[[div class="page-block"]]
@@ -23,6 +24,7 @@ export async function refreshSidebar() {
   const data = await api('GET', `/api/projects/${encodeURIComponent(state.projectId)}/sidebar`);
   state.templates.clear();
   for (const t of data.templates) state.templates.set(t.name, t.keys);
+  el.editor.setTemplates(state.templates); // 语义层：未知宏 / 模板键校验
   state.components = data.components.map((c) => c.name);
   state.sources = data.sources;
   state.isRepo = data.isRepo;
@@ -71,6 +73,9 @@ export async function openFile(relPath) {
     const data = await api('GET', `/api/projects/${encodeURIComponent(state.projectId)}/file?path=${encodeURIComponent(relPath)}`);
     state.filePath = data.path;
     el.editor.value = data.source;
+    el.editor.setFileKind(state.filePath.endsWith('.ftmx') ? 'template' : 'source');
+    el.editor.setDiagnostics([]); // 旧文件的诊断作废，等本次 render 回填
+    renderProblems([]);           // 旧文件的问题列表同样作废
     el.fileSelect.value = data.path;
     highlightActive();
     // 恢复本地记住的目标页面
@@ -92,6 +97,9 @@ export async function openFile(relPath) {
 
 export function clearEditor() {
   el.editor.value = '';
+  el.editor.setFileKind('source');
+  el.editor.setDiagnostics([]);
+  renderProblems([]);
   el.preview.srcdoc = '';
   state.filePath = null;
   el.statusDiag.textContent = '';
@@ -100,6 +108,13 @@ export function clearEditor() {
 }
 
 export function initEditor() {
+  // 建 CM6 视图并挂上门面，后续所有 el.editor.* 调用都走门面
+  const { facade } = createFtmlEditor({
+    parent: el.editorContainer,
+    placeholder: '选择或新建一个文件开始编辑…',
+  });
+  el.editor = facade;
+
   el.fileSelect.addEventListener('change', () => {
     if (el.fileSelect.value) openFile(el.fileSelect.value);
   });
