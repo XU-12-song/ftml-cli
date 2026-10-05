@@ -64,13 +64,50 @@ export const DIVERGENCES = [
     wikidot:
       '分阶段处理：[[collapsible]]/[[div]] 等模块先展开，[[embed]]/内联 HTML 后处理；' +
       'body 内裸露的 [[/…]] 会提前闭合外层结构，embed 再吞掉下半截，' +
-      '浏览器向下自动补标签后折叠块吞掉其后全部内容',
+      '浏览器向下自动补标签后折叠块吞掉其后全部内容；' +
+      '同一机制还覆盖被空行截断的内联 HTML 标签（如 <iframe src="␊␊">），' +
+      '空行是 Wikidot 的源码分段边界，标签被切开后同样输出不平衡 HTML',
     ideal: 'embed/html 的 body 原样保留，不参与外层结构配对',
     verdict: VERDICT.DIVERGE,
     // 不是转换能修复的：依赖服务端处理顺序 + 浏览器修复，客户端渲染器无法复现
     directions: [],
     rule: 'warn-embed-structural-escape',
     ref: 'https://scp-wiki-cn.wikidot.com/forum/t-17416385/wikidot-embed-html',
+  },
+  {
+    id: 'module-server-side-expansion',
+    title: '[[module …]] 与 %%变量%% 缺少服务端展开',
+    wikidot:
+      'ListPages/ListUsers/CSS 等模块在服务端展开，%%content{n}%%/%%rating%% 等变量随之求值；' +
+      '把 %%content{0}%% 拆进标签名（[[%%content{0}%%html]]）还能绕过“模块体内禁止 HTML”的限制（06 A-1）',
+    ideal:
+      'wdpr 识别模块名但只输出占位节点（ListPages → 空 <div class="list-pages-box">），' +
+      '模块体整体丢弃、%%content{n}%% 不求值；未知模块则输出 error-block 并把模块体当普通文本',
+    verdict: VERDICT.DIVERGE,
+    directions: [],
+    rule: null,
+    ref: 'plugins/scp-jp/skills/wikidot-syntax/references/06-hacks-and-bugs.md A-1',
+  },
+  {
+    id: 'unclosed-comment-swallows-tail',
+    title: '未闭合的 [!-- 注释吞掉其后全部内容',
+    wikidot: '未闭合的 [!-- 一直延伸到文件尾，其后内容全部被隐藏（Colmod 靠它做条件块，06 A-6）',
+    ideal: 'wdpr 报 unclosed-comment 警告并把注释体当可见文本继续解析 ⇒ 预览所见与线上相反',
+    verdict: VERDICT.DIVERGE,
+    directions: [],
+    rule: null,
+    ref: 'plugins/scp-jp/skills/wikidot-syntax/references/06-hacks-and-bugs.md A-6',
+  },
+  {
+    id: 'loose-block-close',
+    title: '无配对开标签的块闭标签（宽松匹配）',
+    wikidot:
+      '[[/div]]/[[/tab]] 等闭标签匹配宽松：找不到配对开标签时被静默容忍，不报错但可能破坏 DOM（06 A-7 / 07 #10）',
+    ideal: 'wdpr 把游离的块闭标签当作字面文本渲染（预览里可见、线上不可见）',
+    verdict: VERDICT.DIVERGE,
+    directions: [],
+    rule: null,
+    ref: 'plugins/scp-jp/skills/wikidot-syntax/references/06-hacks-and-bugs.md A-7; 07-pitfalls.md #10',
   },
   {
     id: 'diagnostic-position-offset-drift',

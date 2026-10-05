@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { processWikitext, createSettings } from '@wdprlib/parser';
+import { renderWikitext } from '@wdprlib/render';
 import {
   dirtToIdeal,
   idealToDirt,
@@ -190,4 +191,90 @@ test('写入边界：理想源在提交时是恒等变换', async () => {
 test('读取边界：fetchPageSource 把线上脏源码规范化为理想 FTML', async () => {
   const page = { getSource: async () => ({ isOk: () => true, value: '[[div]]\n[[span]]a\n[[/div]]\n' }) };
   assert.equal(await fetchPageSource(page), '[[div]]\n[[span]]a\n[[/span]][[/div]]\n');
+});
+
+// ---- 解析器/插件 quirk 对照实验（A-1 / A-6 / A-7）：记录 wdpr 与真实 Wikidot 的分歧 ----
+
+async function render(src) {
+  const doc = await processWikitext(src, { settings, page });
+  const r = await renderWikitext(doc, { styleMode: 'inline' });
+  return { doc, html: r.html };
+}
+
+test('A-1：[[module ListPages]] 在 wdpr 下只剩空占位框并整体丢弃模块体', async () => {
+  const src =
+    '[[module ListPages range="." separate="yes"]]\n' +
+    '[[%%content{0}%%html]]\n' +
+    '<script>var x=1;</script>\n' +
+    '[[/html]]\n[[/module]]\n';
+  const { doc, html } = await render(src);
+  assert.deepEqual(doc.diagnostics, []);
+  assert.ok(html.includes('list-pages-box')); // 识别为模块占位节点，不展开
+  assert.ok(!html.includes('%%content{0}%%')); // 模块体被整体丢弃，变量未求值
+  assert.ok(!html.includes('<script>')); // 注入载荷不会出现在预览里
+
+  const d = getDivergence('module-server-side-expansion');
+  assert.equal(d.verdict, VERDICT.DIVERGE);
+  assert.deepEqual(d.directions, []);
+});
+
+test('A-1：未知模块在 wdpr 下报 error-block 并把模块体当普通文本', async () => {
+  const { html } = await render('[[module FooBar]]\nbody\n[[/module]]\n');
+  assert.ok(html.includes('error-block'));
+  assert.ok(html.includes('No such module'));
+  assert.ok(html.includes('body'));
+});
+
+test('A-6：未闭合 [!-- 在 wdpr 下只告警并保留文本，不吞掉后续', async () => {
+  const src = 'before\n[!-- {$coltop}-\nswallowed line\n';
+  const { doc, html } = await render(src);
+  assert.ok(doc.diagnostics.some((d) => d.code === 'unclosed-comment'));
+  assert.ok(html.includes('swallowed line')); // 线上会被隐藏，wdpr 仍可见
+
+  const d = getDivergence('unclosed-comment-swallows-tail');
+  assert.equal(d.verdict, VERDICT.DIVERGE);
+  assert.deepEqual(d.directions, []);
+});
+
+test('A-7：游离 [[/div]] 在 wdpr 下渲染为字面文本（线上为宽松静默容忍）', async () => {
+  const src = 'text\n[[/div]]\nafter\n';
+  const { doc, html } = await render(src);
+  assert.deepEqual(doc.diagnostics, []);
+  assert.ok(html.includes('[[/div]]')); // 预览里可见、线上不可见
+
+  const d = getDivergence('loose-block-close');
+  assert.equal(d.verdict, VERDICT.DIVERGE);
+  assert.deepEqual(d.directions, []);
+});
+
+test('embed 逃逸：被空行截断的内联标签同样告警', () => {
+  const src = '[[embed]]\n<iframe src="\n\n"></iframe>\n[[/embed]]\n';
+  const ds = detectEmbedStructuralEscape(src);
+  assert.equal(ds.length, 1);
+  assert.equal(ds[0].code, 'embed-structural-escape');
+  assert.equal(ds[0].severity, 'warning');
+  assert.equal(ds[0].position.start.line, 2); // 指向 <iframe 所在行
+  assert.ok(ds[0].message.includes('<iframe>'));
+  assert.ok(ds[0].message.includes('[[embed]]'));
+});
+
+test('embed 逃逸：跨单行换行（非空行）的标签不告警', () => {
+  const src = '[[embed]]\n<iframe\n  src="x"></iframe>\n[[/embed]]\n';
+  assert.deepEqual(detectEmbedStructuralEscape(src), []);
+});
+
+test('embed 逃逸：嵌套 raw 容器的同一处命中只告警一次', () => {
+  const src =
+    '[[embed]]\n' +
+    '<iframe src="\n\n"></iframe>\n' +
+    '[[embed]]\n' +
+    '<object src="\n\n"></object>\n' +
+    '[[/embed]]\n' +
+    '[[/embed]]\n';
+  const ds = detectEmbedStructuralEscape(src);
+  assert.equal(ds.length, 2); // 外层 iframe + 内层 object，内层 object 不被外层重复扫出
+  assert.deepEqual(
+    ds.map((d) => d.position.start.line).sort((a, b) => a - b),
+    [2, 6]
+  );
 });
