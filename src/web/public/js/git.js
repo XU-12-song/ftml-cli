@@ -23,32 +23,35 @@ export function gitEnvLogs(r) {
   return logs;
 }
 
-/** 启动时自动体检：有问题时在状态栏提示，点「环境」看详情与修复命令 */
+/** 启动时自动体检：有问题时在状态栏提示，命令面板里的「git 环境检测」看详情与修复命令 */
 export async function checkGitEnv() {
   try {
     const r = await fetchGitEnv();
     state.gitEnv = r;
     if (!r.installed) {
-      setError('未检测到 git，提交/部署/回退不可用。点「环境」查看安装方式');
-      el.doctorBtn.classList.add('btn-warn');
+      setError('未检测到 git，提交/部署/回退不可用。命令面板（Ctrl+K）→ git 环境检测');
+      el.paletteBtn?.classList.add('btn-warn');
     } else if ((r.problems || []).length) {
-      setError(`${r.problems.join('；')}。点「环境」查看修复命令`);
-      el.doctorBtn.classList.add('btn-warn');
+      setError(`${r.problems.join('；')}。命令面板（Ctrl+K）→ git 环境检测查看修复命令`);
+      el.paletteBtn?.classList.add('btn-warn');
     }
   } catch {
     /* 体检失败不阻塞编辑器启动 */
   }
 }
 
+/** 打开 git 环境检测日志（命令面板调用） */
+export async function runDoctor() {
+  try {
+    const r = await fetchGitEnv();
+    state.gitEnv = r;
+    showLog('git 环境检测', gitEnvLogs(r));
+    setStatus('git 环境检测完成（' + fmtTime() + '）');
+  } catch (e) {
+    setError(e.message);
+  }
+}
+
 export function initGit() {
-  el.doctorBtn.addEventListener('click', async () => {
-    try {
-      const r = await fetchGitEnv();
-      state.gitEnv = r;
-      showLog('git 环境检测', gitEnvLogs(r));
-      setStatus('git 环境检测完成（' + fmtTime() + '）');
-    } catch (e) {
-      setError(e.message);
-    }
-  });
+  // 入口在命令面板（Ctrl+Alt+H）；env 异常时 checkGitEnv 会给面板按钮加警示色
 }

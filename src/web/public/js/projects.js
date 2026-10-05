@@ -42,52 +42,55 @@ export function initProjects() {
     }
   });
 
-  el.addProjectBtn.addEventListener('click', () => {
-    openNameDialog('添加项目（输入目录绝对路径）', '', '添加').then(async (root) => {
-      if (!root) return;
-      try {
-        await api('POST', '/api/projects', { root });
-        await loadProjects();
-        const p = state.projects.find((x) => x.root === root || x.id === root);
-        if (p) {
-          state.projectId = p.id;
-          el.projectSelect.value = p.id;
-          await refreshSidebar();
-        }
-      } catch (e) {
-        setError(e.message);
-      }
-    });
-  });
+  // 顶栏控件已移除，以下动作函数统一由命令面板（Ctrl+K）调用
+}
 
-  el.initProjectBtn.addEventListener('click', async () => {
-    if (!state.projectId) return;
-    try {
-      setStatus('初始化项目…');
-      const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/init`);
+/** 添加已有项目：输入目录绝对路径 */
+export async function openAddProject() {
+  const root = await openNameDialog('添加项目（输入目录绝对路径）', '', '添加');
+  if (!root) return;
+  try {
+    await api('POST', '/api/projects', { root });
+    await loadProjects();
+    const p = state.projects.find((x) => x.root === root || x.id === root);
+    if (p) {
+      state.projectId = p.id;
+      el.projectSelect.value = p.id;
       await refreshSidebar();
-      showLog('ftml init', r.logs);
-      setStatus(`已初始化（${fmtTime()}）`);
-    } catch (e) {
-      setError(e.message);
     }
-  });
+  } catch (e) {
+    setError(e.message);
+  }
+}
 
-  // 新建 ftml 仓库（~/.ftml-cli/projects/<名称>）
-  el.newRepoBtn.addEventListener('click', async () => {
-    const name = await openNameDialog('新建 ftml 仓库（建在 ~/.ftml-cli/projects 分区）', '仓库名（如 my-scp-page）', '创建');
-    if (!name) return;
-    try {
-      setStatus('创建仓库…');
-      const r = await api('POST', '/api/projects/create', { name });
-      await loadProjects();
-      state.projectId = r.root;
-      el.projectSelect.value = r.root;
-      showLog('新建仓库', r.logs || []);
-      await refreshSidebar();
-      setStatus(`已创建仓库 ${r.name}（${r.root}）`);
-    } catch (e) {
-      setError(e.message);
-    }
-  });
+/** 在当前目录初始化 git 项目 */
+export async function initGitProject() {
+  if (!state.projectId) return;
+  try {
+    setStatus('初始化项目…');
+    const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/init`);
+    await refreshSidebar();
+    showLog('ftml init', r.logs);
+    setStatus(`已初始化（${fmtTime()}）`);
+  } catch (e) {
+    setError(e.message);
+  }
+}
+
+/** 新建 ftml 仓库（~/.ftml-cli/projects/<名称>） */
+export async function openNewRepo() {
+  const name = await openNameDialog('新建 ftml 仓库（建在 ~/.ftml-cli/projects 分区）', '仓库名（如 my-scp-page）', '创建');
+  if (!name) return;
+  try {
+    setStatus('创建仓库…');
+    const r = await api('POST', '/api/projects/create', { name });
+    await loadProjects();
+    state.projectId = r.root;
+    el.projectSelect.value = r.root;
+    showLog('新建仓库', r.logs || []);
+    await refreshSidebar();
+    setStatus(`已创建仓库 ${r.name}（${r.root}）`);
+  } catch (e) {
+    setError(e.message);
+  }
 }

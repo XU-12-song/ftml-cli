@@ -33,15 +33,15 @@ async function refreshCacheInfo() {
   }
 }
 
-async function openSettingsDialog() {
+/** 打开设置对话框：先拉最新设置与缓存信息（命令面板调用） */
+export async function openSettings() {
   await loadSettings();
   await refreshCacheInfo();
   el.settingsDialog.showModal();
 }
 
 export function initSettings() {
-  el.settingsBtn.addEventListener('click', openSettingsDialog);
-
+  // 入口在命令面板（Ctrl+,）
   el.settingsForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const patch = {

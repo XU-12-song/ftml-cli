@@ -9,20 +9,18 @@ export const $ = (id) => document.getElementById(id);
 
 export const el = {
   projectSelect: $('project-select'),
-  addProjectBtn: $('add-project-btn'),
-  initProjectBtn: $('init-project-btn'),
   fileSelect: $('file-select'),
   siteInput: $('site-input'),
   pageInput: $('page-input'),
-  saveTargetBtn: $('save-target-btn'),
-  validateBtn: $('validate-btn'),
+  targetDialog: $('target-dialog'),
+  targetIndicator: $('target-indicator'),
+  targetSaveBtn: $('target-save-btn'),
   deployBtn: $('deploy-btn'),
-  versionsBtn: $('versions-btn'),
-  doctorBtn: $('doctor-btn'),
-  settingsBtn: $('settings-btn'),
-  newRepoBtn: $('new-repo-btn'),
-  authStatus: $('auth-status'),
-  loginBtn: $('login-btn'),
+  paletteBtn: $('palette-btn'),
+  paletteDialog: $('palette-dialog'),
+  paletteInput: $('palette-input'),
+  paletteList: $('palette-list'),
+  accountBtn: $('account-btn'),
   templateList: $('template-list'),
   componentList: $('component-list'),
   sourceList: $('source-list'),
@@ -47,7 +45,6 @@ export const el = {
   logContent: $('log-content'),
   logClose: $('log-close'),
   saveBtn: $('save-btn'),
-  remoteBtn: $('remote-btn'),
   zenBtn: $('zen-btn'),
   zenExit: $('zen-exit'),
   addSnippetBtn: $('add-snippet-btn'),
@@ -109,6 +106,7 @@ export const state = {
   lastIncludes: [], // 最近一次渲染的 include 来源（local/cache/remote/miss）
   gitEnv: null,     // 最近一次 git 环境体检结果（detectGitEnv 响应）
   problems: [],     // 最近一次渲染的统一问题列表（含行号/堆栈）
+  auth: { loggedIn: false, username: '' }, // Wikidot 登录状态（账号按钮 / 命令面板共用）
 };
 
 // 取消按钮一律 type="button"（不提交 form method="dialog"），点按后手动关闭并标记 returnValue='cancel'，

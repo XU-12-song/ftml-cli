@@ -10,6 +10,11 @@ import { $, el } from './dom.js';
 /** 当前是否处于禅模式（与 body.zen 保持同步） */
 let zen = false;
 
+/** 切换禅模式：只保留编辑区与预览 */
+export function toggleZen() {
+  setZen(!zen);
+}
+
 function setZen(on) {
   zen = on;
   document.body.classList.toggle('zen', on);
@@ -18,6 +23,11 @@ function setZen(on) {
     // 退出后把焦点还给编辑器，方便继续输入
     el.editor?.focus();
   }
+}
+
+/** 切换编辑器/预览的左右与上下布局 */
+export function toggleLayout() {
+  $('main').classList.toggle('layout-bottom');
 }
 
 export function initLayout() {
@@ -37,9 +47,7 @@ export function initLayout() {
   });
   overlay?.addEventListener('click', closeDrawer);
 
-  layoutToggle?.addEventListener('click', () => {
-    $('main').classList.toggle('layout-bottom');
-  });
+  layoutToggle?.addEventListener('click', toggleLayout);
 
   // ---- 禅模式 ----
   el.zenBtn?.addEventListener('click', () => {
@@ -48,14 +56,8 @@ export function initLayout() {
   });
   el.zenExit?.addEventListener('click', () => setZen(false));
 
+  // Ctrl+Shift+F 切禅由 keymap.js 统一派发；这里只管 Esc 退出
   window.addEventListener('keydown', (e) => {
-    // Ctrl+Shift+F：切换禅模式（与浏览器/编辑器默认快捷键无冲突）
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
-      e.preventDefault();
-      setZen(!zen);
-      return;
-    }
-    // Esc：仅在禅模式下用于退出
     if (e.key === 'Escape' && zen) setZen(false);
   });
 }

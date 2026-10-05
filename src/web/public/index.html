@@ -12,41 +12,22 @@
     <button id="menu-toggle" class="btn" aria-label="菜单" title="显示侧边栏">☰</button>
 
     <div class="group">
-      <button id="save-btn" class="btn btn-primary" title="保存当前文件（Ctrl+S）">💾 保存</button>
-      <button id="remote-btn" class="btn" title="联网解析远程 include（Ctrl+Shift+R）；自动预览只用本地与磁盘缓存">⟳ 远程</button>
+      <select id="project-select" title="项目"></select>
+      <select id="file-select" title="源文件"></select>
+    </div>
+
+    <span class="flex-1"></span>
+
+    <div class="group">
+      <button id="save-btn" class="btn btn-primary" title="保存并渲染（Ctrl+S）">💾 保存</button>
+      <button id="deploy-btn" class="btn" title="创建大版本 + 推送远端 + 发布 Wikidot + submit（Ctrl+Alt+P）">🚀 部署</button>
     </div>
 
     <div class="group">
       <button id="layout-toggle" class="btn" title="切换编辑器/预览布局（左右 / 上下）">↕</button>
       <button id="zen-btn" class="btn" title="禅模式（Ctrl+Shift+F）" aria-label="禅模式">禅</button>
-    </div>
-
-    <div class="group">
-      <select id="project-select" title="项目"></select>
-      <button id="add-project-btn" class="btn" title="添加已有项目（输入目录路径）">＋项目</button>
-      <button id="new-repo-btn" class="btn" title="在仓库分区新建 ftml 仓库">＋仓库</button>
-      <button id="init-project-btn" class="btn hidden" title="初始化 git 项目">init</button>
-    </div>
-
-    <div class="group">
-      <select id="file-select" title="源文件"></select>
-      <span class="sep"></span>
-      <input id="site-input" placeholder="站点" title="Wikidot 站点（如 scp-cn）">
-      <input id="page-input" placeholder="页面" title="Wikidot 页面名">
-      <button id="save-target-btn" class="btn" title="保存目标页面设置">目标</button>
-    </div>
-
-    <div class="group">
-      <button id="validate-btn" class="btn" title="校验当前文件">校验</button>
-      <button id="deploy-btn" class="btn btn-primary" title="创建大版本 + 推送远端 + 发布 Wikidot + submit">部署</button>
-      <button id="versions-btn" class="btn" title="版本列表 / 按版本回退（显示 commit message）">版本 / 回退</button>
-    </div>
-
-    <div class="group">
-      <button id="doctor-btn" class="btn" title="检测 git 环境">环境</button>
-      <button id="settings-btn" class="btn" title="编辑器设置">⚙</button>
-      <span id="auth-status" class="auth">未登录</span>
-      <button id="login-btn" class="btn">登录</button>
+      <button id="palette-btn" class="btn" title="命令面板（Ctrl+K）">⌘K</button>
+      <button id="account-btn" class="btn" title="登录 Wikidot">👤</button>
     </div>
   </header>
 <div id="sidebar-overlay" class="hidden"></div>
@@ -102,6 +83,8 @@
     <span id="status-text">就绪</span>
     <span id="status-diagnostics" class="status-link" title="查看问题列表"></span>
     <span id="status-error" class="err"></span>
+    <span class="flex-1"></span>
+    <button id="target-indicator" class="status-target" title="部署目标页面（点击设置）">未设目标</button>
   </footer>
 
   <dialog id="name-dialog">
@@ -218,6 +201,24 @@
     <div class="dialog-btns">
       <button id="problems-close" type="button" class="btn btn-primary">关闭</button>
     </div>
+  </dialog>
+
+  <dialog id="target-dialog">
+    <h3>目标页面</h3>
+    <p class="dlg-hint">「部署」会发布到该站点页面；每个文件各自记忆，并显示在状态栏右下角。</p>
+    <label class="dlg-label" for="site-input">Wikidot 站点</label>
+    <input id="site-input" placeholder="如 scp-cn" autocomplete="off">
+    <label class="dlg-label" for="page-input">页面名</label>
+    <input id="page-input" placeholder="如 my-page" autocomplete="off">
+    <div class="dialog-btns">
+      <button type="button" data-cancel class="btn">取消</button>
+      <button id="target-save-btn" type="button" class="btn btn-primary">保存</button>
+    </div>
+  </dialog>
+
+  <dialog id="palette-dialog" class="palette">
+    <input id="palette-input" placeholder="输入命令名称…（面板内按 Esc 关闭）" autocomplete="off" spellcheck="false">
+    <ul id="palette-list"></ul>
   </dialog>
 
   <script type="module" src="js/main.js"></script>

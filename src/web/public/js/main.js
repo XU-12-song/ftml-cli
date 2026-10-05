@@ -16,8 +16,8 @@
  * preview（保存/渲染）→ autocomplete · editor → 各业务面板（projects / versions /
  * snippets / settings / git / auth）→ layout · main（装配与启动）。
  */
-import { el, state } from './dom.js';
-import { initProjects, loadProjects } from './projects.js';
+import { state } from './dom.js';
+import { initProjects, loadProjects, openAddProject } from './projects.js';
 import { initEditor, refreshSidebar } from './editor.js';
 import { initSnippets, loadSnippets } from './snippets.js';
 import { initSettings, loadSettings } from './settings.js';
@@ -25,6 +25,9 @@ import { initVersions } from './versions.js';
 import { initGit, checkGitEnv } from './git.js';
 import { initAuth, refreshAuth } from './auth.js';
 import { initLayout } from './layout.js';
+import { initTarget } from './target.js';
+import { initPalette } from './palette.js';
+import { initKeymap } from './keymap.js';
 
 async function boot() {
   // 设置（自动预览间隔等）与代码片段均由服务端持久化，启动时拉取
@@ -35,7 +38,7 @@ async function boot() {
   await refreshAuth();
   await checkGitEnv();
   if (state.projects.length === 0) {
-    el.addProjectBtn.click();
+    await openAddProject(); // 无项目时引导添加
   }
   if (state.projectId) {
     await refreshSidebar();
@@ -44,6 +47,7 @@ async function boot() {
 
 // 先装配各面板的事件监听，再拉取初始数据
 initLayout();
+initTarget();
 initProjects();
 initEditor();
 initSnippets();
@@ -51,5 +55,7 @@ initSettings();
 initVersions();
 initGit();
 initAuth();
+initPalette();
+initKeymap();
 
 boot();

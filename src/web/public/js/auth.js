@@ -1,39 +1,46 @@
 /**
  * auth.js — Wikidot 登录状态与登录/登出弹窗
  */
-import { el } from './dom.js';
+import { el, state } from './dom.js';
 import { api, setStatus } from './api.js';
 
+/** 账号按钮：未登录显示 👤；已登录显示用户名 */
 export async function refreshAuth() {
   try {
     const s = await api('GET', '/api/auth/status');
-    if (s.loggedIn) {
-      el.authStatus.textContent = `${s.username} ✓`;
-      el.authStatus.classList.add('logged-in');
-      el.loginBtn.textContent = '退出';
-    } else {
-      el.authStatus.textContent = '未登录';
-      el.authStatus.classList.remove('logged-in');
-      el.loginBtn.textContent = '登录';
-    }
+    state.auth = { loggedIn: !!s.loggedIn, username: s.username || '' };
   } catch {
-    el.authStatus.textContent = '未登录';
+    state.auth = { loggedIn: false, username: '' };
+  }
+  const { loggedIn, username } = state.auth;
+  if (loggedIn) {
+    el.accountBtn.textContent = `👤 ${username}`;
+    el.accountBtn.classList.add('logged-in');
+    el.accountBtn.title = `已登录 ${username}，点击退出`;
+  } else {
+    el.accountBtn.textContent = '👤';
+    el.accountBtn.classList.remove('logged-in');
+    el.accountBtn.title = '登录 Wikidot';
   }
 }
 
+/** 已登录则退出，否则弹出登录框（命令面板与账号按钮共用） */
+export async function toggleLogin() {
+  const status = await api('GET', '/api/auth/status').catch(() => null);
+  if (status?.loggedIn) {
+    await api('POST', '/api/auth/logout');
+    await refreshAuth();
+    setStatus('已退出登录');
+    return;
+  }
+  el.loginUsername.value = '';
+  el.loginPassword.value = '';
+  el.loginDialog.showModal();
+  el.loginUsername.focus();
+}
+
 export function initAuth() {
-  el.loginBtn.addEventListener('click', async () => {
-    const status = await api('GET', '/api/auth/status').catch(() => null);
-    if (status?.loggedIn) {
-      await api('POST', '/api/auth/logout');
-      refreshAuth();
-      return;
-    }
-    el.loginUsername.value = '';
-    el.loginPassword.value = '';
-    el.loginDialog.showModal();
-    el.loginUsername.focus();
-  });
+  el.accountBtn?.addEventListener('click', toggleLogin);
 
   el.loginDialog.querySelector('form').onsubmit = async (e) => {
     e.preventDefault();

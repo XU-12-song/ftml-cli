@@ -88,7 +88,7 @@ async function revertToVersion(v) {
 }
 
 export function initVersions() {
-  el.versionsBtn.addEventListener('click', openVersionsDialog);
+  // 打开入口在命令面板（Ctrl+Alt+V）
   el.versionsRefresh.addEventListener('click', loadVersions);
   el.versionsClose.addEventListener('click', () => el.versionsDialog.close());
 }
