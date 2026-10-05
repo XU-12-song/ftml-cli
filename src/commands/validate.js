@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expand, loadTemplates, findUnresolved } from '../core/expand.js';
 import { loadConfig } from '../infra/config.js';
+import { detectEmbedStructuralEscape } from '../compat/index.js';
 
 function count(str, re) {
   return (str.match(re) ?? []).length;
@@ -69,6 +70,13 @@ export function collectProblems(src, templates, baseDir) {
     if (unresolved.length > 0) {
       errors.push(`未解析的模板调用: ${[...new Set(unresolved)].join(', ')}`);
     }
+  }
+
+  // Wikidot 处理顺序型分歧：[[embed]]/[[html]] 体内裸露的块闭合记号
+  // （见 compat/divergence.js: embed-structural-escape）。只告警不改写。
+  for (const d of detectEmbedStructuralEscape(expanded ?? src)) {
+    const { line, column } = d.position.start;
+    warnings.push(`${line}:${column} ${d.message}`);
   }
 
   return { errors, warnings };

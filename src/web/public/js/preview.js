@@ -49,7 +49,7 @@ export async function render() {
     el.preview.src = nextUrl;
 
     state.lastIncludes = r.includes || [];
-    showDiagnostics(r.diagnostics || []);
+    showDiagnostics(r.diagnostics || [], r.diagnosticReport || '');
     setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}`);
   } catch (e) {
     setError(e.message);

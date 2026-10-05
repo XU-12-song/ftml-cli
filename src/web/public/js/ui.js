@@ -37,11 +37,13 @@ export function highlightActive() {
   if (path?.startsWith('components/')) mark(el.componentList, path.slice('components/'.length, -'.ftml'.length));
 }
 
-export function showDiagnostics(diags) {
+export function showDiagnostics(diags, report = '') {
   const errors = diags.filter((d) => d.severity === 'error').length;
   const warnings = diags.filter((d) => d.severity !== 'error').length;
   el.statusDiag.textContent =
     diags.length === 0 ? '' : `渲染: ${errors} 错误 / ${warnings} 警告`;
+  // 悬停查看带源码上下文的 wdpr 诊断详情
+  el.statusDiag.title = report;
 }
 
 /** include 来源摘要：本地文件 / 磁盘缓存 / 远程拉取 / 未命中 */

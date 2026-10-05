@@ -127,13 +127,16 @@ export async function revert(options) {
   }
 
   const comment = `ftml revert ${to}`;
-  const { revisionsCount } = await pushPageSource({
+  const { revisionsCount, compat } = await pushPageSource({
     siteName,
     pageName,
     source: remote.source,
     comment,
     clientFactory: options.clientFactory,
   });
+  if (compat.changed) {
+    console.log(`· 为兼容 Wikidot 自动补全 ${compat.changes.length} 处行内闭合`);
+  }
 
   appendHistory(config.root, {
     commit_hash: hash,

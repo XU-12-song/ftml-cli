@@ -12,6 +12,7 @@
 
 import { Client } from '@ukwhatn/wikidot';
 import { getCredentials } from './credentials.js';
+import { dirtToIdeal, idealToDirt } from '../compat/index.js';
 
 function unwrap(result, what) {
   if (!result.isOk()) {
@@ -90,11 +91,14 @@ export async function editPage(page, { source, comment }) {
   return unwrap(await page.edit({ source, comment }), '提交');
 }
 
-/** 拉取页面当前源码 */
+/**
+ * 拉取页面当前源码（读取边界：Wikidot 脏源码 → 理想 FTML）。
+ * 线上源码是 Wikidot 宽松语法，进入本地管线前先规范化，避免 wdpr 误判未闭合块。
+ */
 export async function fetchPageSource(page) {
   const src = unwrap(await page.getSource(), '读取页面源码');
-  if (typeof src === 'string') return src; // 兼容 string 返回
-  return src.wikiText ?? ''; // PageSource 对象：源码在 wikiText 字段
+  const raw = typeof src === 'string' ? src : src.wikiText ?? ''; // PageSource 对象：源码在 wikiText 字段
+  return dirtToIdeal(raw).src;
 }
 
 /** 列出页面修订历史（最新在前） */
@@ -103,9 +107,11 @@ export async function fetchRevisions(page) {
   return coll.items ?? coll ?? [];
 }
 
-/** 拉取某个修订的源码 */
+/** 拉取某个修订的源码（读取边界，同样规范化为理想 FTML） */
 export async function fetchRevisionSource(rev) {
-  return unwrap(await rev.getSource(), '读取修订源码');
+  const src = unwrap(await rev.getSource(), '读取修订源码');
+  const raw = typeof src === 'string' ? src : src.wikiText ?? '';
+  return dirtToIdeal(raw).src;
 }
 
 /** 把页面回退到某个修订 */
@@ -116,21 +122,26 @@ export async function revertPage(rev) {
 /**
  * 用源码覆盖线上页面（提交/部署/回退共用）。
  *
+ * 写入边界：入库的源码是理想 FTML，提交前经 idealToDirt 保证 Wikidot 可解析
+ * （合法理想源上是恒等变换；只有未闭合行内标签会被补全）。修复记录随返回值
+ * 一并给出，供上层提示。
+ *
  * 负责客户端生命周期：自己创建的客户端自己关闭；注入的 clientFactory
  * 产生的客户端同样关闭（web 测试注入的 fake client 的 close 是空实现）。
  *
  * @param {object} opts
  * @param {string} opts.siteName
  * @param {string} opts.pageName
- * @param {string} opts.source 要写入的完整 FTML 源码
+ * @param {string} opts.source 要写入的完整 FTML 源码（理想形态）
  * @param {string} opts.comment 编辑注释
  * @param {Function} [opts.clientFactory] 客户端工厂（测试注入用）
- * @returns {Promise<{ revisionsCount: number }>}
+ * @returns {Promise<{ revisionsCount: number, compat: { changed: boolean, changes: Array, diagnostics: Array } }>}
  */
 export async function pushPageSource({ siteName, pageName, source, comment, clientFactory }) {
   if (!siteName || !pageName) {
     throw new Error('缺少 site/page，无法提交 Wikidot。请配置或在命令行指定 --site/--page');
   }
+  const compat = idealToDirt(source);
   const client = await (clientFactory || createClient)();
   try {
     const site = await getSite(client, siteName);
@@ -138,8 +149,8 @@ export async function pushPageSource({ siteName, pageName, source, comment, clie
     if (!page) {
       throw new Error(`页面不存在: ${pageName}。请先创建页面再提交`);
     }
-    await editPage(page, { source, comment });
-    return { revisionsCount: page.revisionsCount };
+    await editPage(page, { source: compat.src, comment });
+    return { revisionsCount: page.revisionsCount, compat: { changed: compat.changed, changes: compat.changes, diagnostics: compat.diagnostics } };
   } finally {
     await client.close?.();
   }

@@ -61,13 +61,16 @@ export async function deploy(options) {
   const source = fs.readFileSync(r.output, 'utf8');
   const siteName = options.site || config.site;
   const pageName = options.page || config.page;
-  const { revisionsCount } = await pushPageSource({
+  const { revisionsCount, compat } = await pushPageSource({
     siteName,
     pageName,
     source,
     comment: message,
     clientFactory: options.clientFactory,
   });
+  if (compat.changed) {
+    console.log(`· 为兼容 Wikidot 自动补全 ${compat.changes.length} 处行内闭合`);
+  }
   writeMajorSnapshot(config.root, majorVersion, source);
   addMajor(config.root, { commit: hash, message, tag, wikidotVersion: revisionsCount });
   appendHistory(config.root, {

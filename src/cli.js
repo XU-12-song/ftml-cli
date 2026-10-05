@@ -11,6 +11,7 @@
  *   watch     监听源文件/模板变化，自动重新构建
  *   submit    构建并提交到 Wikidot 页面（-m 编辑注释）
  *   deploy    构建 + 校验 + 提交（一步部署）
+ *   compat    理想 FTML ↔ Wikidot 兼容转换（--list 查看语言分歧表）
  *   revert    git revert 并回推 Wikidot（撤销提交 + 线上同步回退）
  *   init      初始化 ftml 项目（.ftml/ 结构）
  */
@@ -26,6 +27,7 @@ import { submit } from './commands/submit.js';
 import { deploy } from './commands/deploy.js';
 import { revert } from './commands/revert.js';
 import { preview } from './commands/preview.js';
+import { compat } from './commands/compat.js';
 import { init } from './commands/init.js';
 import { web } from './commands/web.js';
 import { detectGitEnv } from './infra/gitenv.js';
@@ -142,6 +144,20 @@ program
   .option('--open', '生成后用系统浏览器打开')
   .action(async (opts) => {
     await run(() => preview(opts));
+  });
+
+// ---- compat ----
+program
+  .command('compat')
+  .description('理想 FTML ↔ Wikidot 兼容转换（--list 查看分歧表）')
+  .option('-s, --source <file>', '输入文件')
+  .option('-o, --output <file>', '输出文件（默认 stdout）')
+  .option('--to-ideal', 'Wikidot 源码 → 理想 FTML')
+  .option('--to-dirt', '理想 FTML → Wikidot 兼容源码')
+  .option('--list', '列出语言分歧表')
+  .action(async (opts) => {
+    const code = await run(() => compat(opts));
+    process.exitCode = code ?? 0;
   });
 
 // ---- revert ----

@@ -16,6 +16,7 @@ import { loadConfig } from '../infra/config.js';
 import { renderPreview } from '../render/preview.js';
 import { buildPreviewDocument } from '../render/preview-page.js';
 import { buildPageContext } from '../render/context.js';
+import { formatDiagnostics } from '../render/diagnostics.js';
 import { createClient } from '../infra/wikidot.js';
 
 export async function preview(options) {
@@ -56,10 +57,10 @@ export async function preview(options) {
   }
 
   // 3. 报告解析/渲染诊断（不阻断输出）
-  for (const d of diagnostics) {
-    const loc = d.position?.start ? `:${d.position.start.line}` : '';
-    console.error(`警告${loc}: ${d.message}（${d.code}）`);
-  }
+  //    诊断完全来自 @wdprlib（parser/render 的 Diagnostic），这里连同
+  //    severity / position / relatedPosition 一起还原成带源码上下文的输出
+  const report = formatDiagnostics(diagnostics, ftml, { file: r.output });
+  if (report) console.error(report);
 
   // 4. 输出：默认 build 产物同目录的 .html（如 dist/index.ftml → dist/index.html）。
   //    用 buildPreviewDocument 包装为完整文档：@wdprlib/render 只给正文 fragment，

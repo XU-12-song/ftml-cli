@@ -213,6 +213,22 @@ test('validate 端点：干净文件无错误，坏文件报错', async () => {
   }
 });
 
+test('validate 端点：[[embed]] 体内裸闭标签给出结构逃逸告警（非错误）', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const src = '[[collapsible show="a" hide="b"]]\n[[embed]]\n<iframe src="[[/collapsible]]"></iframe>\n[[/embed]]\n';
+      saveProjectFile(root, { path: 'escape.ftml', source: src });
+      const r = await validateProjectFile(root, { path: 'escape.ftml' });
+      assert.equal(r.errors.length, 0, '结构逃逸只告警不报错');
+      assert.ok(r.warnings.some((w) => w.includes('3:14') && w.includes('[[/collapsible]]')));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
 // ---------- deploy / revert（fake client 离线） ----------
 
 /** init + 建 git 仓库并配置 user，提交初始版本 */

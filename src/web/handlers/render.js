@@ -12,6 +12,7 @@ import { loadTemplates, expand } from '../../core/expand.js';
 import { renderPreview } from '../../render/preview.js';
 import { buildPreviewDocument } from '../../render/preview-page.js';
 import { buildPageContext } from '../../render/context.js';
+import { formatDiagnostics } from '../../render/diagnostics.js';
 import { collectProblems } from '../../commands/validate.js';
 import { createClient } from '../../infra/wikidot.js';
 import { loadSettings } from '../../domain/settings.js';
@@ -61,7 +62,9 @@ export async function renderProjectFile(id, body, env = {}) {
       allowNetwork,
     });
     const document = buildPreviewDocument({ html, htmlBlocks, title: config.page || page.fullName });
-    return { html: document, styles, diagnostics, includes, settings };
+    // 诊断来自 @wdprlib；附上带源码上下文的可读文本供前端展示
+    const diagnosticReport = formatDiagnostics(diagnostics, expanded, { file: relPath });
+    return { html: document, styles, diagnostics, diagnosticReport, includes, settings };
   } finally {
     if (ownsClient) await client.close?.();
   }
