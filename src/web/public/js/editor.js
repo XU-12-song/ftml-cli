@@ -5,7 +5,7 @@ import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, showLog } from './api.js';
 import { renderList, highlightActive, renderProblems } from './ui.js';
 import { openNameDialog, openPromptDialog } from './dialogs.js';
-import { saveFile, persistEditor, render, scheduleSaveRender } from './preview.js';
+import { saveFile, persistEditor, render, renderRemote, scheduleSaveRender } from './preview.js';
 import { updateAutocomplete, hideAutocomplete, handleAcKeydown } from './autocomplete.js';
 import { createFtmlEditor } from './cm-editor.js';
 
@@ -128,6 +128,11 @@ export function initEditor() {
   });
 
   el.editor.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+      e.preventDefault();
+      renderRemote(); // 手动刷新：联网补拉远程 include
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       clearTimeout(state.saveTimer);
@@ -150,6 +155,14 @@ export function initEditor() {
     }
     clearTimeout(state.saveTimer);
     render();
+  });
+
+  el.remoteBtn.addEventListener('click', () => {
+    if (!state.projectId || !state.filePath) {
+      setError('请先打开一个文件');
+      return;
+    }
+    renderRemote();
   });
 
   // ---------------- 目标页面 ----------------

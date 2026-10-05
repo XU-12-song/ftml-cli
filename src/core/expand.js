@@ -25,6 +25,7 @@ import path from 'node:path';
 import { escapeString } from './escape.js';
 import { parseFtmx } from './parse-ftmx.js';
 import { FtmlError } from './errors.js';
+import { memoByFile, fileSignature } from '../infra/mtime-cache.js';
 
 export const MAX_DEPTH = 32;
 
@@ -495,13 +496,29 @@ function renderTemplate(tmpl, templates, values, childrenExpanded, name, ctx, st
   return out;
 }
 
+/** 模板表签名：Map 对象 → 其源码文件签名串（用于失效依赖模板的 include 缓存） */
+const signatureByMap = new WeakMap();
+
 /**
- * 从目录加载全部 .ftmx 模板
+ * 取某次 loadTemplates 返回的模板表签名。
+ * 只要目录中任一 .ftmx 的 mtime/size（或文件集合）变化，签名即不同。
+ * @param {Map<string, object>} map loadTemplates 的返回值
+ */
+export function templatesSignature(map) {
+  return signatureByMap.get(map) ?? '';
+}
+
+/**
+ * 从目录加载全部 .ftmx 模板。
+ *
+ * 逐文件按 mtime+size 复用已解析结果（见 infra/mtime-cache.js）：编辑热路径
+ * 每次渲染都调用本函数，未改动的模板不再重复读盘 + 解析。
+ *
  * @param {string} dir 模板目录
  * @returns {Promise<Map<string, object>>}
  */
 export async function loadTemplates(dir) {
-  const { readdir, readFile } = await import('node:fs/promises');
+  const { readdir } = await import('node:fs/promises');
   const map = new Map();
   let entries;
   try {
@@ -509,12 +526,16 @@ export async function loadTemplates(dir) {
   } catch {
     return map; // 目录不存在 → 空模板表
   }
+  const sigParts = [];
   for (const e of entries) {
     if (!e.isFile() || !e.name.endsWith('.ftmx')) continue;
     const name = e.name.slice(0, -'.ftmx'.length);
-    const src = await readFile(path.join(dir, e.name), 'utf8');
-    map.set(name, parseFtmx(src, name));
+    const abs = path.join(dir, e.name);
+    const parsed = memoByFile('templates', abs, () => parseFtmx(readFileSync(abs, 'utf8'), name));
+    if (parsed) map.set(name, parsed);
+    sigParts.push(`${name}:${fileSignature(abs)}`);
   }
+  signatureByMap.set(map, sigParts.sort().join('|'));
   return map;
 }
 

@@ -17,9 +17,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { processWikitext } from '@wdprlib/parser';
 import { renderWikitext, createSettings } from '@wdprlib/render';
-import { expand } from '../core/expand.js';
+import { expand, templatesSignature } from '../core/expand.js';
 import { getSite, getPage, fetchPageSource } from '../infra/wikidot.js';
 import { readPageCache, writePageCache } from '../infra/cache.js';
+import { memoByFile } from '../infra/mtime-cache.js';
 /**
  * 把 include 的 pageRef 解析为本地 .ftml 文件。
  *
@@ -138,30 +139,38 @@ export async function renderPreview(
       fetchInclude: async (pageRef) => {
         const label = { site: pageRef.site ?? page?.site ?? null, page: pageRef.page };
         // 1. 本地文件（基准目录内 .ftml）
-        let source = null;
-        let fileAbs = null;
         if (includeBaseDir) {
-          fileAbs = resolveIncludeFile(pageRef, includeBaseDir, page?.site);
-          if (fileAbs) source = readFileSync(fileAbs, 'utf8');
+          const fileAbs = resolveIncludeFile(pageRef, includeBaseDir, page?.site);
+          if (fileAbs) {
+            includes.push({ ...label, from: 'local', path: fileAbs });
+            // fetchInclude 是热渲染路径里唯一反复发生的「读盘 + 展开」点：
+            // 按文件 mtime/size 复用；模板表变化经 extra 键使缓存失效。
+            return memoByFile(
+              'include',
+              fileAbs,
+              () => {
+                const raw = readFileSync(fileAbs, 'utf8');
+                return includeTemplates
+                  ? expand(raw, includeTemplates, { baseDir: path.dirname(fileAbs) })
+                  : raw;
+              },
+              includeTemplates ? templatesSignature(includeTemplates) : ''
+            );
+          }
         }
-        if (source != null) {
-          includes.push({ ...label, from: 'local', path: fileAbs });
-        } else {
-          // 2. 本地缺失 → 磁盘缓存 / 已登录客户端远程拉取（模板随后统一展开）
-          const r = await fetchRemoteInclude(pageRef, {
-            page,
-            client,
-            warnings: remoteWarnings,
-            allowNetwork,
-          });
-          source = r.source;
-          includes.push({ ...label, from: r.from });
-        }
-        if (source == null) return null;
+        // 2. 本地缺失 → 磁盘缓存 / 已登录客户端远程拉取（模板随后统一展开）
+        const r = await fetchRemoteInclude(pageRef, {
+          page,
+          client,
+          warnings: remoteWarnings,
+          allowNetwork,
+        });
+        includes.push({ ...label, from: r.from });
+        if (r.source == null) return null;
         // 先展开模板/组件，再交回 parser 解析（嵌套 include 由 parser 迭代展开）
         return includeTemplates
-          ? expand(source, includeTemplates, { baseDir: fileAbs ? path.dirname(fileAbs) : includeBaseDir })
-          : source;
+          ? expand(r.source, includeTemplates, { baseDir: includeBaseDir })
+          : r.source;
       },
     }
     : undefined;

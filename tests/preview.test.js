@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { renderPreview, resolveIncludeFile } from '../src/render/preview.js';
 import { buildPreviewDocument } from '../src/render/preview-page.js';
 import { getSite, getPage } from '../src/infra/wikidot.js';
 import { parseFtmx } from '../src/core/parse-ftmx.js';
+import { loadTemplates } from '../src/core/expand.js';
+import { clearMtimeCache } from '../src/infra/mtime-cache.js';
 import { readPageCache } from '../src/infra/cache.js';
 import { makeTmpDir, cleanup, useIsolatedHome } from './helpers/fixtures.js';
 import { fakeRemoteClient, fakeWorld } from './helpers/fake-wikidot.js';
@@ -108,6 +111,45 @@ test('renderPreview 解析本地 [[include]]，目标内模板调用被展开', 
 test('renderPreview 未提供 includeBaseDir 时 include 渲染为占位', async () => {
   const { html } = await renderPreview(`[[include missing]]`);
   assert.ok(html.includes('error-block'));
+});
+
+test('本地 include 按源文件 mtime 复用；源改动或模板变化都会失效重算', async () => {
+  clearMtimeCache();
+  const dir = tmpdir({
+    'tpl/addendum.ftmx': `[[div class="ad"]][[span]]{ title }[[/span]][[/div]]`,
+    'box.ftml': `[[addendum title='AAAA']]\n[[/addendum]]`,
+  });
+  const page = { fullName: 'mysite:main', unixName: 'main', tags: [], site: 'mysite' };
+  const render = async () =>
+    renderPreview('[[include box]]', {
+      page,
+      includeBaseDir: dir,
+      includeTemplates: await loadTemplates(path.join(dir, 'tpl')),
+    });
+  try {
+    const r1 = await render();
+    assert.ok(r1.html.includes('class="ad"'));
+    assert.ok(r1.html.includes('AAAA'));
+
+    // 未改任何文件：再渲染结果一致（走缓存，不报错）
+    const r2 = await render();
+    assert.ok(r2.html.includes('AAAA'));
+
+    // 改 include 源（变长，确保 size 签名变化）→ 重读重展开
+    writeFileSync(path.join(dir, 'box.ftml'), `[[addendum title='BBBBBB']]\n[[/addendum]]`);
+    const r3 = await render();
+    assert.ok(r3.html.includes('BBBBBB'));
+
+    // 只改模板（include 源未动）→ 模板表签名变化 → include 缓存失效重展开
+    writeFileSync(path.join(dir, 'tpl/addendum.ftmx'), `[[div class="ad2"]]{ title }[[/div]]`);
+    const r4 = await render();
+    assert.ok(r4.html.includes('class="ad2"'));
+    assert.ok(r4.html.includes('BBBBBB'));
+  } finally {
+    cleanup(dir);
+    clearMtimeCache('include');
+    clearMtimeCache('templates');
+  }
 });
 
 // ---------- 远程 include 回退（本地缺失 → 已登录客户端拉取） ----------

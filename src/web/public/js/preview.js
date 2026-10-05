@@ -26,7 +26,12 @@ function abortInflightRender() {
   state.renderAbort = null;
 }
 
-export async function render() {
+/**
+ * 渲染当前文件。
+ * @param {{ remote?: boolean }} [opts] remote=true 时允许联网解析远程 [[include]]
+ *   （手动刷新路径）；默认 false：只解析本地文件 + 磁盘缓存，落盘即预览不再等网络。
+ */
+export async function render({ remote = false } = {}) {
   if (!state.projectId || !state.filePath) return;
   // 最新者胜：先取消上一次在飞的渲染，并立刻占住槽位（否则后发者会漏掉它的控制器）
   const ac = new AbortController();
@@ -40,6 +45,7 @@ export async function render() {
       path: state.filePath,
       site: el.siteInput.value.trim() || undefined,
       page: el.pageInput.value.trim() || undefined,
+      allowNetwork: remote, // 仅手动刷新联网；自动预览走本地 + 磁盘缓存
     }, { signal: ac.signal });
 
     if (ac.signal.aborted) return; // 期间又有更新，本次结果作废
@@ -76,7 +82,9 @@ export async function render() {
     el.preview.removeAttribute('srcdoc');   // 防止残留 srcdoc 覆盖
     el.preview.src = nextUrl;
 
-    setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}`);
+    const misses = (state.lastIncludes || []).filter((i) => i.from === 'miss').length;
+    const hint = !remote && misses > 0 ? '（有未命中的远程 include，Ctrl+Shift+R 联网补拉）' : '';
+    setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}${hint}`);
   } catch (e) {
     // 被更新的渲染取代（客户端已中止 / 服务端 409）：静默，交回给后发的那次
     if (isAbortError(e) || e?.superseded || ac.signal.aborted) return;
@@ -84,6 +92,12 @@ export async function render() {
   } finally {
     if (state.renderAbort === ac) state.renderAbort = null;
   }
+}
+
+/** 手动刷新：允许联网解析远程 [[include]]（Ctrl+Shift+R / 工具栏按钮） */
+export function renderRemote() {
+  clearTimeout(state.saveTimer);
+  return render({ remote: true });
 }
 
 export function scheduleSaveRender() {

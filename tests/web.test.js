@@ -26,10 +26,14 @@ import {
   latestOnly,
 } from '../src/web/handlers/index.js';
 import { loadConfig } from '../src/infra/config.js';
+import { saveSettings } from '../src/domain/settings.js';
 import { init } from '../src/commands/init.js';
 import { projectGit, commitAll } from '../src/infra/git.js';
 import { makeTmpDir, cleanup, withHome } from './helpers/fixtures.js';
-import { fakeDeployClient as fakeClient } from './helpers/fake-wikidot.js';
+import { fakeDeployClient as fakeClient, fakeRemoteClient } from './helpers/fake-wikidot.js';
+
+/** 供 fakeRemoteClient 使用的页面桩：getSource 返回固定源码 */
+const remotePage = (src) => ({ getSource: async () => ({ isOk: () => true, value: src }) });
 
 const tmpdir = () => makeTmpDir({}, { prefix: 'ftml-web-' });
 
@@ -234,6 +238,43 @@ test('render 端点：成功时附带 problems（wdpr 诊断归一，位置可�
         assert.ok(['error', 'warning', 'info'].includes(p.severity));
         assert.equal(typeof p.code, 'string');
       }
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：编辑态默认不联网；allowNetwork 才补拉远程 include；useRemoteInclude 总开关可拦截', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      saveProjectFile(root, { path: 'a.ftml', source: '[[include r-auto]]\n' });
+      saveProjectFile(root, { path: 'b.ftml', source: '[[include r-net]]\n' });
+      saveProjectFile(root, { path: 'c.ftml', source: '[[include r-off]]\n' });
+      // 三个不同页名，避免磁盘 include 缓存互相串扰
+      const client = fakeRemoteClient({
+        'r-auto': remotePage('REMOTE-AUTO'),
+        'r-net': remotePage('REMOTE-NET'),
+        'r-off': remotePage('REMOTE-OFF'),
+      });
+
+      // (a) 自动预览（body 无 allowNetwork）→ 不联网，include 记为 miss
+      const a = await renderProjectFile(root, { path: 'a.ftml', site: 'scp-cn', page: 'hello' }, { injectClient: client });
+      assert.ok(a.html);
+      assert.ok(a.includes.some((i) => i.page === 'r-auto' && i.from === 'miss'));
+      assert.ok(!a.html.includes('REMOTE-AUTO'));
+
+      // (b) 手动刷新 allowNetwork:true + 默认 useRemoteInclude:true → 远程拉取并渲染
+      const b = await renderProjectFile(root, { path: 'b.ftml', site: 'scp-cn', page: 'hello', allowNetwork: true }, { injectClient: client });
+      assert.ok(b.includes.some((i) => i.page === 'r-net' && i.from === 'remote'));
+      assert.ok(b.html.includes('REMOTE-NET'));
+
+      // (c) 总开关关闭 → 即便 allowNetwork:true 也不联网
+      saveSettings({ useRemoteInclude: false });
+      const c = await renderProjectFile(root, { path: 'c.ftml', site: 'scp-cn', page: 'hello', allowNetwork: true }, { injectClient: client });
+      assert.ok(c.includes.some((i) => i.page === 'r-off' && i.from === 'miss'));
+      assert.ok(!c.html.includes('REMOTE-OFF'));
     });
   } finally {
     cleanup(root);

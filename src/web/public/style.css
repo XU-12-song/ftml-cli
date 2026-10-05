@@ -1,19 +1,57 @@
+/* ============================================================
+ * ftml web 编辑器样式
+ *
+ * 组织顺序：
+ *   1. 设计 token（变量）
+ *   2. 基础重置 / 排版
+ *   3. 顶栏 · 侧边栏 · 主区（编辑+预览）· 状态栏
+ *   4. 自动补全 · 问题面板 · 对话框
+ *   5. 禅模式
+ *   6. 响应式 / 可用性
+ *
+ * 布局分栏统一用 flex（flex: 1 1 0），不再用 width:50% + !important。
+ * ============================================================ */
+
+/* ---------- 1. 设计 token ---------- */
 :root {
-  --bg: #1e1f22;
-  --bg-soft: #2b2d31;
-  --bg-input: #3a3d42;
-  --border: #4a4d53;
-  --fg: #d6d8dc;
-  --fg-dim: #8a8f98;
-  --accent: #4f8cff;
+  /* 表面 */
+  --bg: #1b1d21;
+  --bg-soft: #24262b;
+  --bg-input: #2e3137;
+  --bg-hover: #363941;
+  --border: #3a3d44;
+  --border-soft: rgba(255, 255, 255, 0.06);
+
+  /* 前景 */
+  --fg: #d7dae0;
+  --fg-dim: #8b919b;
+
+  /* 强调色 */
+  --accent: #5b8cff;
+  --accent-hover: #7099ff;
+  --accent-soft: rgba(91, 140, 255, 0.14);
   --danger: #e5534b;
+  --danger-soft: rgba(229, 83, 75, 0.14);
   --ok: #3fb950;
   --warn: #d29922;
+
+  /* 形状 / 层次 */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --ring: 0 0 0 2px rgba(91, 140, 255, 0.5);
+
+  /* 字体 */
+  --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "SF Mono", "JetBrains Mono", Consolas, Menlo, monospace;
+
+  /* 尺寸 */
   --sidebar-w: 240px;
   --topbar-h: 46px;
   --statusbar-h: 26px;
 }
 
+/* ---------- 2. 基础 ---------- */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body { height: 100%; }
@@ -23,13 +61,31 @@ body {
   flex-direction: column;
   background: var(--bg);
   color: var(--fg);
-  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font: 13px/1.5 var(--sans);
   overflow: hidden;
 }
 
-button { cursor: pointer; }
+button { cursor: pointer; font-family: inherit; }
 
-/* ---------- 顶栏 ---------- */
+/* 暗色下统一细滚动条（Firefox + WebKit），避免亮色条破坏暗色主题 */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); background-clip: padding-box; }
+
+/* 键盘导航焦点环：只在键盘操作时出现，鼠标点击不显示 */
+:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
+
+.hidden { display: none !important; }
+.flex-1 { flex: 1; }
+
+/* ---------- 3a. 顶栏 ---------- */
 #topbar {
   display: flex;
   align-items: center;
@@ -51,11 +107,14 @@ select, input {
   background: var(--bg-input);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   font-size: 12px;
+  font-family: inherit;
   outline: none;
+  transition: border-color 0.12s, background 0.12s;
 }
+select:hover, input:hover { border-color: var(--bg-hover); }
 select:focus, input:focus { border-color: var(--accent); }
 
 #project-select { min-width: 130px; max-width: 200px; }
@@ -66,25 +125,29 @@ select:focus, input:focus { border-color: var(--accent); }
   background: var(--bg-input);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 10px;
   font-size: 12px;
   white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.btn:hover { background: #44474d; }
+.btn:hover { background: var(--bg-hover); border-color: var(--bg-hover); }
+.btn:active { transform: translateY(1px); }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: #6ea0ff; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
-.btn-danger:hover { background: rgba(229, 83, 75, 0.15); }
+.btn-danger:hover { background: var(--danger-soft); }
 .btn-warn { border-color: var(--warn); color: var(--warn); }
 .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.btn[disabled]:active { transform: none; }
 
 .auth { color: var(--fg-dim); font-size: 12px; }
 .auth.logged-in { color: var(--ok); }
 
-.hidden { display: none !important; }
+/* 桌面端侧边栏常驻，☰ 抽屉按钮无意义 → 默认隐藏，移动端再显示 */
+#menu-toggle { display: none; }
 
-/* ---------- 主体 ---------- */
+/* ---------- 3b. 侧边栏 ---------- */
 #body { flex: 1; display: flex; min-height: 0; }
 
 #sidebar {
@@ -112,6 +175,7 @@ select:focus, input:focus { border-color: var(--accent); }
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.sb-head-btns { display: flex; gap: 4px; }
 .sb-add {
   background: none;
   border: 1px solid var(--border);
@@ -121,6 +185,7 @@ select:focus, input:focus { border-color: var(--accent); }
   height: 18px;
   font-size: 12px;
   line-height: 1;
+  transition: color 0.12s, border-color 0.12s;
 }
 .sb-add:hover { color: var(--fg); border-color: var(--accent); }
 
@@ -133,9 +198,21 @@ select:focus, input:focus { border-color: var(--accent); }
   overflow: hidden;
   text-overflow: ellipsis;
   position: relative;
+  transition: background 0.1s;
 }
-.sb-list li:hover { background: var(--bg-input); }
-.sb-list li.active { background: var(--accent); color: #fff; }
+/* 激活项左侧高亮条，比整块反白更克制 */
+.sb-list li.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+.sb-list li:hover { background: var(--bg-hover); }
+.sb-list li.active { background: var(--accent-soft); color: var(--fg); }
+.sb-list li.active::before { background: var(--accent); }
 .sb-list li .sb-keys {
   color: var(--fg-dim);
   font-size: 11px;
@@ -152,18 +229,8 @@ select:focus, input:focus { border-color: var(--accent); }
 .sb-list li.sb-muted:hover { background: transparent; }
 
 /* 代码片段行：名称 + 前缀 + 悬停删除，均不横向溢出 */
-.sb-list li.snip-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-right: 6px;
-}
-.sb-list li.snip-row .snip-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.sb-list li.snip-row { display: flex; align-items: center; gap: 6px; padding-right: 6px; }
+.sb-list li.snip-row .snip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sb-list li.snip-row .snip-prefix {
   flex-shrink: 1;
   min-width: 0;
@@ -171,7 +238,7 @@ select:focus, input:focus { border-color: var(--accent); }
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--fg-dim);
-  font: 11px "SF Mono", Consolas, Menlo, monospace;
+  font: 11px var(--mono);
 }
 .sb-del {
   flex-shrink: 0;
@@ -185,49 +252,51 @@ select:focus, input:focus { border-color: var(--accent); }
   visibility: hidden;
 }
 .sb-list li:hover .sb-del { visibility: visible; }
-.sb-del:hover { color: var(--danger); background: rgba(229, 83, 75, 0.15); }
+.sb-del:hover { color: var(--danger); background: var(--danger-soft); }
 
+/* ---------- 3c. 主区：编辑 + 预览 ---------- */
 #main {
   flex: 1;
   display: flex;
   min-width: 0;
+  min-height: 0;
   position: relative;
 }
 
+/* 两栏各占一半：flex: 1 1 0 保证等分且可收缩，无需 width:50% + !important */
 #editor-container {
-  width: 50%;
-  height: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--bg);
   border-right: 1px solid var(--border);
 }
+#preview-pane { flex: 1 1 0; min-width: 0; min-height: 0; }
+#preview { width: 100%; height: 100%; border: none; background: #fff; display: block; }
 
-#preview-pane { width: 50%; height: 100%; }
-#preview { width: 100%; height: 100%; border: none; background: #fff; }
-
-/* ---------- 自动补全 ---------- */
-#autocomplete {
-  position: absolute;
-  z-index: 30;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  min-width: 180px;
-  max-width: 320px;
-  max-height: 220px;
-  overflow-y: auto;
-  overflow-x: hidden;
+/* 上下布局（编辑器上，预览下） */
+#main.layout-bottom { flex-direction: column; }
+#main.layout-bottom #editor-container {
+  border-right: none;
+  border-bottom: 1px solid var(--border);
 }
-#autocomplete div {
-  padding: 4px 10px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-#autocomplete div .ac-keys { color: var(--fg-dim); font-size: 11px; margin-left: 6px; }
-#autocomplete div:hover, #autocomplete div.sel { background: var(--accent); color: #fff; }
-#autocomplete div.sel .ac-keys { color: rgba(255, 255, 255, 0.8); }
 
-/* ---------- 状态栏 ---------- */
+/* CodeMirror 容器自适应 */
+.cm-editor { height: 100% !important; font-size: 13px; font-family: var(--mono); }
+.cm-scroller { overflow: auto !important; }
+.cm-tooltip-autocomplete {
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--fg) !important;
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+/* ---------- 3d. 状态栏 ---------- */
 #statusbar {
   display: flex;
   align-items: center;
@@ -242,12 +311,47 @@ select:focus, input:focus { border-color: var(--accent); }
 }
 #statusbar .err { color: var(--danger); }
 #status-diagnostics { color: var(--warn); }
+#status-diagnostics:empty { display: none; }
 #status-diagnostics.has-warning { cursor: pointer; }
 #status-diagnostics.has-error { color: var(--danger); cursor: pointer; }
 #status-diagnostics.has-error:hover,
 #status-diagnostics.has-warning:hover { text-decoration: underline; }
 
-/* ---------- 问题面板（渲染错误/警告 + 位置 + 堆栈） ---------- */
+/* ---------- 4a. 自动补全 ---------- */
+#autocomplete {
+  position: absolute;
+  z-index: 30;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  min-width: 180px;
+  max-width: 320px;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#autocomplete div { padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+#autocomplete div .ac-keys { color: var(--fg-dim); font-size: 11px; margin-left: 6px; }
+#autocomplete div:hover, #autocomplete div.sel { background: var(--accent); color: #fff; }
+#autocomplete div.sel .ac-keys { color: rgba(255, 255, 255, 0.8); }
+
+/* 两行条目（名字 + 将插入的完整标签预览） */
+#autocomplete div.ac-item { display: flex; flex-direction: column; gap: 1px; padding: 4px 10px; }
+#autocomplete div.ac-item .ac-label { font-weight: 600; }
+#autocomplete div.ac-item .ac-preview {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+#autocomplete div.ac-item.sel .ac-preview { color: rgba(255, 255, 255, 0.8); }
+
+/* ---------- 4b. 问题面板 ---------- */
 #problems-dialog { min-width: 560px; max-width: 90vw; }
 .problem-list {
   list-style: none;
@@ -261,20 +365,15 @@ select:focus, input:focus { border-color: var(--accent); }
   border-left: 3px solid var(--warn);
   border-radius: 3px;
   margin-bottom: 4px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--border-soft);
 }
 .problem-error { border-left-color: var(--danger); }
 .problem-info { border-left-color: var(--fg-dim); }
 .problem.jumpable { cursor: pointer; }
-.problem.jumpable:hover { background: rgba(255, 255, 255, 0.07); }
-.problem-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-}
+.problem.jumpable:hover { background: rgba(255, 255, 255, 0.08); }
+.problem-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
 .problem-loc {
-  font-family: "SF Mono", Consolas, Menlo, monospace;
+  font-family: var(--mono);
   color: var(--fg-dim);
   flex-shrink: 0;
   min-width: 42px;
@@ -296,7 +395,7 @@ select:focus, input:focus { border-color: var(--accent); }
   font-size: 11px;
   color: var(--fg-dim);
   margin-top: 2px;
-  font-family: "SF Mono", Consolas, Menlo, monospace;
+  font-family: var(--mono);
 }
 .problem-stack { margin-top: 4px; }
 .problem-stack summary { font-size: 11px; color: var(--fg-dim); cursor: pointer; }
@@ -315,52 +414,30 @@ select:focus, input:focus { border-color: var(--accent); }
   overflow-y: auto;
 }
 
-/* ---------- 对话框 ---------- */
+/* ---------- 4c. 对话框 ---------- */
 dialog {
   background: var(--bg-soft);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 16px;
   min-width: 300px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
 }
-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 dialog h3 { font-size: 14px; margin-bottom: 10px; }
-dialog input {
-  display: block;
-  width: 100%;
-  margin-bottom: 8px;
-}
+dialog input { display: block; width: 100%; margin-bottom: 8px; }
 .dialog-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 
 #log-dialog { min-width: 480px; max-width: 680px; }
-.flex-1 { flex: 1; }
 
 /* 表单标签 / 提示（snippet、prompt、settings 对话框共用） */
-.dlg-label {
-  display: block;
-  font-size: 11px;
-  color: var(--fg-dim);
-  margin: 4px 0 2px;
-}
-.dlg-hint {
-  font-size: 11px;
-  color: var(--fg-dim);
-  margin: 2px 0 4px;
-  line-height: 1.6;
-}
-.dlg-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 6px 0;
-  font-size: 12px;
-}
-.dlg-row input[type="checkbox"] {
-  display: inline-block;
-  width: auto;
-  margin: 0;
-}
+.dlg-label { display: block; font-size: 11px; color: var(--fg-dim); margin: 4px 0 2px; }
+.dlg-hint { font-size: 11px; color: var(--fg-dim); margin: 2px 0 4px; line-height: 1.6; }
+.dlg-row { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; }
+.dlg-row input[type="checkbox"] { display: inline-block; width: auto; margin: 0; }
 
 dialog textarea {
   display: block;
@@ -370,27 +447,19 @@ dialog textarea {
   background: var(--bg-input);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 6px 8px;
-  font: 12px/1.5 "SF Mono", Consolas, Menlo, monospace;
+  font: 12px/1.5 var(--mono);
   outline: none;
 }
 dialog textarea:focus { border-color: var(--accent); }
 
-/* 代码片段编辑对话框 */
 #snippet-dialog { min-width: 380px; max-width: 92vw; }
-
-/* 通用输入弹窗（deploy / revert 提交说明） */
 #prompt-dialog { min-width: 380px; max-width: 92vw; }
 
 /* 版本列表 / 回退 */
 #versions-dialog { min-width: 620px; max-width: 94vw; }
-#versions-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  margin: 6px 0;
-}
+#versions-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
 #versions-table th {
   text-align: left;
   color: var(--fg-dim);
@@ -401,16 +470,16 @@ dialog textarea:focus { border-color: var(--accent); }
 }
 #versions-table td {
   padding: 4px 8px;
-  border-bottom: 1px solid rgba(74, 77, 83, 0.5);
+  border-bottom: 1px solid var(--border-soft);
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#versions-table tbody tr:hover { background: rgba(79, 140, 255, 0.08); }
+#versions-table tbody tr:hover { background: var(--accent-soft); }
 #versions-table .ver-major { color: var(--accent); font-weight: 600; }
 #versions-table .ver-minor { color: var(--fg-dim); }
-#versions-table .ver-commit { font-family: "SF Mono", Consolas, Menlo, monospace; color: var(--fg-dim); }
+#versions-table .ver-commit { font-family: var(--mono); color: var(--fg-dim); }
 #versions-table td:last-child, #versions-table th:last-child { text-align: right; }
 #versions-table .btn { padding: 2px 8px; }
 #versions-table .btn[disabled] { opacity: 0.4; cursor: not-allowed; }
@@ -420,41 +489,47 @@ dialog textarea:focus { border-color: var(--accent); }
 /* 设置对话框 */
 #settings-dialog { min-width: 420px; max-width: 92vw; }
 #settings-dialog select { width: 100%; }
-#settings-dialog .dlg-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
+#settings-dialog .dlg-hint { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 #settings-dialog .dlg-hint .btn { padding: 2px 8px; }
 
-/* 侧边栏分组头部的按钮组（片段导入/导出/新建） */
-.sb-head-btns { display: flex; gap: 4px; }
+/* 日志对话框 */
 #log-content {
   max-height: 360px;
   overflow-y: auto;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
-  font: 12px/1.5 "SF Mono", Consolas, Menlo, monospace;
+  font: 12px/1.5 var(--mono);
   white-space: pre-wrap;
   word-break: break-all;
 }
 #log-content .log-err { color: var(--danger); }
 #log-content .log-warn { color: var(--warn); }
-/* 移动端适配 */
+
+/* ---------- 5. 禅模式 ---------- */
+/* 只保留编辑区与预览：顶栏 / 侧边栏 / 状态栏全部隐藏 */
+body.zen #topbar,
+body.zen #sidebar,
+body.zen #statusbar,
+body.zen #sidebar-overlay { display: none !important; }
+
+/* 退出按钮：仅禅模式下出现，平日不占位 */
+#zen-exit {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 60;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+#zen-exit:hover, #zen-exit:focus-visible { opacity: 1; }
+
+/* ---------- 6a. 响应式（<= 768px） ---------- */
 @media (max-width: 768px) {
   /* 顶栏换行 */
-  #topbar {
-    flex-wrap: wrap;
-    height: auto;
-    padding: 6px 8px;
-    gap: 4px 8px;
-  }
-  #topbar .group {
-    flex-wrap: wrap;
-  }
+  #topbar { flex-wrap: wrap; height: auto; padding: 6px 8px; gap: 4px 8px; }
+  #topbar .group { flex-wrap: wrap; }
 
   #menu-toggle { display: inline-block; }
   #layout-toggle { display: none; }
@@ -471,114 +546,29 @@ dialog textarea:focus { border-color: var(--accent); }
     transition: transform 0.25s ease;
     background: var(--bg-soft);
     border-right: 1px solid var(--border);
-    overflow-y: auto;
     padding: 8px 0;
-    /* 覆盖原有 display:none */
-    display: block;
   }
-  #sidebar.open {
-    transform: translateX(0);
-  }
+  #sidebar.open { transform: translateX(0); }
 
-  /* 主区域垂直排列 */
-  #main {
-    flex-direction: column;
-  }
-  #editor-container, #preview-pane {
-    width: 100% !important;
-    height: 50% !important;
-    border-right: none;
-  }
-  #preview-pane {
-    border-top: 1px solid var(--border);
-  }
-  /* 适当增大输入框和按钮触摸区域 */
-  select, input, .btn {
-    font-size: 14px;
-    padding: 6px 10px;
-    min-height: 36px;
-  }
-  .sb-list li {
-    padding: 6px 12px 6px 22px;
-    font-size: 14px;
-  }
-  dialog {
-    min-width: 90vw;
-    max-width: 90vw;
-  }
+  /* 主区域改为上下排列 */
+  #main { flex-direction: column; }
+  #editor-container { border-right: none; border-bottom: 1px solid var(--border); }
+
+  /* 增大触摸区域 */
+  select, input, .btn { font-size: 14px; padding: 6px 10px; min-height: 36px; }
+  .sb-list li { padding: 6px 12px 6px 22px; font-size: 14px; }
+  .sb-list li.sb-muted,
+  .sb-list li.snip-row { font-size: 14px; padding-top: 6px; padding-bottom: 6px; }
+  #save-btn { font-size: 14px; padding: 6px 14px; }
+
+  dialog { min-width: 90vw; max-width: 90vw; }
   #snippet-dialog, #prompt-dialog, #settings-dialog { min-width: 90vw; max-width: 90vw; }
   #versions-dialog { min-width: 94vw; max-width: 94vw; }
   #problems-dialog { min-width: 92vw; max-width: 92vw; }
   #versions-table td { max-width: 120px; }
-  .sb-list li.sb-muted,
-  .sb-list li.snip-row {
-    font-size: 14px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-  /* 如果希望显示保存按钮更突出，可以调整样式 */
-  #save-btn {
-    font-size: 14px;
-    padding: 6px 14px;
-  }
-}
-/* CodeMirror 容器自适应 */
-#editor-container {
-  overflow: hidden;
 }
 
-.cm-editor {
-  height: 100% !important;
-  font-size: 13px;
-  font-family: "SF Mono", Consolas, "JetBrains Mono", Menlo, monospace;
-}
-.cm-scroller {
-  overflow: auto !important;
-}
-.cm-tooltip-autocomplete {
-  background: var(--bg-soft) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 4px !important;
-  color: var(--fg) !important;
-}
-.cm-tooltip-autocomplete > ul > li[aria-selected] {
-  background: var(--accent) !important;
-  color: #fff !important;
-}
-
-/* 自动补全：两行条目（名字 + 将插入的完整标签预览） */
-#autocomplete div.ac-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 4px 10px;
-}
-#autocomplete div.ac-item .ac-label { font-weight: 600; }
-#autocomplete div.ac-item .ac-preview {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-dim);
-  font-family: "SF Mono", Consolas, "JetBrains Mono", Menlo, monospace;
-  font-size: 11px;
-}
-#autocomplete div.ac-item.sel .ac-preview { color: rgba(255, 255, 255, 0.8); }
-
-/* 移动端适配：编辑器容器随布局变化 */
-@media (max-width: 768px) {
-  #editor-container {
-    width: 100% !important;
-    height: 50% !important;
-  }
-}
-
-/* 触屏设备：无悬停，删除按钮常显 */
-@media (hover: none) {
-  .sb-del { visibility: visible; }
-}
-/* 侧边栏遮罩 */
+/* 侧边栏遮罩（移动端抽屉打开时） */
 #sidebar-overlay {
   display: none;
   position: fixed;
@@ -586,20 +576,20 @@ dialog textarea:focus { border-color: var(--accent); }
   background: rgba(0, 0, 0, 0.4);
   z-index: 99;
 }
-#sidebar-overlay:not(.hidden) {
-  display: block;
+#sidebar-overlay:not(.hidden) { display: block; }
+
+/* ---------- 6b. 可用性 ---------- */
+/* 触屏设备：无悬停，删除按钮常显 */
+@media (hover: none) {
+  .sb-del { visibility: visible; }
 }
 
-/* 上下布局（编辑器上，预览下） */
-#main.layout-bottom {
-  flex-direction: column;
-}
-#main.layout-bottom #editor-container,
-#main.layout-bottom #preview-pane {
-  width: 100% !important;
-  height: 50% !important;
-}
-#main.layout-bottom #editor-container {
-  border-right: none;
-  border-bottom: 1px solid var(--border);
+/* 尊重系统的"减少动态效果"偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .btn:active { transform: none; }
 }

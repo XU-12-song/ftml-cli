@@ -9,19 +9,19 @@
 <body>
   <header id="topbar">
     <div class="brand">ftml<span class="brand-sub">editor</span></div>
-    <!-- 在 <header id="topbar"> 中的 .brand 之后 -->
-<button id="menu-toggle" class="btn" aria-label="菜单" title="显示侧边栏">☰</button>
+    <button id="menu-toggle" class="btn" aria-label="菜单" title="显示侧边栏">☰</button>
 
-<!-- 在登录按钮组之前（或之后）添加布局切换按钮 -->
-<div class="group">
-  <button id="layout-toggle" class="btn" title="切换编辑器/预览布局">↕</button>
-</div>
-<!-- 在 #topbar 中，登录按钮组之前 -->
-<div class="group">
-  <button id="save-btn" class="btn btn-primary" title="保存当前文件">💾 保存</button>
-</div>
     <div class="group">
+      <button id="save-btn" class="btn btn-primary" title="保存当前文件（Ctrl+S）">💾 保存</button>
+      <button id="remote-btn" class="btn" title="联网解析远程 include（Ctrl+Shift+R）；自动预览只用本地与磁盘缓存">⟳ 远程</button>
+    </div>
 
+    <div class="group">
+      <button id="layout-toggle" class="btn" title="切换编辑器/预览布局（左右 / 上下）">↕</button>
+      <button id="zen-btn" class="btn" title="禅模式（Ctrl+Shift+F）" aria-label="禅模式">禅</button>
+    </div>
+
+    <div class="group">
       <select id="project-select" title="项目"></select>
       <button id="add-project-btn" class="btn" title="添加已有项目（输入目录路径）">＋项目</button>
       <button id="new-repo-btn" class="btn" title="在仓库分区新建 ftml 仓库">＋仓库</button>
@@ -95,6 +95,8 @@
       </div>
     </main>
   </div>
+
+  <button id="zen-exit" class="btn hidden" title="退出禅模式（Esc）">✕ 退出禅模式</button>
 
   <footer id="statusbar">
     <span id="status-text">就绪</span>

@@ -68,7 +68,10 @@ export async function renderProjectFile(id, body, env = {}) {
 
     const page = buildPageContext({ site: config.site, page: config.page });
 
-    const allowNetwork = body?.allowNetwork ?? settings.useRemoteInclude;
+    // 编辑态默认不联网：自动预览只解析本地 .ftml + 磁盘缓存，避免每次落盘都
+    // 建客户端登录 + 发远程请求。只有前端显式请求（手动刷新 allowNetwork:true）
+    // 才联网，且仍受 settings.useRemoteInclude 总开关约束。
+    const allowNetwork = body?.allowNetwork === true && settings.useRemoteInclude;
 
     let client = env.injectClient ?? null;
     let ownsClient = false;
