@@ -244,6 +244,29 @@ test('render 端点：成功时附带 problems（wdpr 诊断归一，位置可�
   }
 });
 
+test('render 端点：full=false 只回正文片段（供前端原地补丁）', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      const body = { path: 'index.ftml', site: 'scp-cn', page: 'hello' };
+      const full = await renderProjectFile(root, body, { injectClient: client });
+      const frag = await renderProjectFile(root, { ...body, full: false }, { injectClient: client });
+
+      assert.equal(frag.html, null); // 不打包沙盒外壳
+      assert.equal(frag.title, 'hello');
+      assert.ok(frag.fragment.includes('★ Hi')); // 正文仍在
+      assert.ok(!frag.fragment.includes('initWdprRuntime')); // 外壳没混进来
+      assert.ok(Array.isArray(frag.htmlBlocks));
+      // 完整模式只是把同一份片段包进外壳
+      assert.ok(full.html.includes(frag.fragment));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
 test('render：编辑态默认不联网；allowNetwork 才补拉远程 include；useRemoteInclude 总开关可拦截', async () => {
   const root = makeFixtureProject();
   try {

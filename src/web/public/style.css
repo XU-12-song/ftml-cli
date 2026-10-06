@@ -297,6 +297,25 @@ select:focus, input:focus { border-color: var(--accent); }
   background: var(--accent) !important;
   color: #fff !important;
 }
+.cm-tooltip-autocomplete .cm-completionLabel { font-weight: 600; }
+.cm-tooltip-autocomplete .cm-completionMatchedText {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+}
+.cm-tooltip-autocomplete .cm-completionDetail {
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-style: normal;
+  margin-left: 8px;
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail,
+.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionMatchedText { color: rgba(255, 255, 255, 0.85); }
+.cm-tooltip-autocomplete .cm-completionIcon { opacity: 0.75; }
+.cm-tooltip-autocomplete .cm-completionIcon-template,
+.cm-tooltip-autocomplete .cm-completionIcon-tag { color: var(--accent); }
+.cm-tooltip-autocomplete .cm-completionIcon-property { color: var(--warn); }
+.cm-tooltip-autocomplete .cm-completionIcon-method { color: var(--ok); }
 
 /* ---------- 3d. 状态栏 ---------- */
 #statusbar {
@@ -333,40 +352,6 @@ select:focus, input:focus { border-color: var(--accent); }
 #status-diagnostics.has-error { color: var(--danger); cursor: pointer; }
 #status-diagnostics.has-error:hover,
 #status-diagnostics.has-warning:hover { text-decoration: underline; }
-
-/* ---------- 4a. 自动补全 ---------- */
-#autocomplete {
-  position: absolute;
-  z-index: 30;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
-  min-width: 180px;
-  max-width: 320px;
-  max-height: 220px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-#autocomplete div { padding: 4px 10px; cursor: pointer; white-space: nowrap; }
-#autocomplete div .ac-keys { color: var(--fg-dim); font-size: 11px; margin-left: 6px; }
-#autocomplete div:hover, #autocomplete div.sel { background: var(--accent); color: #fff; }
-#autocomplete div.sel .ac-keys { color: rgba(255, 255, 255, 0.8); }
-
-/* 两行条目（名字 + 将插入的完整标签预览） */
-#autocomplete div.ac-item { display: flex; flex-direction: column; gap: 1px; padding: 4px 10px; }
-#autocomplete div.ac-item .ac-label { font-weight: 600; }
-#autocomplete div.ac-item .ac-preview {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-dim);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-#autocomplete div.ac-item.sel .ac-preview { color: rgba(255, 255, 255, 0.8); }
 
 /* ---------- 4b. 问题面板 ---------- */
 #problems-dialog { min-width: 560px; max-width: 90vw; }

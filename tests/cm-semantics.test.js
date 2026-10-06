@@ -69,6 +69,32 @@ test('macroBracketPairs：惰性区闭标签整体成 token，且 [[div]] 在体
   assert.equal(src.slice(pairs[ 1 ].closeFrom, pairs[ 1 ].closeTo), '[[/span]]');
 });
 
+test('macroBracketPairs：`_` 变体用不带下划线的名字闭合（[[div_]]…[[/div]]）', () => {
+  const src = '[[div_]]x[[/div]]';
+  const pairs = macroBracketPairs(src);
+  assert.equal(pairs.length, 1, '`div_` 应能与 `[[/div]]` 配上');
+  assert.equal(src.slice(pairs[ 0 ].openFrom, pairs[ 0 ].openTo), '[[div_]]');
+  assert.equal(src.slice(pairs[ 0 ].closeFrom, pairs[ 0 ].closeTo), '[[/div]]');
+  assert.equal(bracketPairAt(3, pairs)?.close.from, pairs[ 0 ].closeFrom, '光标在 `div_` 内也应命中');
+});
+
+test('macroBracketPairs：嵌套 `_` 变体逐层配对，同名时取最近的开标签', () => {
+  const src = '[[div_]]a[[div_]]b[[/div]]c[[/div]]';
+  const pairs = macroBracketPairs(src);
+  assert.equal(pairs.length, 2);
+  // pairs 按 openFrom 排序：先外层（0）后内层（9）
+  assert.deepEqual(
+    pairs.map((p) => [ p.openFrom, src.slice(p.closeFrom, p.closeTo) ]),
+    [ [ 0, '[[/div]]' ], [ 9, '[[/div]]' ] ]
+  );
+  assert.ok(pairs[ 0 ].closeFrom > pairs[ 1 ].closeFrom, '外层闭标签在内层之后');
+  assert.equal(src.slice(pairs[ 1 ].openFrom, pairs[ 1 ].openTo), '[[div_]]');
+});
+
+test('macroBracketPairs：`_` 归一化不影响普通名字的区分（[[div]] 不配 [[/span]]）', () => {
+  assert.deepEqual(macroBracketPairs('[[div]]x[[/span]]'), []);
+});
+
 test('macroBracketPairs：自闭合标签（[[toc]]）不产生配对', () => {
   assert.deepEqual(macroBracketPairs('[[toc]]\n[[div]]x[[/div]]'), [
     { openFrom: 8, openTo: 15, closeFrom: 16, closeTo: 24 },

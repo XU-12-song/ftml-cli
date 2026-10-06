@@ -23,6 +23,7 @@ const PKGS = [
   '@codemirror/view',
   '@codemirror/language',
   '@codemirror/commands',
+  '@codemirror/autocomplete',
   '@lezer/highlight',
 ];
 

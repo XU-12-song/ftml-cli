@@ -13,7 +13,7 @@
  * - 编辑器设置（自动预览间隔、样式模式、include 联网开关 + 缓存管理）
  *
  * 模块划分：dom（元素/状态）→ api（请求/状态栏）→ ui · dialogs · wiki →
- * preview（保存/渲染）→ autocomplete · editor → 各业务面板（projects / versions /
+ * preview（保存/渲染）→ completion · editor → 各业务面板（projects / versions /
  * snippets / settings / git / auth）→ layout · main（装配与启动）。
  */
 import { state } from './dom.js';

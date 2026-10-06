@@ -9,10 +9,16 @@
  *   浏览器里可用。runtime 源码自包含（无外部 import），运行时随预览文件一起走，无需网络。
  *
  * runtime 源码通过 import.meta.resolve('@wdprlib/runtime') 在构建时读取并内联。
+ *
+ * 热补丁桥：外壳（含 43KB 内联 runtime + 两条远程样式表）只加载一次。脚本同时定义
+ * window.__ftmlPatch(payload)，父页在后续渲染时只需把正文片段推进来，即可原地替换
+ * #page-content 并重建 runtime（initWdprRuntime 返回 destroy() 句柄），避免整篇 iframe
+ * 重载带来的 runtime 重解析与远程样式表重发。首屏正文仍直接内联在 HTML 里。
  */
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { THEME_SOURCES } from './theme.js';
 
 
 let runtimeSourceCache = null;
@@ -32,18 +38,34 @@ function runtimeSource() {
  * @param {object} opts
  * @param {string} opts.html @wdprlib/render 输出的正文 fragment（styleMode: 'inline'，
  *                           [[module CSS]] 已含在 html 里）
- * @param {Array<string>} [opts.styles] 收集到的 CSS 段（单独以 <style> 追加）
+ * @param {Array<string>} [opts.styles] 收集到的 CSS 段（集中放进 <style id="ftml-styles">，
+ *                                     便于热补丁整段替换）
  * @param {string} [opts.title] 文档标题（默认 "ftml preview"）
+ * @param {string} [opts.themeCss] 本地化的主题样式表（src/render/theme.js）。给了就内联，
+ *                                 否则退回远程 @import —— @import 是异步加载，失败/慢时
+ *                                 文档会先按无样式渲染（纯黑白），且该状态随网络命中与否
+ *                                 在每次整篇重载间闪烁。
  * @returns {string} 完整 HTML 文档字符串
  */
 
 /**
  * 构建预览文档 – 使用 Wikidot 沙盒站模板
  */
-export function buildPreviewDocument({ html,htmlBlocks=[], styles = [], title = 'ftml preview' }) {
-  const styleTags = styles.map((s) => `<style>${s}</style>`).join('\n');
+export function buildPreviewDocument({ html,htmlBlocks=[], styles = [], title = 'ftml preview', themeCss = '' }) {
+  const styleCss = styles.join('\n');
+  // 主题：优先内联本地缓存（同步、离线可用），拿不到才退回远程 @import。
+  // 内联的 CSS 里若有 </style 会提前闭合标签，按脚本内联同样手法打散。
+  const themeBlock = themeCss
+    ? themeCss.replace(/<\/style/gi, '<\\/style')
+    : [
+      '        /* theme（主题缓存不可用，退回远程 @import：异步加载，可能先以无样式渲染） */',
+      `        @import url(${THEME_SOURCES[0]});`,
+      `        @import url(${THEME_SOURCES[1]});`,
+    ].join('\n');
   const runtimeInline = runtimeSource()
     .replace(/<\/script/gi, '<\\/script');
+  // 内联进 <script> 的 JSON：把 < 全部转义成 \u003c，杜绝 </script / <!-- 提前闭合脚本
+  const blocksJson = JSON.stringify(htmlBlocks).replace(/</g, '\\u003c');
 
   // 标题转义
   const titleEscaped = title
@@ -63,18 +85,16 @@ export function buildPreviewDocument({ html,htmlBlocks=[], styles = [], title = 
     <meta http-equiv="content-language" content="cn"/>
 
     <style type="text/css" id="internal-style">
-        
+
         /* modules */
-        
-                
-        /* theme */
-                    @import url(https://d3g0gp89917ko0.cloudfront.net/v--7690939296dc/common--theme/base/css/style.css);
-                    @import url(https://sigma9.scpwikicn.com/cn/cn/sigma9_ch_sandbox.min.css);
+
+
+${themeBlock}
                     .error-block{display:none;}
             </style>
     
-    ${styleTags}
-        
+    <style id="ftml-styles">${styleCss}</style>
+
 </head>
 <body id="html-body">
 <div id="skrollr-body">
@@ -279,49 +299,61 @@ ${html}
     </div>
 <script type="module">
 ${runtimeInline}
-initWdprRuntime({ root: document.getElementById('page-content') });
-</script>
 
-<script type="module">
-let htmlBlocks = \`
-${JSON.stringify(htmlBlocks)}
-\`
-htmlBlocks=JSON.parse(htmlBlocks);
-// 1. 移除多余的 JSON.stringify 和 JSON.parse 操作
-// 直接使用原有的 htmlBlocks 数组即可（它本身已经是对象数组了）
-console.log('htmlBlocks:', htmlBlocks);
+// ---- 热补丁桥（父页同源调用，见 src/web/public/js/preview.js）----
+const FTML_CONTENT_ID = 'page-content';
+let ftmlRuntime = null;
 
-const iframes = document.querySelectorAll("iframe.html-block-iframe");
-console.log('iframes:', iframes);
-
-iframes.forEach((elem, index) => {
-    // 2. 安全查找，防止找不到导致报错
-    const block = htmlBlocks.find((pair) => pair.index == index);
-    if (!block) {
-        console.warn(\`未找到 index 为 \${index} 的 htmlBlock\`);
-        return;
-    }
-
+/**
+ * 把 html-block 的 iframe 重写为 Blob URL。
+ * ⚠️ allow-scripts + allow-same-origin 同时存在会让 iframe 逃逸沙箱；此处内容均来自
+ * 本工具自身的渲染输出，保留同源以便父页后续补丁。
+ */
+function ftmlPatchHtmlBlocks(root, blocks) {
+  const iframes = root.querySelectorAll('iframe.html-block-iframe');
+  iframes.forEach((elem, index) => {
+    const block = blocks.find((pair) => pair.index == index);
+    if (!block) return;
     const html = \`<html id="html-block-html" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><meta http-equiv="Content-type" content="text/html; charset=utf-8"><link rel="stylesheet" href="/BASE_WIKIDOT_CSS/html-block.css"></head><body style="margin-bottom: 70px;">\${block.content}</body></html>\`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-
-    // 3. 设置 sandbox 属性
-    // ⚠️ 控制台会警告：allow-scripts 和 allow-same-origin 同时存在会让 iframe 逃逸沙箱。
-    // 如果 iframe 内都是你自己写的安全代码，可以保留；否则建议移除 allow-same-origin
-    elem.sandbox = "allow-scripts allow-same-origin";
-
-    // 4. 【关键修复】将 onload 绑定在 iframe 元素本身上，而不是 elem.src（字符串）上
-    // 必须在设置 src 之前绑定，避免加载过快导致事件丢失
-    elem.onload = () => {
-        console.log(\`iframe \${index} 加载完成\`);
-        // 释放内存
-        URL.revokeObjectURL(url);
-    };
-
-    // 5. 最后再设置 src 触发加载
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    elem.sandbox = 'allow-scripts allow-same-origin';
+    // onload 必须绑在元素上并在设置 src 之前，避免加载过快丢事件
+    elem.onload = () => URL.revokeObjectURL(url);
     elem.src = url;
-});
+  });
+}
+
+/**
+ * 原地应用一次渲染结果。
+ * payload.html 为 null 表示只更新标题/样式/iframe（首屏正文已内联在 HTML 里）。
+ * @returns {boolean} false 表示外壳不可用，父页应退回整篇重载
+ */
+window.__ftmlPatch = function (payload) {
+  const content = document.getElementById(FTML_CONTENT_ID);
+  if (!content) return false;
+
+  if (payload.title != null) {
+    document.title = payload.title;
+    const titleEl = document.getElementById('page-title');
+    if (titleEl) titleEl.textContent = payload.title;
+  }
+  if (payload.styles) {
+    const host = document.getElementById('ftml-styles');
+    if (host) host.textContent = payload.styles.join('\\n');
+  }
+  if (payload.html != null) {
+    // 先拆旧 runtime 的监听，再换 DOM，最后重建——避免监听挂在被丢弃的节点上
+    try { ftmlRuntime?.destroy(); } catch (e) { /* 清理失败不阻塞替换 */ }
+    ftmlRuntime = null;
+    content.innerHTML = payload.html;
+  }
+  ftmlPatchHtmlBlocks(content, payload.htmlBlocks || []);
+  ftmlRuntime = initWdprRuntime({ root: content });
+  return true;
+};
+
+// 首屏：正文已在 HTML 中，只补 iframe 与 runtime 初始化
+window.__ftmlPatch({ htmlBlocks: ${blocksJson} });
 </script>
 </body>
 </html>

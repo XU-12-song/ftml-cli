@@ -105,6 +105,9 @@ export function lexTokens(source) {
  * 惰性区（code/html/embed/style）的闭标签是一个含 `]]` 的整体 token，需特别拆名字。
  * 自闭合标签（`[[toc]]` / `[[module …]]` 等）根本没有闭标签，自然不会产生配对。
  *
+ * 名字比对走 pairKey()：`_` 变体（`[[div_]]` 段落剥离 / `[[span_]]` 行内）闭合时**不带下划线**，
+ * 即 `[[div_]]…[[/div]]`。词法器把下划线并进名字（`div_` ≠ `div`），不归一化就配不上。
+ *
  * @returns {Array<{openFrom,openTo,closeFrom,closeTo}>} 开/闭标签的完整区间（含 `[[` / `]]`）
  */
 export function macroBracketPairs(source) {
@@ -142,10 +145,20 @@ export function macroBracketPairs(source) {
   return pairs;
 }
 
+/**
+ * 配对用名字：去掉 `_` 变体后缀。`[[div_]]`/`[[span_]]`/`[[a_]]`/`[[ul_]]`/`[[ol_]]`
+ * 是「段落剥离 / 行内」变体，Wikidot 用不带下划线的名字闭合（`[[/div]]`）。
+ * 仅用于比对，展示与其它逻辑仍用原始名字。
+ */
+export function pairKey(name) {
+  return name.endsWith('_') ? name.slice(0, -1) : name;
+}
+
 /** 从开标签栈里找最近同名项配对（找不到说明该闭标签没有对应开标签） */
 function closePair(stack, pairs, close) {
+  const key = pairKey(close.name);
   for (let i = stack.length - 1; i >= 0; i--) {
-    if (stack[ i ].name === close.name) {
+    if (pairKey(stack[ i ].name) === key) {
       const open = stack.splice(i, 1)[ 0 ];
       pairs.push({ openFrom: open.from, openTo: open.to, closeFrom: close.from, closeTo: close.to });
       return;

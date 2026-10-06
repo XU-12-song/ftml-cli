@@ -61,4 +61,16 @@ export {
   selectAll,
 } from '@codemirror/commands';
 
+export {
+  autocompletion,
+  completionKeymap,
+  completeFromList,
+  snippet,
+  snippetCompletion,
+  CompletionContext,
+  ifNotIn,
+  startCompletion,
+  acceptCompletion,
+} from '@codemirror/autocomplete';
+
 export { tags } from '@lezer/highlight';

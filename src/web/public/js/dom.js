@@ -29,7 +29,6 @@ export const el = {
   newSourceBtn: $('new-source-btn'),
   editorContainer: $('editor-container'),
   editor: null, // CM6 门面，initEditor() 时创建并赋值
-  autocomplete: $('autocomplete'),
   preview: $('preview'),
   statusText: $('status-text'),
   statusDiag: $('status-diagnostics'),
@@ -94,7 +93,6 @@ export const state = {
   isRepo: false,
   saveTimer: null,
   renderAbort: null, // 在飞渲染请求的 AbortController（新渲染到来时中止旧的）
-  ac: null, // 当前自动补全 { items, kind, replaceFrom, onPick }
   creatingStarter: false, // 空项目自动创建 index.ftml 的防重入锁
   snippets: [], // 自定义代码片段（服务端 ~/.ftml-cli/snippets/snippets.json）
   settings: {   // 服务端 ~/.ftml-cli/settings.json（自动预览间隔等）

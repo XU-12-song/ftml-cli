@@ -6,7 +6,6 @@ import { api, setError, setStatus, fmtTime, showLog } from './api.js';
 import { renderList, highlightActive, renderProblems } from './ui.js';
 import { openNameDialog, openPromptDialog } from './dialogs.js';
 import { saveFile, persistEditor, render, renderRemote, scheduleSaveRender } from './preview.js';
-import { updateAutocomplete, hideAutocomplete, handleAcKeydown } from './autocomplete.js';
 import { createFtmlEditor } from './cm-editor.js';
 import { applyStoredTarget } from './target.js';
 
@@ -103,24 +102,11 @@ export function initEditor() {
     if (el.fileSelect.value) openFile(el.fileSelect.value);
   });
 
+  // 补全（含候选刷新、方向键/回车/Esc 接管）全部由 CM6 autocompletion 内部处理
   el.editor.addEventListener('input', () => {
     setError('');
-    hideAutocomplete();
-    // 输入即刷新候选（IME 组合中不弹，compositionend 再刷）
-    if (!el.editor.composing) setTimeout(updateAutocomplete, 0);
     scheduleSaveRender();
   });
-
-  // 只处理补全相关按键；Ctrl+S / Ctrl+Shift+R 等全局快捷键统一由 keymap.js 派发
-  el.editor.addEventListener('keydown', (e) => {
-    if (state.ac) return handleAcKeydown(e);
-    hideAutocomplete();
-    setTimeout(updateAutocomplete, 0);
-  });
-
-  el.editor.addEventListener('click', () => setTimeout(updateAutocomplete, 0));
-  el.editor.addEventListener('keyup', () => setTimeout(updateAutocomplete, 0));
-  el.editor.addEventListener('compositionend', () => setTimeout(updateAutocomplete, 0));
 
   // 顶栏 / 侧边栏按钮与命令面板共用同一批动作函数（见下方 export）
   el.saveBtn?.addEventListener('click', saveCurrent);

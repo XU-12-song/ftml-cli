@@ -5,4 +5,5 @@ ftml web 编辑器内置的 CodeMirror 6 前端产物（vendor/cm6/cm6.js）。
 @codemirror/view@? — MIT —
 @codemirror/language@? — MIT —
 @codemirror/commands@? — MIT —
+@codemirror/autocomplete@? — MIT —
 @lezer/highlight@? — MIT —

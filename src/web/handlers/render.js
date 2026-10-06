@@ -2,6 +2,11 @@
  * handlers/render.js — 渲染与校验
  *
  * 展开模板 → @wdprlib 渲染 → 完整沙盒文档（不写 dist）；validate 只跑诊断。
+ *
+ * 返回形状由 body.full 控制：
+ *   full !== false（默认）→ html = 完整文档，供首次加载（CLI/测试同样走这条）
+ *   full === false        → html = null，只回正文片段 fragment + styles/htmlBlocks/title，
+ *                           供前端原地补丁（见 preview-page.js 的 __ftmlPatch）
  */
 
 import fs from 'node:fs';
@@ -11,6 +16,7 @@ import { loadConfig } from '../../infra/config.js';
 import { loadTemplates, expand } from '../../core/expand.js';
 import { renderPreview } from '../../render/preview.js';
 import { buildPreviewDocument } from '../../render/preview-page.js';
+import { readThemeCss } from '../../render/theme.js';
 import { buildPageContext } from '../../render/context.js';
 import { formatDiagnostics } from '../../render/diagnostics.js';
 import { diagnosticToProblem, errorToProblem, sortProblems } from '../../render/problems.js';
@@ -23,6 +29,7 @@ import { HttpError, resolveInProject, findProject, latestOnly } from './shared.j
 function failedRender(source, relPath, err, settings, projectRoot) {
   return {
     html: null,
+    fragment: null, // 与「成功但只回片段」区分：前端据此判定渲染失败
     styles: null,
     diagnostics: [],
     diagnosticReport: '',
@@ -94,14 +101,31 @@ export async function renderProjectFile(id, body, env = {}) {
         client,
         allowNetwork,
       });
-      const document = buildPreviewDocument({ html, htmlBlocks, title: config.page || page.fullName });
+      const title = config.page || page.fullName;
+      const wantFull = body?.full !== false;
+      // 主题样式表走本地缓存（同步、不联网）：整篇重载不再依赖渲染时刻的网络，
+      // 避免 @import 异步加载期间整页以无样式（纯黑白）渲染。缓存由 web 启动时预热。
+      const document = wantFull
+        ? buildPreviewDocument({ html, htmlBlocks, styles, title, themeCss: readThemeCss().css })
+        : null;
       // 诊断来自 @wdprlib；附上带源码上下文的可读文本供前端展示
       const diagnosticReport = formatDiagnostics(diagnostics, expanded, { file: relPath });
       // @wdprlib 诊断 → 统一 problem（带偏移，前端可点击跳转）
       const problems = sortProblems(
         diagnostics.map((d) => diagnosticToProblem(d, expanded, { file: relPath }))
       );
-      return { html: document, styles, diagnostics, diagnosticReport, includes, settings, problems };
+      return {
+        html: document,
+        fragment: html,
+        htmlBlocks,
+        styles,
+        title,
+        diagnostics,
+        diagnosticReport,
+        includes,
+        settings,
+        problems,
+      };
     } catch (e) {
       if (e?.superseded) throw e; // 被更新的请求取代：交回 409 处理，不能当成渲染问题
       // 渲染期异常同样不做 500：转成 problems，保留堆栈供前端展开

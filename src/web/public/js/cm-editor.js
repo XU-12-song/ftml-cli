@@ -4,12 +4,12 @@
  * 设计
  *  - **基础着色**：StreamLanguage 直接包 cm-lexer.js 的纯词法器；token 名 → Tag 的
  *    映射走 StreamLanguage 的 tokenTable，颜色由 HighlightStyle 决定。
- *  - **textarea 门面**：老代码（editor.js / autocomplete.js / preview.js）是按
+ *  - **textarea 门面**：老代码（editor.js / preview.js）是按
  *    `<textarea id="editor">` 的 API 写的。这里返回一个 facade，转发 value /
  *    selectionStart / setRangeText / setSelectionRange / addEventListener / composing
  *    等最常用的成员，从而把迁移改动降到最低。
- *  - **事件顺序**：自动补全要抢在 CM6 自带 keymap 之前处理方向键/回车，所以
- *    domEventHandlers 用 Prec.high 包裹，并在 preventDefault 后返回 true 截断。
+ *  - **补全**：交给 @codemirror/autocomplete（completion.js 提供候选源）。方向键/回车/
+ *    Esc 由它自带的 completionKeymap（Prec.highest）接管，无需再包 domEventHandlers。
  *
  * 真正创建视图的是 `createFtmlEditor({ parent, doc })`，返回 { view, facade }。
  */
@@ -33,7 +33,7 @@ import {
   historyKeymap,
   indentWithTab,
   placeholder,
-  Prec,
+  autocompletion,
   tags,
   Decoration,
   ViewPlugin,
@@ -42,6 +42,7 @@ import {
   StateEffect,
 } from '../vendor/cm6/cm6.js';
 import { token, startState } from './cm-lexer.js';
+import { ftmlCompletion } from './completion.js';
 import {
   BUILTIN_MACROS,
   diagnosticRanges,
@@ -277,7 +278,7 @@ const ftmlStreamParser = {
  */
 export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = {}) {
   /** 各类 DOM 事件处理器（老代码用 addEventListener 注册） */
-  const handlers = { input: [], keydown: [], keyup: [], click: [], compositionend: [] };
+  const handlers = { input: [] };
   let suppress = false; // 程序化改 doc 时不触发 input（对齐 textarea 的 value= 语义）
 
   const emit = (type, arg) => {
@@ -303,14 +304,14 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
         syntaxHighlighting(ftmlHighlightStyle),
         semanticData,
         semanticPlugin,
+        autocompletion({
+          override: [ ftmlCompletion ],
+          activateOnTyping: true,
+          closeOnBlur: true,
+          maxRenderedOptions: 12,
+          icons: true,
+        }),
         cmTheme,
-        // 必须抢在 keymap 之前：补全打开时方向键/回车/转义要由补全逻辑接管
-        Prec.high(EditorView.domEventHandlers({
-          keydown: (e) => { emit('keydown', e); return e.defaultPrevented; },
-          keyup: () => { emit('keyup'); },
-          click: () => { emit('click'); },
-          compositionend: () => { emit('compositionend'); },
-        })),
         keymap.of([ ...defaultKeymap, ...historyKeymap, indentWithTab ]),
         EditorView.updateListener.of((u) => {
           if (u.docChanged && !suppress) emit('input');
@@ -378,7 +379,7 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
       view.dispatch({ selection: { anchor, head } });
     },
 
-    /** 光标视口坐标（相对 view.dom 左上角），供补全浮层定位 */
+    /** 光标视口坐标（相对 view.dom 左上角） */
     coordsAtCaret() {
       const head = view.state.selection.main.head;
       const c = view.coordsAtPos(head);
