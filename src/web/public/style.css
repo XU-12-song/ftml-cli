@@ -424,6 +424,7 @@ dialog {
   border-radius: var(--radius);
   padding: 16px;
   min-width: 300px;
+  max-width: 92vw; /* 兜底：没有单独限宽的弹窗（如 name/login/target）也不许顶出视口 */
   max-height: 88vh;
   overflow-y: auto;
   box-shadow: var(--shadow);
