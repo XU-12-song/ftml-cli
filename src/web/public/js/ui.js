@@ -20,21 +20,19 @@ export function renderList(ul, items, label, sub, openPath, onOpen) {
       li.appendChild(s);
     }
     const target = openPath(item);
+    li.dataset.path = target; // highlightActive 按真实路径高亮，不依赖显示文案
     li.addEventListener('click', () => onOpen(target));
     ul.appendChild(li);
   }
 }
 
 export function highlightActive() {
-  const path = state.filePath;
-  const mark = (ul, target) => {
+  const path = state.filePath ?? null;
+  for (const ul of [el.templateList, el.componentList, el.sourceList]) {
     for (const li of ul.children) {
-      li.classList.toggle('active', li.textContent === target);
+      li.classList.toggle('active', li.dataset.path === path);
     }
-  };
-  mark(el.sourceList, path);
-  if (path?.startsWith('templates/')) mark(el.templateList, path.slice('templates/'.length, -'.ftmx'.length));
-  if (path?.startsWith('components/')) mark(el.componentList, path.slice('components/'.length, -'.ftml'.length));
+  }
 }
 
 export function showDiagnostics(diags, report = '', problems = null) {

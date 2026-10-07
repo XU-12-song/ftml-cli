@@ -25,17 +25,25 @@ export async function refreshSidebar() {
   state.sources = data.sources;
   state.isRepo = data.isRepo;
 
-  renderList(el.templateList, data.templates, (t) => t.name, (t) => t.keys.join(' '), (t) => `templates/${t.name}.ftmx`, openFile);
-  renderList(el.componentList, data.components, (c) => c.name, null, (c) => `components/${c}.ftml`, openFile);
+  // 三类文件都带扩展名显示（源文件 index.ftml / 模板 card.ftmx / 组件 box.ftml），
+  // 便于一眼分清文件类型；模板的键列在次要说明里。
+  renderList(el.templateList, data.templates, (t) => `${t.name}.ftmx`, (t) => t.keys.join(' '), (t) => `templates/${t.name}.ftmx`, openFile);
+  renderList(el.componentList, data.components, (c) => `${c.name}.ftml`, null, (c) => `components/${c.name}.ftml`, openFile);
   renderList(el.sourceList, data.sources, (s) => s, null, (s) => s, openFile);
 
-  // 刷新源文件下拉
+  // 刷新文件下拉。必须包含模板/组件：否则打开组件后，本次刷新会因为
+  // 「组件不在 sources 里」而把它判成已删除，清空编辑器且再也切不回去。
+  const allFiles = [
+    ...data.sources,
+    ...data.templates.map((t) => `templates/${t.name}.ftmx`),
+    ...data.components.map((c) => `components/${c.name}.ftml`),
+  ];
   const prev = state.filePath;
   el.fileSelect.innerHTML = '';
-  for (const s of data.sources) {
-    el.fileSelect.appendChild(new Option(s, s));
+  for (const f of allFiles) {
+    el.fileSelect.appendChild(new Option(f, f));
   }
-  if (prev && data.sources.includes(prev)) {
+  if (prev && allFiles.includes(prev)) {
     el.fileSelect.value = prev;
   } else if (state.filePath) {
     state.filePath = null;
