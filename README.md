@@ -20,6 +20,8 @@ ftml <命令> [选项]
 ## 安装
 
 ```bash
+git clone https://github.com/XU-12-song/ftml-cli
+cd ftml-cli
 npm install        # 安装依赖
 npm link           # 全局安装 ftml 命令（可选）
 npm test           # 运行测试（node:test，零额外依赖）
@@ -111,6 +113,7 @@ ftml submit --no-build -m "直接提交"   # 不构建，直接用现有产物
 ftml deploy -m "上线 v2"               # build + validate + 大版本 + push + 发布 Wikidot + submit
 ftml deploy --no-validate -m "跳过校验"
 ftml deploy --no-push -m "不推 git 远端"
+ftml deploy --no-deps -m "只发入口页"   # 不发布 [[include]] 依赖页、不改写引用名
 
 ftml revert --list                     # 版本列表（版本号 / 类型 / commit / 说明）
 ftml revert --to 2.3                   # 回退到小版本 2.3
@@ -124,7 +127,7 @@ ftml revert --no-wikidot --to 1.2      # 只做本地 git revert
 | 操作 | 本地（git） | 版本号 | 线上（Wikidot） |
 | --- | --- | --- | --- |
 | `submit` | `git commit` | 递增小版本 `x.y` | 不动 |
-| `deploy` | `git commit` + tag `vx` | 新建大版本 `x`，随后再走一次 submit 得到 `x.1` | `edit` 页面为当前构建产物，并留下大版本快照 |
+| `deploy` | `git commit` + tag `vx` | 新建大版本 `x`，随后再走一次 submit 得到 `x.1` | `edit` 入口页 + 发布依赖页（见下），并留下大版本快照 |
 | `revert --to x` | `git revert` 大版本 `x` 的提交 | — | 回到大版本 `x` 的内容 |
 | `revert --to x.y` | `git revert` 小版本 `x.y` 的提交 | — | 回到「大版本 `x` 创建时提交的版本」（读快照） |
 
@@ -137,6 +140,19 @@ ftml revert --no-wikidot --to 1.2      # 只做本地 git revert
 - `submit` / `deploy` 成功后：本地 git commit、追加 `.ftml/history.json`、写 `.ftml/versions.json`、更新 `.ftml/<源文件名>.json` 元数据（site / page / lastRev）
 - 提交前统一做 git 环境体检，缺 git 或缺身份会直接报错并给出修复命令（见 `ftml doctor`）
 - site/page 对象按客户端缓存（`src/infra/wikidot.js`）：同一进程内重复获取不发网络请求。缓存以客户端实例为键，`client.close()` 登出后自动失效；页面不存在（null）不缓存
+
+**发布依赖闭包（deploy）**
+
+`deploy` 不只发入口页：入口 `[[include]]` 到的**本地镜像页**会一并发布，否则线上只留「页面不存在」占位。
+
+- **带上依赖**：递归收集传递依赖，**叶子在前**（先建被引用的页，再建引用者），在同一登录会话里依次写多个页面（`withClient` 统一关闭，只登录一次）
+- **引用名归一到线上全名**：Wikidot 按**页面全名**解析 include。本地镜像用路径形式（`components/box` ↔ `components/box.ftml`），线上全名却是冒号形式（`components:box`）。发布时把 `[[include 本地名]]` 改写为线上全名，线上才能解析（入口页与各依赖页共用同一张映射表）
+- **只改写本地镜像命中的引用**：纯远程引用（别人维护的页面）原样保留——Wikidot 页面名允许含 `/`，盲目归一反而会改坏别人的页名
+- **依赖页保持可移植**：除 `/` → `:` 归一外**原样发布**，不改写成 `:site:` 绝对写法，方便第三方复用
+- **冲突即中止**：同一文件被两种引用名指到 / 两个文件要发布成同一页名 / 依赖页撞入口页名，都说明本地镜像不自洽，`deploy` 直接报错并列出冲突
+- **建页 vs 覆盖**：依赖页线上不存在时自动建页（存在则 edit）；**入口页不会被自动创建**，必须已存在于线上，避免误建正页
+- **快照存重写后入口**：大版本快照 `.ftml/versions/<x>.ftml` 记录的是**重写后**的入口源码，`revert` 时线上才回到与发布一致的那一版
+- `--no-deps` 退回旧行为：只发入口页，不做依赖闭包与引用名重写
 
 ### doctor
 

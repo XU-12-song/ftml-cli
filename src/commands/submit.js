@@ -18,6 +18,7 @@ import { loadConfig } from '../infra/config.js';
 import { projectGit, commitAll, isRepo } from '../infra/git.js';
 import { assertGitReady } from '../infra/gitenv.js';
 import { addMinor, nextMinorVersion } from '../domain/versions.js';
+import { isNegated } from '../infra/flags.js';
 import { historyPath } from '../infra/paths.js';
 
 /** 追加一条提交历史（history.json 为 JSON 数组，幂等读-改-写） */
@@ -48,7 +49,7 @@ export async function submit(options) {
   const message = requireMessage(options, 'submit');
 
   // 构建：生成校验/预览用产物（dist/ 不进 git）
-  if (!options.noBuild) {
+  if (!isNegated(options, 'build')) {
     const r = await build(options);
     console.log(`构建完成 → ${r.output}`);
   } else if (options.source && !fs.existsSync(path.resolve(options.source))) {

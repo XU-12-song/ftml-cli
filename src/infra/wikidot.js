@@ -120,38 +120,98 @@ export async function revertPage(rev) {
 }
 
 /**
+ * 在同一登录会话里跑一组操作，最后统一关闭客户端。
+ *
+ * 发布依赖 + 入口页要依次写多个页面，若每个都自建客户端就会重复登录 N 次；
+ * 这里把生命周期收拢到一处（注入的 clientFactory 产出的客户端同样关闭，
+ * web 测试注入的 fake client 的 close 是空实现）。
+ *
+ * @template T
+ * @param {Function|undefined} clientFactory 客户端工厂（测试注入用）
+ * @param {(client: object) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function withClient(clientFactory, fn) {
+  const client = await (clientFactory || createClient)();
+  try {
+    return await fn(client);
+  } finally {
+    await client.close?.();
+  }
+}
+
+/** 用源码覆盖线上页面（提交/部署/回退共用）。client 由调用方提供，不负责关闭。 */
+async function pushWithClient(client, { siteName, pageName, source, comment }) {
+  const compat = idealToDirt(source);
+  const site = await getSite(client, siteName);
+  const page = await getPage(site, pageName);
+  if (!page) {
+    throw new Error(`页面不存在: ${pageName}。请先创建页面再提交`);
+  }
+  await editPage(page, { source: compat.src, comment });
+  return {
+    revisionsCount: page.revisionsCount,
+    compat: { changed: compat.changed, changes: compat.changes, diagnostics: compat.diagnostics },
+  };
+}
+
+/**
  * 用源码覆盖线上页面（提交/部署/回退共用）。
  *
  * 写入边界：入库的源码是理想 FTML，提交前经 idealToDirt 保证 Wikidot 可解析
  * （合法理想源上是恒等变换；只有未闭合行内标签会被补全）。修复记录随返回值
  * 一并给出，供上层提示。
  *
- * 负责客户端生命周期：自己创建的客户端自己关闭；注入的 clientFactory
- * 产生的客户端同样关闭（web 测试注入的 fake client 的 close 是空实现）。
+ * 客户端生命周期：传了 `client` 就用调用方的（不关闭，便于一次登录写多个页面）；
+ * 否则自建（或走 clientFactory）用完即关。
  *
  * @param {object} opts
  * @param {string} opts.siteName
  * @param {string} opts.pageName
  * @param {string} opts.source 要写入的完整 FTML 源码（理想形态）
  * @param {string} opts.comment 编辑注释
+ * @param {object} [opts.client] 已登录客户端（复用会话）
  * @param {Function} [opts.clientFactory] 客户端工厂（测试注入用）
  * @returns {Promise<{ revisionsCount: number, compat: { changed: boolean, changes: Array, diagnostics: Array } }>}
  */
-export async function pushPageSource({ siteName, pageName, source, comment, clientFactory }) {
+export async function pushPageSource({ siteName, pageName, source, comment, client, clientFactory }) {
   if (!siteName || !pageName) {
     throw new Error('缺少 site/page，无法提交 Wikidot。请配置或在命令行指定 --site/--page');
   }
+  const args = { siteName, pageName, source, comment };
+  if (client) return pushWithClient(client, args);
+  return withClient(clientFactory, (c) => pushWithClient(c, args));
+}
+
+/**
+ * 写一个页面：存在则覆盖，不存在则**新建**（发布依赖页用）。
+ *
+ * 与 pushPageSource 的区别只在「页面不存在」的处理：pushPageSource 直接报错
+ * （避免误建正页），这里则建页——依赖页第一次发布时线上通常还不存在。
+ *
+ * @param {object} opts
+ * @param {object} opts.site 已获取的 Site 对象（调用方复用会话时先 getSite 一次）
+ * @param {string} opts.pageName
+ * @param {string} opts.source 完整 FTML 源码（理想形态）
+ * @param {string} opts.comment
+ * @returns {Promise<{ created: boolean, revisionsCount: number, compat: object }>}
+ */
+export async function upsertPageSource({ site, pageName, source, comment }) {
   const compat = idealToDirt(source);
-  const client = await (clientFactory || createClient)();
-  try {
-    const site = await getSite(client, siteName);
-    const page = await getPage(site, pageName);
-    if (!page) {
-      throw new Error(`页面不存在: ${pageName}。请先创建页面再提交`);
-    }
+  const page = await getPage(site, pageName);
+  if (page) {
     await editPage(page, { source: compat.src, comment });
-    return { revisionsCount: page.revisionsCount, compat: { changed: compat.changed, changes: compat.changes, diagnostics: compat.diagnostics } };
-  } finally {
-    await client.close?.();
+    return {
+      created: false,
+      revisionsCount: page.revisionsCount,
+      compat: { changed: compat.changed, changes: compat.changes, diagnostics: compat.diagnostics },
+    };
   }
+  // 建页：createOrEdit 未带 pageId，对已存在页面会报错——这里已确认不存在，正合适
+  unwrap(await site.page.create(pageName, { source: compat.src, comment }), '创建页面');
+  return {
+    created: true,
+    revisionsCount: 1,
+    compat: { changed: compat.changed, changes: compat.changes, diagnostics: compat.diagnostics },
+  };
 }

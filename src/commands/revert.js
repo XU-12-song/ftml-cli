@@ -29,6 +29,7 @@ import {
   listVersions,
   readMajorSnapshot,
 } from '../domain/versions.js';
+import { isNegated } from '../infra/flags.js';
 
 /** 打印版本列表（revert --list） */
 export function printVersions(root) {
@@ -105,7 +106,7 @@ export async function revert(options) {
     throw new Error(`构建产物不存在: ${config.outputAbs}。请先运行 ftml build 或加 --rebuild`);
   }
 
-  if (options.noWikidot) {
+  if (isNegated(options, 'wikidot')) {
     console.log('· 已跳过线上回退（--no-wikidot）');
     appendHistory(config.root, { commit_hash: hash, comment: `revert ${to}`, type: 'revert' });
     return { hash, versions: listVersions(config.root) };

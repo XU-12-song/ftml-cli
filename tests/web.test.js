@@ -30,7 +30,7 @@ import { saveSettings } from '../src/domain/settings.js';
 import { init } from '../src/commands/init.js';
 import { projectGit, commitAll } from '../src/infra/git.js';
 import { makeTmpDir, cleanup, withHome } from './helpers/fixtures.js';
-import { fakeDeployClient as fakeClient, fakeRemoteClient } from './helpers/fake-wikidot.js';
+import { fakeDeployClient as fakeClient, fakeRemoteClient, fakeMultiPageClient } from './helpers/fake-wikidot.js';
 
 /** 供 fakeRemoteClient 使用的页面桩：getSource 返回固定源码 */
 const remotePage = (src) => ({ getSource: async () => ({ isOk: () => true, value: src }) });
@@ -384,6 +384,38 @@ test('deploy：构建 + 校验 + 提交 Wikidot + git 提交 + history/元数据
       assert.equal(versions.minor.length, 1);
       assert.equal(versions.minor[0].version, '1.1');
       assert.ok(fs.existsSync(path.join(root, '.ftml', 'versions', '1.ftml')));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('deploy：发布 [[include]] 依赖闭包（叶子在前）+ 引用名重写 + 快照存重写后入口', async () => {
+  const { root } = await makeGitFixture();
+  try {
+    // 入口 → components/box → components/inner（路径形式引用，需归一到冒号形式）
+    writeFileSync(path.join(root, 'components', 'inner.ftml'), 'inner\n');
+    writeFileSync(path.join(root, 'components', 'box.ftml'), '[[include components/inner]]\nbox\n');
+    writeFileSync(path.join(root, 'index.ftml'), '[[include components/box]]\nmain\n');
+
+    await withHome(async () => {
+      addProject(root);
+      // 入口页必须已在线上存在（pushPageSource 不误建正页）；依赖页都不存在 → 走建页
+      const { client, calls, store } = fakeMultiPageClient({ main: 'old' });
+      const r = await deployProject(root, {
+        path: 'index.ftml', site: 'scp-cn', page: 'main', message: 'web deploy',
+      }, { injectClient: client });
+
+      assert.equal(r.ok, true);
+      // 叶子在前：inner 先建、box 后建；入口页走 edit
+      assert.deepEqual(calls.create, ['components:inner', 'components:box']);
+      assert.deepEqual(calls.edit, ['main']);
+      // 引用名已重写为线上全名（依赖页与入口同一张映射表）
+      assert.equal(store.get('components:box'), '[[include components:inner]]\nbox\n');
+      assert.equal(store.get('main'), '[[include components:box]]\nmain\n');
+      // 大版本快照存重写后的入口源码（revert 时线上要回到这一版）
+      const snap = readFileSync(path.join(root, '.ftml', 'versions', '1.ftml'), 'utf8');
+      assert.equal(snap, '[[include components:box]]\nmain\n');
     });
   } finally {
     cleanup(root);

@@ -128,6 +128,7 @@ program
   .option('--page <page>', '页面名（覆盖配置）')
   .option('--no-validate', '跳过校验')
   .option('--no-push', '不推送 git 远端')
+  .option('--no-deps', '只发布入口页，不发布 [[include]] 依赖页、不改写引用名')
   .action(async (opts) => {
     await run(() => deploy(opts));
   });
