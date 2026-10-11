@@ -13,9 +13,11 @@
  *                             属性补成 `key=""` 且光标落在引号内，module 名不带引号）
  *   4. [[/…                 → 闭合标签补全（扫描未闭合的开标签）
  *   5. [[前缀               → 项目模板名（优先）+ 内置 Wikidot 标签
+ *   5b. /前缀               → 斜杠简写：补成**闭合标签** `[[/name]]`（`/module` → `[[/module]]`）。
+ *                             词首敲 `/` 即弹出（第一个字符就能补），未闭合的标签排在最前
  *   6. 裸单词               → 自定义 snippet 前缀、comp./tmpl. 命名空间、组件/模板全标签、
- *                             内置 Wikidot 标签（`div` 直接补成 `[[div]]…[[/div]]`；标签候选
- *                             只认 ≥3 字符的前缀，避免 `in`/`co` 这类日常词一闪一闪）
+ *                             内置 Wikidot 标签（`d` 即命中 `div`，[1,∞) 字符前缀均可；
+ *                             排除引号/CSS 值等上下文，见 6c 的 prev 字符判断）
  *
  * 排序在源里自己做（fuzzyScore），因此结果带 `filter: false`，让 CM6 原样保留顺序。
  * 注意：filter:false 时不能用 validFor（只在过滤路径生效），所以本源必须每次击键重算——
@@ -23,7 +25,7 @@
  */
 import { snippetCompletion } from '../vendor/cm6/cm6.js';
 import { state } from './dom.js';
-import { WIKI_MODULES, WIKI_DEFS, WIKI_BY_NAME, wikiInsertAfterOpen } from './wiki.js';
+import { WIKI_MODULES, WIKI_DEFS, WIKI_BY_NAME, wikiInsertAfterOpen, wikiCloseName } from './wiki.js';
 import { lexTokens, pairKey } from './cm-semantics.js';
 
 /* ------------------------------------------------------------------ *
@@ -188,6 +190,34 @@ function tagEntries() {
   return entries;
 }
 
+/** 闭合标签候选：`apply` 补成 `[[/name]]`（替换起点在 `/` 处） */
+function closeTagOption(name) {
+  return { label: name, detail: '闭合', type: 'tag', apply: `[[/${name}]]` };
+}
+
+/**
+ * `/` 简写 → 闭合标签候选。顺序：未闭合的开标签（最可能想闭合的）→ 模板 → 内置标签，
+ * 统一按**闭合名**去重（`div_` 与 `div` 都用 `[[/div]]`，见 wikiCloseName）。
+ * 自闭合标签（toc / image / include…）没有闭合形态，跳过；module 例外——
+ * 表里为 'single'（骨架不带 `[[/module]]`），但实际就是靠 `[[/module]]` 收尾的。
+ */
+function closeEntries(stack) {
+  const entries = [];
+  const seen = new Set();
+  const push = (name, group) => {
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    entries.push({ key: name, group, option: closeTagOption(name) });
+  };
+  for (const n of stack) push(n, 0);
+  for (const n of state.templates.keys()) push(n, 1);
+  for (const w of WIKI_DEFS) {
+    if (w.close === 'single' && w.n !== 'module') continue;
+    push(wikiCloseName(w), 2);
+  }
+  return entries;
+}
+
 /**
  * 标签名 → 可补的键。mode 'attr' 的条目补 `key=""`（光标落在引号里），mode 'module'
  * 补模块名本身（`[[module CSS]]`，模块名既没有 `=` 也不带引号）。
@@ -279,6 +309,19 @@ export function ftmlCompletion(context) {
     if (r) return r;
   }
 
+  // 5b. 斜杠简写: /前缀 → 闭合标签 `[[/name]]`，词首敲 `/` 即弹（第一个字符就能补）。
+  //     只认词首的斜杠：URL（http://）、路径（a/b）、CSS 简写（12px/1.5）里的斜杠不触发；
+  //     未闭合的 `[[…` 头部内也不触发（那是属性上下文，且会把 `[[` 拼成 `[[[[/…`）。
+  const mSlash = context.matchBefore(/\/[\w:-]*$/);
+  if (mSlash && !context.matchBefore(/\[\[[^\]]*$/)) {
+    const prevChar = mSlash.from > 0 ? context.state.sliceDoc(mSlash.from - 1, mSlash.from) : '';
+    if (!prevChar || /[\s(\[{>]/.test(prevChar)) {
+      const stack = openStackAt(context.state.doc.toString(), mSlash.from);
+      const r = makeResult(mSlash.from, closeEntries(stack), mSlash.text.slice(1));
+      if (r) return r;
+    }
+  }
+
   // 6. 裸单词：snippet / 命名空间 / 组件·模板全标签（末尾允许一个 `.`，好让 `comp.` 立刻出候选）
   const mWord = context.matchBefore(/[A-Za-z][\w:-]*(?:\.[A-Za-z][\w:-]*)*\.?$/);
   if (mWord) {
@@ -317,20 +360,18 @@ export function ftmlCompletion(context) {
       });
     }
 
-    // 6c. 裸单词前缀匹配组件/模板名；排除属性/值上下文（css 值、引号内容等）避免误弹
-    if (word.length >= 2 && !word.includes('.') && !/[:."'=,[/]/.test(prev)) {
+    // 6c. 裸单词前缀匹配组件/模板名；排除属性/值上下文（css 值、引号内容等）避免误弹。
+    //     第一个字符就给候选（`d` → div），不做最小长度限制——配合 6d 的 prefixOnly，
+    //     单字符前缀只命中「以该字母开头的标签名」，不会铺开一大片。
+    if (!word.includes('.') && !/[:."'=,[/]/.test(prev)) {
       for (const c of state.components) entries.push({ key: c, group: 2, option: fullComponentOption(c) });
       for (const [ n, keys ] of state.templates) entries.push({ key: n, group: 2, option: fullTemplateOption(n, keys) });
-      // 6d. 内置 Wikidot 标签：不打 `[[` 也补全（`div` → `[[div]]…[[/div]]`，`code` → 代码块骨架）。
-      //     这里只认前缀——裸词上用模糊子序列会命中一大片日常英文（`to` 命中 toc/footnote），
-      //     前缀匹配能把误弹压到「确实打的是标签名」。模板同名的不重复给（前面已按模板插入）。
-      //     另要求 ≥3 字符：内置标签名最短就是 3（div/code/toc），而 2 字符前缀全是日常词
-      //     （`in`→include、`co`→code、`no`→note、`ta`→tabview），正文里一闪一闪很吵。
-      if (word.length >= 3) {
-        for (const w of WIKI_DEFS) {
-          if (state.templates.has(w.n)) continue;
-          entries.push({ key: w.n, group: 3, prefixOnly: true, option: builtinTagOption(w) });
-        }
+      // 6d. 内置 Wikidot 标签：不打 `[[` 也补全（`d` → `div`，`code` → 代码块骨架）。
+      //     只认前缀——裸词上用模糊子序列会命中一大片日常英文（`to` 命中 toc/footnote）。
+      //     模板同名的不重复给（前面已按模板插入）。
+      for (const w of WIKI_DEFS) {
+        if (state.templates.has(w.n)) continue;
+        entries.push({ key: w.n, group: 3, prefixOnly: true, option: builtinTagOption(w) });
       }
     }
 

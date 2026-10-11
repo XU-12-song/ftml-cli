@@ -21,6 +21,7 @@ import {
   readProjectFile,
   renderProjectFile,
   validateProjectFile,
+  submitProject,
   deployProject,
   revertProject,
   latestOnly,
@@ -337,7 +338,7 @@ test('validate 端点：[[embed]] 体内裸闭标签给出结构逃逸告警（�
   }
 });
 
-// ---------- deploy / revert（fake client 离线） ----------
+// ---------- submit / deploy / revert（fake client 离线） ----------
 
 /** init + 建 git 仓库并配置 user，提交初始版本 */
 async function makeGitFixture() {
@@ -349,6 +350,56 @@ async function makeGitFixture() {
   await commitAll(git, 'v1');
   return { root, git };
 }
+
+test('submit：本地 git 提交 + 小版本号，不联网不发布', async () => {
+  const { root } = await makeGitFixture();
+  try {
+    writeFileSync(path.join(root, 'index.ftml'), '[[card icon="◎" title="V2"]]v2[[/card]]\n');
+    await withHome(async () => {
+      addProject(root);
+      const r = await submitProject(root, { path: 'index.ftml', message: 'web submit' });
+
+      assert.equal(r.ok, true);
+      assert.ok(r.logs.some((l) => l.msg.includes('构建完成')));
+      assert.ok(r.logs.some((l) => l.msg.includes('已本地提交')));
+
+      // git 提交真的发生（HEAD message = 提交说明）
+      const log = await projectGit(root).log({ n: 1 });
+      assert.equal(log.latest.message, 'web submit');
+
+      // 小版本号：尚未 deploy 过，落在 0 大版本下 → 0.1
+      const versions = JSON.parse(readFileSync(path.join(root, '.ftml', 'versions.json'), 'utf8'));
+      assert.equal(versions.major.length, 0);
+      assert.equal(versions.minor.length, 1);
+      assert.equal(versions.minor[0].version, '0.1');
+
+      const history = JSON.parse(readFileSync(path.join(root, '.ftml', 'history.json'), 'utf8'));
+      assert.equal(history.length, 1);
+      assert.equal(history[0].type, 'submit');
+      assert.equal(history[0].comment, 'web submit');
+
+      // 不产生大版本快照（只有 deploy 才有）
+      assert.ok(!fs.existsSync(path.join(root, '.ftml', 'versions', '1.ftml')));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('submit：缺提交说明报错', async () => {
+  const { root } = await makeGitFixture();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      await assert.rejects(
+        () => submitProject(root, { path: 'index.ftml' }),
+        (err) => /提交说明/.test(err.message)
+      );
+    });
+  } finally {
+    cleanup(root);
+  }
+});
 
 test('deploy：构建 + 校验 + 提交 Wikidot + git 提交 + history/元数据', async () => {
   const { root } = await makeGitFixture();
@@ -445,6 +496,36 @@ test('revert：自动提交 + 真 git revert + rebuild + 回推 Wikidot', async 
       // rebuild 后产物存在且为 v1 内容（模板展开后 ★ Hi）
       assert.ok(fs.existsSync(path.join(root, 'dist', 'index.ftml')));
       assert.ok(readFileSync(path.join(root, 'dist', 'index.ftml'), 'utf8').includes('★ Hi'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('revert：按小版本号回退，工作区恢复为该版本内容（而非撤销那一笔）', async () => {
+  const { root } = await makeGitFixture();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      // 0.1：index.ftml 改为 V2；0.2：再改为 V3
+      writeFileSync(path.join(root, 'index.ftml'), '[[card icon="◎" title="V2"]]v2[[/card]]\n');
+      await submitProject(root, { path: 'index.ftml', message: 'v2' });
+      writeFileSync(path.join(root, 'index.ftml'), '[[card icon="◎" title="V3"]]v3[[/card]]\n');
+      await submitProject(root, { path: 'index.ftml', message: 'v3' });
+
+      const r = await revertProject(root, { path: 'index.ftml', to: '0.1', noWikidot: true });
+      assert.equal(r.ok, true);
+
+      // 落到 0.1 的内容（旧实现只反向 0.1 那一笔，会退成 v1）
+      const src = readFileSync(path.join(root, 'index.ftml'), 'utf8');
+      assert.ok(src.includes('title="V2"'));
+      assert.ok(!src.includes('V3'));
+
+      // 版本账本不能被回退吃掉：0.1 / 0.2 仍在，且追加了 revert 记录
+      const versions = JSON.parse(readFileSync(path.join(root, '.ftml', 'versions.json'), 'utf8'));
+      assert.deepEqual(versions.minor.map((e) => e.version), [ '0.1', '0.2' ]);
+      const history = JSON.parse(readFileSync(path.join(root, '.ftml', 'history.json'), 'utf8'));
+      assert.equal(history.at(-1).type, 'revert');
     });
   } finally {
     cleanup(root);

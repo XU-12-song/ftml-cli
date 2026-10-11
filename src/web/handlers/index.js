@@ -27,6 +27,7 @@ export {
 } from './render.js';
 export {
   listProjectVersions,
+  submitProject,
   deployProject,
   revertProject,
   initProject,

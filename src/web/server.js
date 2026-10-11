@@ -100,6 +100,7 @@ function apiRouter(env) {
     validate: (req) => handlers.validateProjectFile(req.params.id, req.body),
     target: (req) => handlers.saveTargetPage(req.params.id, req.body),
     versions: (req) => handlers.listProjectVersions(req.params.id),
+    submit: (req) => handlers.submitProject(req.params.id, req.body),
     deploy: (req) => handlers.deployProject(req.params.id, req.body, env),
     revert: (req) => handlers.revertProject(req.params.id, req.body, env),
     init: (req) => handlers.initProject(req.params.id, env),
