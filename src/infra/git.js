@@ -44,11 +44,60 @@ export async function showFileAt(git, commit, relPath) {
   return git.show([ `${commit}:${relPath}` ]);
 }
 
-/** 真 git revert：对某提交做反向提交（--no-edit），返回新提交 hash */
-export async function gitRevert(git, rev = 'HEAD') {
-  await git.raw([ 'revert', '--no-edit', rev ]);
-  const log = await git.log({ n: 1 });
-  return log.latest?.hash;
+/** 是否停在「revert 半途」（冲突现场）——REVERT_HEAD 存在即表示有未完成的 revert */
+async function inProgressRevert(git) {
+  try {
+    await git.raw([ 'rev-parse', '--verify', '--quiet', 'REVERT_HEAD' ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 取 git 报错里最有用的一行（冲突路径等），避免把整段 hint 抛给用户 */
+function revertErrorLine(e) {
+  const text = String(e.stderr || e.message || '').trim();
+  const line = text.split('\n').find((l) => l.trim() && !l.startsWith('hint:'));
+  return line || '未知原因';
+}
+
+/**
+ * 真 git revert：把某提交 / 提交区间反向应用，最后统一提交一次，返回新提交 hash。
+ *
+ * 用 --no-commit 而不是 --no-edit：区间回退（如 `8508c8b..HEAD`）会命中多笔提交，
+ * git 默认一笔一个反向提交，这里合并成单独一次提交，日志更干净；无改动时
+ * commitAll 会跳过空提交并返回当前 HEAD（回退到当前版本即静默 no-op）。
+ *
+ * 冲突处理：git revert 撞上冲突会「停在半路」（工作区留下冲突标记、仓库进入
+ * reverting 状态），下一次命令会被 git 拒绝。这里一律 abort 还原工作区再抛错——
+ * 绝不把卡死的仓库留给调用方。
+ *
+ * @param {object} [options]
+ * @param {string} [options.message]  反向提交说明
+ * @param {string} [options.keepFrom] 回退前的提交：从它取回 keepPaths，覆盖 revert 的影响
+ * @param {string[]} [options.keepPaths] 不参与回退的路径（版本账本等），需配 keepFrom
+ */
+export async function gitRevert(git, rev = 'HEAD', { message, keepFrom, keepPaths = [] } = {}) {
+  try {
+    await git.raw([ 'revert', '--no-commit', rev ]);
+  } catch (e) {
+    if (await inProgressRevert(git)) {
+      await git.raw([ 'revert', '--abort' ]);
+      throw new Error(`git revert ${rev} 冲突，已还原工作区（未做任何改动）：${revertErrorLine(e)}`);
+    }
+    throw new Error(`git revert ${rev} 失败：${revertErrorLine(e)}`);
+  }
+  if (keepFrom && keepPaths.length > 0) {
+    // 版本账本 .ftml/ 跟着每次提交一起进了 git，区间回退会把账本一并倒回去（甚至
+    // 删掉）——回退的是「内容」，账本必须留下。从回退前的提交把账本取回覆盖。
+    try {
+      await git.raw([ 'checkout', keepFrom, '--', ...keepPaths ]);
+    } catch {
+      // 回退前的提交里没有这些路径（项目首次提交前无 .ftml/）——无需保留
+    }
+  }
+  const { hash } = await commitAll(git, message ?? `Revert ${rev}`);
+  return hash;
 }
 
 /** 工作区是否干净（revert 前置要求：有未提交改动会失败） */
