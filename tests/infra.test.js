@@ -152,3 +152,53 @@ test('git 封装：commitAll 提交，gitRevert 生成反向提交', async () =>
     cleanup(root);
   }
 });
+
+test('gitRevert：区间回退把工作区整体还原到起始提交', async () => {
+  const root = tmpdir();
+  try {
+    const git = projectGit(root);
+    await git.init();
+    await git.addConfig('user.name', 'ftml test');
+    await git.addConfig('user.email', 'test@ftml');
+
+    writeFileSync(path.join(root, 'a.txt'), 'v1');
+    const { hash: c1 } = await commitAll(git, 'c1');
+    writeFileSync(path.join(root, 'b.txt'), 'new');
+    await commitAll(git, 'c2'); // 新增 b.txt
+    writeFileSync(path.join(root, 'a.txt'), 'v2');
+    await commitAll(git, 'c3'); // 改 a.txt
+
+    await gitRevert(git, `${c1}..HEAD`, { message: 'revert 到 c1' });
+    assert.equal(readFileSync(path.join(root, 'a.txt'), 'utf8'), 'v1'); // 修改被撤回
+    assert.equal(existsSync(path.join(root, 'b.txt')), false);          // 新增被撤回
+    assert.equal(await isClean(git), true);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('gitRevert：冲突时还原工作区，不把仓库留在 revert 半途', async () => {
+  const root = tmpdir();
+  try {
+    const git = projectGit(root);
+    await git.init();
+    await git.addConfig('user.name', 'ftml test');
+    await git.addConfig('user.email', 'test@ftml');
+
+    writeFileSync(path.join(root, 'a.txt'), 'v1');
+    const { hash: c1 } = await commitAll(git, '新增 a.txt');
+    writeFileSync(path.join(root, 'a.txt'), 'v2');
+    await commitAll(git, '修改 a.txt');
+
+    // 反向 c1 = 删除 a.txt，但 a.txt 已被后续提交修改 → modify/delete 冲突
+    await assert.rejects(() => gitRevert(git, c1), (e) => /冲突/.test(e.message));
+
+    // 仓库不卡在 reverting：工作区干净、文件原样、REVERT_HEAD 已清掉
+    assert.equal(await isClean(git), true);
+    assert.equal(readFileSync(path.join(root, 'a.txt'), 'utf8'), 'v2');
+    const revertHead = await git.raw([ 'rev-parse', '--verify', '--quiet', 'REVERT_HEAD' ]).catch(() => '');
+    assert.equal(revertHead.trim(), '');
+  } finally {
+    cleanup(root);
+  }
+});

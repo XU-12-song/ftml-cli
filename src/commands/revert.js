@@ -6,10 +6,11 @@
  *   ftml revert --to <hash|HEAD~n> [--no-wikidot] [--auto-commit] [--rebuild]
  *
  * 版本号语义：
- *   --to x      本地 revert 大版本 x 对应的 git 提交；线上回到大版本 x 的内容
- *   --to x.y    本地 revert 小版本 x.y 对应的 git 提交；
+ *   --to x      本地把工作区整体退回大版本 x 的内容（反向提交 x 之后的所有提交）；
+ *               线上回到大版本 x 的内容
+ *   --to x.y    本地把工作区整体退回小版本 x.y 的内容（反向提交 x.y 之后的所有提交）；
  *               线上回到「大版本 x 创建时提交的版本」（读 .ftml/versions/<x>.ftml 快照）
- *   --to <rev>  退化为按 git 修订回退（hash / HEAD~n 透传给 git revert）
+ *   --to <rev>  退化为按 git 修订回退（hash / HEAD~n 透传给 git revert，即撤销该提交）
  *
  * 未指定 --to 时默认 HEAD（撤销最近一次提交），保持旧行为。
  * site/page 优先级：命令行 > 配置文件 > .ftml/<源文件名>.json 元数据
@@ -19,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, saveProjectMeta } from '../infra/config.js';
 import { pushPageSource } from '../infra/wikidot.js';
-import { projectGit, commitAll, gitRevert, isRepo, isClean, showFileAt } from '../infra/git.js';
+import { projectGit, commitAll, gitRevert, isRepo, isClean, showFileAt, headHash } from '../infra/git.js';
 import { loadTemplates, expand } from '../core/expand.js';
 import { appendHistory } from './submit.js';
 import { build } from './build.js';
@@ -90,13 +91,30 @@ export async function revert(options) {
 
   // 版本号 → git 提交
   const target = isVersionSpec(to) ? resolveVersionTarget(config.root, to) : null;
-  const gitTarget = target ? target.commit : to;
-  if (target && !gitTarget) {
+  if (target && !target.commit) {
     throw new Error(`版本 ${to} 没有记录对应的 git 提交，无法回退`);
   }
+  const head = await headHash(git);
 
-  const hash = await gitRevert(git, gitTarget);
-  console.log(`✓ 已 git revert ${to}（${String(gitTarget).slice(0, 7)} → 新提交 ${String(hash).slice(0, 7)}）`);
+  // 版本号回退 = 把「该版本之后的所有提交」整体反向提交，使工作区回到该版本的
+  // 内容。只反向 target 那一笔是错的：那等于「撤销这一版做过的事」——若该版本是
+  // 新增了某文件，回退反而会把它删掉（dist/index.ftml 被上层改动时即 modify/delete
+  // 冲突）。按 git 修订回退（--to <hash>）保持单笔语义，即撤销该提交。
+  let hash;
+  if (target && target.commit === head) {
+    hash = head;
+    console.log(`· 当前已是版本 ${to}，跳过本地 git revert`);
+  } else {
+    const gitTarget = target ? `${target.commit}..HEAD` : to;
+    hash = await gitRevert(git, gitTarget, {
+      message: `revert ${to}`,
+      // 版本回退只回退「内容」：.ftml/ 是版本账本，不能跟着倒回去（否则
+      // versions.json 会被删成空，revert 完版本列表就没了）
+      keepFrom: target ? head : undefined,
+      keepPaths: [ '.ftml' ],
+    });
+    console.log(`✓ 已 git revert ${to}（${String(gitTarget).slice(0, 7)} → 新提交 ${String(hash).slice(0, 7)}）`);
+  }
 
   // dist/ 被 .gitignore 忽略，git revert 不会恢复产物：
   // 版本回退必须重建，普通回退沿用 --rebuild 行为
