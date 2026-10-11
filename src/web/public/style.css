@@ -426,6 +426,7 @@ dialog {
   min-width: 300px;
   max-width: 92vw; /* 兜底：没有单独限宽的弹窗（如 name/login/target）也不许顶出视口 */
   max-height: 88vh;
+  max-height: 88dvh; /* 移动端：软键盘 / 地址栏伸缩时 dvh 才是真正可见高度，vh 会让底部按钮被顶出视口 */
   overflow-y: auto;
   box-shadow: var(--shadow);
 }
@@ -435,6 +436,7 @@ dialog input { display: block; width: 100%; margin-bottom: 8px; }
 .dialog-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 
 #log-dialog { min-width: 480px; max-width: 680px; }
+#log-content { width: 100%; }
 
 /* 表单标签 / 提示（snippet、prompt、settings 对话框共用） */
 .dlg-label { display: block; font-size: 11px; color: var(--fg-dim); margin: 4px 0 2px; }
@@ -611,11 +613,15 @@ body.zen #sidebar-overlay { display: none !important; }
   .sb-list li.snip-row { font-size: 14px; padding-top: 6px; padding-bottom: 6px; }
   #save-btn { font-size: 14px; padding: 6px 14px; }
 
-  dialog { min-width: 90vw; max-width: 90vw; }
-  #snippet-dialog, #prompt-dialog, #settings-dialog { min-width: 90vw; max-width: 90vw; }
-  #versions-dialog { min-width: 94vw; max-width: 94vw; }
-  #problems-dialog { min-width: 92vw; max-width: 92vw; }
-  #palette-dialog { min-width: 92vw; max-width: 92vw; }
+  /* 窄屏弹窗统一不设最小宽度：桌面端按 id 设的 min-width（#log-dialog 480px 等）
+     特异性高于通用 `dialog`，会把弹窗顶出视口——这里用同 id 规则压回 92vw */
+  dialog { min-width: 0; width: 92vw; max-width: 92vw; }
+  #snippet-dialog, #prompt-dialog, #settings-dialog,
+  #versions-dialog, #problems-dialog, #palette-dialog, #log-dialog {
+    min-width: 0;
+    width: 92vw;
+    max-width: 92vw;
+  }
   #versions-table td { max-width: 120px; }
 }
 

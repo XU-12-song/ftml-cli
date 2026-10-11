@@ -15,7 +15,7 @@
 import { state } from './dom.js';
 import {
   newSource, newTemplate, newComponent,
-  saveCurrent, remoteRefresh, validateCurrent, deployCurrent,
+  saveCurrent, remoteRefresh, validateCurrent, submitCurrent, deployCurrent,
 } from './editor.js';
 import { openAddProject, openNewRepo, initGitProject } from './projects.js';
 import { openVersionsDialog } from './versions.js';
@@ -45,6 +45,7 @@ export const COMMANDS = [
   { group: '项目', title: '版本列表 / 回退', key: 'Ctrl+Alt+V', keywords: 'version revert history', enabled: hasProject, run: openVersionsDialog },
 
   // ---- 发布 ----
+  { group: '发布', title: '提交小版本（本地）', key: 'Ctrl+Alt+B', keywords: 'submit minor commit local version', enabled: hasProject, run: submitCurrent },
   { group: '发布', title: '部署（创建大版本）', key: 'Ctrl+Alt+P', keywords: 'deploy publish submit', enabled: hasFile, run: deployCurrent },
   { group: '发布', title: '校验当前文件', key: 'Ctrl+Alt+E', keywords: 'validate lint check', enabled: hasFile, run: validateCurrent },
   { group: '发布', title: '目标页面设置…', key: 'Ctrl+Alt+U', keywords: 'target site page', enabled: hasFile, run: openTargetDialog },

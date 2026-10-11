@@ -15,6 +15,7 @@ export const el = {
   targetDialog: $('target-dialog'),
   targetIndicator: $('target-indicator'),
   targetSaveBtn: $('target-save-btn'),
+  submitBtn: $('submit-btn'),
   deployBtn: $('deploy-btn'),
   paletteBtn: $('palette-btn'),
   paletteDialog: $('palette-dialog'),

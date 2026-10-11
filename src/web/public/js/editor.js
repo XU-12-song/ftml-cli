@@ -1,5 +1,5 @@
 /**
- * editor.js — 编辑器核心：侧边栏刷新 / 文件打开保存 / 编辑事件 / 校验与部署
+ * editor.js — 编辑器核心：侧边栏刷新 / 文件打开保存 / 编辑事件 / 校验与提交/部署
  */
 import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, showLog } from './api.js';
@@ -121,6 +121,7 @@ export function initEditor() {
   el.newTemplateBtn?.addEventListener('click', newTemplate);
   el.newComponentBtn?.addEventListener('click', newComponent);
   el.newSourceBtn?.addEventListener('click', newSource);
+  el.submitBtn?.addEventListener('click', submitCurrent);
   el.deployBtn?.addEventListener('click', deployCurrent);
 }
 
@@ -163,6 +164,34 @@ export async function validateCurrent() {
     }
   } catch (e) {
     setError(e.message);
+  }
+}
+
+// 提交小版本 = 本地 git commit + 小版本号递增。不联网、不发布（发布走「部署」）。
+// 与大版本的区别只在「有没有大版本快照与线上发布」，故不要求目标页面已设置。
+export async function submitCurrent() {
+  if (!state.projectId) {
+    setError('请先选择项目');
+    return;
+  }
+  const message = await openPromptDialog({
+    title: '提交小版本',
+    label: '提交说明（必填，写入 git commit 与版本记录）',
+    placeholder: '如：调整 box 组件内侧距',
+    okText: '提交',
+  });
+  if (!message) return;
+  try {
+    await persistEditor();
+    setStatus('提交中…');
+    const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/submit`, {
+      path: state.filePath, message,
+    });
+    showLog('提交输出', r.logs);
+    setStatus('已提交（' + fmtTime() + '）');
+  } catch (e) {
+    setError(e.message);
+    showLog('提交失败', [ { kind: 'error', msg: e.message } ]);
   }
 }
 
