@@ -149,6 +149,10 @@ function initSplitter() {
   splitterEl.addEventListener('pointerup', endDrag);
   splitterEl.addEventListener('pointercancel', endDrag);
   splitterEl.addEventListener('lostpointercapture', endDrag);
+  // 指针在窗口外释放 / 窗口失焦时也要结束拖动，避免 cursor 与 pointer-events 卡住
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+  window.addEventListener('blur', () => endDrag({}));
   splitterEl.addEventListener('keydown', onSplitterKey);
   splitterEl.addEventListener('dblclick', () => setRatio(0.5, { persist: true }));
 
