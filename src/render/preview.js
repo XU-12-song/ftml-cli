@@ -26,6 +26,53 @@ import { resolveIncludeFile } from '../domain/include-resolve.js';
 // 解析逻辑在 domain（发布路径也要用同一套规则），这里转出保持既有 import 路径可用。
 export { resolveIncludeFile };
 
+/** 只报一次的远程不可用警告（同一类原因不随 include 数量刷屏） */
+function pushWarningOnce(warnings, warning) {
+  if (!warnings.some((w) => w.code === warning.code)) warnings.push(warning);
+}
+
+const INDENTED_INCLUDE_RE = /^[ \t]+\[\[\s*include(?=\s|\]|$)/i;
+
+/**
+ * 找出「行首带空白」的 [[include]]。
+ *
+ * Wikidot 只在行首识别 include；前面有空格/制表符时整行会被当作普通文本，
+ * 解析器根本不会调用 dataProvider——表现为「没报错、也没拉取」。这里显式告警，
+ * 避免用户误以为是网络或缓存问题。跳过 [[code]] 块与 [!-- --] 注释。
+ */
+export function findIndentedIncludes(source) {
+  const out = [];
+  const lines = String(source ?? '').split(/\r\n|\r|\n/);
+  let inCode = false;
+  let inComment = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (inComment) {
+      if (line.includes('--]')) inComment = false;
+      continue;
+    }
+    if (/^\s*\[\[\/code\s*\]\]/i.test(line)) { inCode = false; continue; }
+    if (/^\s*\[\[code(?:\s|\]|$)/i.test(line)) { inCode = true; continue; }
+    if (inCode) continue;
+    if (line.includes('[!--') && !line.includes('--]')) { inComment = true; continue; }
+
+    const visible = line.replace(/\[!--[\s\S]*?--\]/g, '');
+    const m = visible.match(INDENTED_INCLUDE_RE);
+    if (!m) continue;
+    const column = m[0].indexOf('[[') + 1;
+    out.push({
+      severity: 'warning',
+      code: 'include-indented',
+      message: '[[include]] 必须从行首开始；前导空白会让 Wikidot 直接忽略该行',
+      position: {
+        start: { line: i + 1, column },
+        end: { line: i + 1, column: column + 2 },
+      },
+    });
+  }
+  return out;
+}
+
 /**
  * 远程回退：本地找不到 include 时，用已登录的 Wikidot 客户端拉取页面源码。
  *
@@ -43,21 +90,53 @@ export { resolveIncludeFile };
  * @param {boolean} [opts.allowNetwork] 是否允许联网补拉（false 时只用磁盘缓存）
  * @returns {Promise<{ source: string|null, from: 'cache'|'remote'|'miss' }>}
  */
-async function fetchRemoteInclude(pageRef, { page, client, warnings, allowNetwork = true }) {
+async function fetchRemoteInclude(pageRef, {
+  page,
+  client,
+  warnings,
+  allowNetwork = true,
+  clientError = null,
+}) {
   const siteName = pageRef.site ?? page?.site;
-  if (!siteName) return { source: null, from: 'miss' };
   const label = pageRef.site ? `${pageRef.site}:${pageRef.page}` : pageRef.page;
-
+  if (!siteName) {
+    if (allowNetwork) {
+      pushWarningOnce(warnings, {
+        severity: 'warning',
+        code: 'remote-include-no-site',
+        message: `无法联网解析 [[include ${pageRef.page}]]：缺少站点名。请设置目标站点，或使用 :site:page 形式`,
+        position: null,
+      });
+    }
+    return { source: null, from: 'miss' };
+  }
   // 1. 磁盘缓存命中 → 直接用（离线也能解析 include）
   const cached = readPageCache(siteName, pageRef.page);
   if (cached != null) return { source: cached, from: 'cache' };
-
   // 2. 未命中 → 网络拉取，成功后写回缓存
-  if (!client || !allowNetwork) return { source: null, from: 'miss' };
+  if (!allowNetwork) return { source: null, from: 'miss' };
+  if (!client) {
+    // 联网刷新已被明确请求，却没有可用的客户端：把原因说清楚，不要静默 miss
+    pushWarningOnce(warnings, {
+      severity: 'warning',
+      code: 'remote-include-no-client',
+      message: `无法联网解析远程 [[include ${label}]]：${clientError?.message || '未登录 Wikidot，请先点击账号按钮登录'}`,
+      position: null,
+    });
+    return { source: null, from: 'miss' };
+  }
   try {
     const siteObj = await getSite(client, siteName);
     const pageObj = await getPage(siteObj, pageRef.page);
-    if (!pageObj) return { source: null, from: 'miss' };
+    if (!pageObj) {
+      warnings.push({
+        severity: 'warning',
+        code: 'remote-include-not-found',
+        message: `远程页面不存在或无权访问: ${siteName}:${pageRef.page}`,
+        position: null,
+      });
+      return { source: null, from: 'miss' };
+    }
     const source = await fetchPageSource(pageObj);
     writePageCache(siteName, pageRef.page, source);
     return { source, from: 'remote' };
@@ -83,15 +162,17 @@ async function fetchRemoteInclude(pageRef, { page, client, warnings, allowNetwor
  * @param {Map} [options.includeTemplates] 模板表，include 目标源码展开模板时使用
  * @param {object} [options.client] 已登录的 @ukwhatn/wikidot 客户端；提供后本地找不到的 include 自动远程拉取
  * @param {boolean} [options.allowNetwork] 是否允许联网补拉远程 include（默认 true；false 时只用磁盘缓存）
+ * @param {Error|null} [options.clientError] 客户端创建失败的原因（allowNetwork 但未登录时用于诊断）
  * @returns {{ html, styles, htmlBlocks, diagnostics, includes, dependencies }}
  *   includes: 本次渲染解析的 [[include]] 列表 [{ site, page, from }]（from: local/cache/remote/miss）
  */
 export async function renderPreview(
   ftml,
-  { page, styleMode = 'inline', includeBaseDir, includeTemplates, client, allowNetwork = true } = {}
+  { page, styleMode = 'inline', includeBaseDir, includeTemplates, client, allowNetwork = true, clientError = null } = {}
 ) {
   const settings = { ...createSettings('page'), allowStyleElements: true };
   const remoteWarnings = [];
+  const sourceWarnings = findIndentedIncludes(ftml);
   const includes = [];
 
   const dataProvider = includeBaseDir || client
@@ -124,6 +205,7 @@ export async function renderPreview(
           client,
           warnings: remoteWarnings,
           allowNetwork,
+          clientError,
         });
         includes.push({ ...label, from: r.from });
         if (r.source == null) return null;
@@ -149,6 +231,7 @@ export async function renderPreview(
     htmlBlocks: result.htmlBlocks,
     styles: result.styles,
     diagnostics: [
+      ...sourceWarnings,
       ...(result.diagnostics ?? doc.diagnostics ?? []),
       ...remoteWarnings,
     ],

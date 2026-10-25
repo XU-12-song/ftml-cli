@@ -138,6 +138,13 @@ test('diagnosticRanges：缺 offset 时回退 line/column', () => {
   } ]);
 });
 
+test('diagnosticRanges：没有 position 的诊断跳过（避免误画到第一行）', () => {
+  const src = '[[component src="x"]]';
+  assert.deepEqual(diagnosticRanges(src, [
+    { severity: 'warning', code: 'remote-include-no-client', message: 'm', position: null },
+  ]), []);
+});
+
 test('diagnosticRanges：越界起点丢弃，未知 severity 归为 warning，结果按 from 排序', () => {
   assert.deepEqual(diagnosticRanges('ab', [ { position: { start: { offset: 5 } } } ]), []);
   const src = '\n[[div]]\n[[span]]';
@@ -163,12 +170,21 @@ test('unknownMacroRanges：只报不认识的开标签', () => {
   assert.equal(src.slice(r[ 0 ].from, r[ 0 ].to), 'zzz');
 });
 
-test('unknownMacroRanges：行首块级闭标签（[[/div]]）不误报', () => {
+test('unknownMacroRanges：已知标签的闭标签不误报', () => {
   const src = '[[div]]\n\n[[/div]]\n';
   assert.deepEqual(unknownMacroRanges(src, BUILTIN_MACROS), []);
-  // 未知宏仍报开标签，闭标签不重复报
-  const unknown = unknownMacroRanges('[[zzz]]\n[[/zzz]]', BUILTIN_MACROS);
-  assert.deepEqual(unknown.map((r) => r.name), [ 'zzz' ]);
+});
+
+test('unknownMacroRanges：未知宏只标开标签，/q 保持正常', () => {
+  const src = '[[q]]x[[/q]]';
+  const r = unknownMacroRanges(src, BUILTIN_MACROS);
+  assert.deepEqual(r.map((x) => src.slice(x.from, x.to)), [ 'q' ]);
+  assert.equal(r[ 0 ].from, 2);
+});
+
+test('unknownMacroRanges：bibliography 是原生标签，不误报', () => {
+  assert.ok(BUILTIN_MACROS.has('bibliography'));
+  assert.deepEqual(unknownMacroRanges('[[bibliography]]\n[[/bibliography]]', BUILTIN_MACROS), []);
 });
 
 test('unknownMacroRanges：模板名并入已知集后不再报警', () => {
@@ -178,7 +194,7 @@ test('unknownMacroRanges：模板名并入已知集后不再报警', () => {
 });
 
 test('BUILTIN_MACROS：含常见原生标签', () => {
-  for (const n of [ 'div', 'span', 'code', 'html', 'embed', 'iframe', 'module', 'include', 'table' ]) {
+  for (const n of [ 'div', 'span', 'code', 'html', 'embed', 'iframe', 'module', 'include', 'table', 'bibliography' ]) {
     assert.ok(BUILTIN_MACROS.has(n), `应含 ${n}`);
   }
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import vm from 'node:vm';
 import { writeFileSync } from 'node:fs';
-import { renderPreview, resolveIncludeFile } from '../src/render/preview.js';
+import { renderPreview, resolveIncludeFile, findIndentedIncludes } from '../src/render/preview.js';
 import { buildPreviewDocument } from '../src/render/preview-page.js';
 import { getSite, getPage } from '../src/infra/wikidot.js';
 import { parseFtmx } from '../src/core/parse-ftmx.js';
@@ -32,6 +32,20 @@ test('渲染 div/strong/em/code 为 HTML', async () => {
   assert.ok(html.includes('<strong>加粗</strong>'));
   assert.ok(html.includes('<em>斜体</em>'));
   assert.deepEqual(diagnostics, []);
+});
+
+test('findIndentedIncludes：只报非行首 include，跳过 code 块与注释', () => {
+  const ds = findIndentedIncludes([
+    ' [[include a]]',
+    '[[include b]]',
+    '\t[[include c]]',
+    '[[code]]',
+    '  [[include d]]',
+    '[[/code]]',
+    ' [!-- [[include e]] --]',
+  ].join('\n'));
+  assert.deepEqual(ds.map((d) => d.position.start.line), [1, 3]);
+  assert.equal(ds[0].code, 'include-indented');
 });
 
 test('[[module CSS]]（build 后的 style 产物）收集为 <style> 并内联进 HTML', async () => {

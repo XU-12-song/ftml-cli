@@ -81,13 +81,17 @@ export async function renderProjectFile(id, body, env = {}) {
     const allowNetwork = body?.allowNetwork === true && settings.useRemoteInclude;
 
     let client = env.injectClient ?? null;
+    let clientError = null;
     let ownsClient = false;
     if (!client && allowNetwork) {
       try {
-        client = await createClient();
+        // clientFactory 供测试注入（与 versions/deploy 的注入方式一致）
+        client = await (env.clientFactory ?? createClient)();
         ownsClient = true;
-      } catch {
-        client = null; // 无凭证：远程 include 解析关闭，渲染占位
+      } catch (e) {
+        client = null;
+        // 不要静默：把「为什么连不上远程」带到诊断里，前端问题面板会展示
+        clientError = e;
       }
     }
 
@@ -100,6 +104,7 @@ export async function renderProjectFile(id, body, env = {}) {
         includeTemplates: templates,
         client,
         allowNetwork,
+        clientError,
       });
       const title = config.page || page.fullName;
       const wantFull = body?.full !== false;

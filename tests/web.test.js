@@ -305,6 +305,46 @@ test('render：编辑态默认不联网；allowNetwork 才补拉远程 include�
   }
 });
 
+test('render：联网刷新无可用客户端时给出诊断，而不是静默 miss', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      saveProjectFile(root, { path: 'd.ftml', source: '[[include r-no-cred]]\n' });
+      saveSettings({ useRemoteInclude: true });
+
+      // 注入一个必然失败的 clientFactory：不依赖本机是否真的登录过 Wikidot，
+      // 也不会发起任何网络请求
+      const r = await renderProjectFile(
+        root,
+        { path: 'd.ftml', site: 'scp-cn', page: 'hello', allowNetwork: true },
+        { clientFactory: () => { throw new Error('未登录 Wikidot'); } }
+      );
+      assert.ok(r.includes.some((i) => i.page === 'r-no-cred' && i.from === 'miss'));
+      assert.ok(r.diagnostics.some((d) => d.code === 'remote-include-no-client'));
+      assert.ok(r.problems.some((p) => p.code === 'remote-include-no-client'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：带前导空白的 [[include]] 明确告警（Wikidot 只识别行首）', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      saveProjectFile(root, { path: 'e.ftml', source: ' [[include r-indented]]\n' });
+      const r = await renderProjectFile(root, { path: 'e.ftml', site: 'scp-cn', page: 'hello' }, {});
+      assert.equal(r.includes.length, 0); // 解析器根本不会请求它
+      assert.ok(r.diagnostics.some((d) => d.code === 'include-indented'));
+      assert.ok(r.problems.some((p) => p.code === 'include-indented'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
 test('validate 端点：干净文件无错误，坏文件报错', async () => {
   const root = makeFixtureProject();
   try {

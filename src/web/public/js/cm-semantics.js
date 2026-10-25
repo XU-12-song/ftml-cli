@@ -29,7 +29,7 @@ export const BUILTIN_MACROS = new Set([
   // 媒体 / 嵌入
   'html', 'embed', 'embedvideo', 'embedaudio', 'iframe', 'image',
   // 引用 / 模块 / 尺寸
-  'include', 'module', 'size', 'style', 'component',
+  'include', 'module', 'size', 'style', 'component', 'bibliography',
   // 列表 / 锚点变体
   'a', 'a_', 'ul', 'ul_', 'ol', 'ol_',
   // 按钮 / 社交 / 用户
@@ -220,6 +220,8 @@ export function diagnosticRanges(source, diagnostics = []) {
   for (const d of diagnostics) {
     if (!d) continue;
     const s = d.position?.start;
+    // 没有位置的诊断（如远程 include 失败）无法落点，画在第一行只会误导
+    if (!s) continue;
     let from = Number.isFinite(s?.offset)
       ? s.offset
       : offsetAt(source, starts, s?.line, s?.column);
@@ -249,8 +251,8 @@ export function diagnosticRanges(source, diagnostics = []) {
  * ------------------------------------------------------------------ */
 
 /**
- * 不在 knownNames（原生标签 ∪ 模板名）里的 `[[name]]` 开标签。
- * 闭标签不单独报——避免与服务的「未闭合块」诊断重复。
+ * 不在 knownNames（原生标签 ∪ 模板名）里的 `[[name]]` **开标签**。
+ * 闭标签 `[[/name]]` 不单独标记：一个未知标签只提示一次，避免同一处错误被画两遍。
  * @param {Set<string>} knownNames
  * @returns {Array<{from,to,name}>}
  */

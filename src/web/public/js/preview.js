@@ -11,7 +11,7 @@
  */
 import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, isAbortError } from './api.js';
-import { showDiagnostics, includeSummary, renderProblems, openProblems } from './ui.js';
+import { showDiagnostics, includeSummary, renderProblems } from './ui.js';
 
 export async function saveFile(relPath, source) {
   await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/save`, { path: relPath, source });
@@ -21,6 +21,26 @@ export async function saveFile(relPath, source) {
 export async function persistEditor() {
   if (!state.projectId || !state.filePath) return;
   await saveFile(state.filePath, el.editor.value);
+}
+
+/**
+ * 合并两路诊断供编辑器画波浪线：
+ *   - diagnostics：@wdprlib 渲染诊断（展开后的文本）
+ *   - problems：统一问题列表，含 expand 阶段的 FtmlError（如组件文件读不到）
+ * 只保留带 position 的条目；按 code + 位置 + 文案去重。
+ */
+function mergeDiagnostics(diagnostics, problems) {
+  const out = [];
+  const seen = new Set();
+  for (const d of [...(diagnostics || []), ...(problems || [])]) {
+    const s = d?.position?.start;
+    if (!s) continue;
+    const key = `${d.code ?? ''}|${s.offset ?? `${s.line}:${s.column}`}|${d.message ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(d);
+  }
+  return out;
 }
 
 // 保存上一次的 blob URL，方便 revoke
@@ -101,14 +121,17 @@ export async function render({ remote = false, forceFull = false } = {}) {
     state.lastIncludes = r.includes || [];
     renderProblems(r.problems || []);
     showDiagnostics(r.diagnostics || [], r.diagnosticReport || '', r.problems || []);
-    el.editor.setDiagnostics(r.diagnostics || []); // 语义层：结构诊断波浪线
+    // 语义层波浪线：同时覆盖 wdpr 诊断与 expand 阶段的组件/模板错误
+    el.editor.setDiagnostics(mergeDiagnostics(r.diagnostics, r.problems));
 
     // 模板展开 / 渲染失败：服务端 html 与 fragment 均为 null，不刷新预览；
-    // 问题面板已给出出错行与（映射过的）堆栈，直接弹出
+    // 只在状态栏提示，不自动弹窗打断输入
     if (r.html == null && r.fragment == null) {
       const first = (r.problems || [])[0];
+      // 不自动弹问题面板：编辑防抖渲染在输入中途失败时会抢走焦点、打断输入。
+      // 下方状态栏仍显示错误数与可点击入口。
       setStatus(`渲染失败：${first?.message ?? '未知错误'}（${fmtTime()}）`);
-      openProblems();
+      setError(`渲染失败：${first?.message ?? '未知错误'}（点击状态栏「渲染」查看问题）`);
       return;
     }
 
@@ -125,8 +148,17 @@ export async function render({ remote = false, forceFull = false } = {}) {
       return;
     }
 
+    // 远程请求已发出但没有可用客户端（未登录/凭证失效）：状态栏直接说清楚，
+    // 否则只会看到「未命中」，很容易误判成网络问题。
+    const noClient = (r.diagnostics || []).some((d) => d.code === 'remote-include-no-client');
+    setError(noClient
+      ? '远程 include 需要登录 Wikidot：请点击右上角账号按钮登录后重试'
+      : '');
+
     const misses = (state.lastIncludes || []).filter((i) => i.from === 'miss').length;
-    const hint = !remote && misses > 0 ? '（有未命中的远程 include，Ctrl+Shift+R 联网补拉）' : '';
+    const hint = !remote && misses > 0
+      ? '（有未命中的远程 include，点顶栏「联网刷新」补拉）'
+      : '';
     setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}${hint}`);
   } catch (e) {
     // 被更新的渲染取代（客户端已中止 / 服务端 409）：静默，交回给后发的那次
@@ -137,7 +169,7 @@ export async function render({ remote = false, forceFull = false } = {}) {
   }
 }
 
-/** 手动刷新：允许联网解析远程 [[include]]（Ctrl+Shift+R / 工具栏按钮） */
+/** 手动刷新：允许联网解析远程 [[include]]（顶栏「联网刷新」/ Ctrl+Alt+Shift+R） */
 export function renderRemote() {
   clearTimeout(state.saveTimer);
   return render({ remote: true });
