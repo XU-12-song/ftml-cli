@@ -1,7 +1,22 @@
 node_modules/
 .claude/
+.claude.json
 CLAUDE.md
 .claudex-profile.json
 THIRD-PARTY-LICENSE-REVIEW.md
+
+# electron-builder 产物 / 测试截图
 release/
 tests/electron/artifacts/
+
+# 本地编辑器 / 系统临时文件
+*.swp
+*.swo
+*.log
+.DS_Store
+Thumbs.db
+
+# 本地环境变量（dotenv）
+.env
+.env.*
+!.env.example
