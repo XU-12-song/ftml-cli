@@ -27,6 +27,8 @@ export async function loadProjects() {
     state.projectId = null;
     state.filePath = null;
   }
+  // 桌面版：同步托盘「最近项目」菜单
+  window.ftmlDesktop?.projectsChanged?.();
 }
 
 export function initProjects() {
@@ -34,12 +36,14 @@ export function initProjects() {
     state.projectId = el.projectSelect.value || null;
     state.filePath = null;
     el.fileSelect.value = '';
-    if (state.projectId) {
-      refreshSidebar();
-      clearEditor();
-    } else {
-      clearEditor();
+    clearEditor();
+
+    // 没有项目时下拉只有「（无项目，添加…）」占位项：直接进入添加流程
+    if (!state.projectId) {
+      openAddProject();
+      return;
     }
+    refreshSidebar();
   });
 
   // 顶栏控件已移除，以下动作函数统一由命令面板（Ctrl+K）调用
@@ -61,6 +65,33 @@ export async function openAddProject() {
       el.projectSelect.value = p.id;
       await refreshSidebar();
     }
+  } catch (e) {
+    setError(e.message);
+  }
+}
+
+/** 从工作区列表移除当前项目（仅取消注册，不删除任何文件） */
+export async function removeCurrentProject() {
+  if (!state.projectId) return;
+  const current = state.projects.find((p) => p.id === state.projectId);
+  const name = current?.name || state.projectId;
+  if (!confirm(`从工作区列表移除「${name}」？\n不会删除任何文件。`)) return;
+
+  try {
+    await api('DELETE', `/api/projects/${encodeURIComponent(state.projectId)}`);
+    state.projectId = null;
+    state.filePath = null;
+    clearEditor();
+    await loadProjects();
+
+    // 自动切到剩余的第一个项目；没有则停在空状态
+    if (state.projects.length) {
+      const next = state.projects[0];
+      state.projectId = next.id;
+      el.projectSelect.value = next.id;
+      await refreshSidebar();
+    }
+    setStatus(`已从工作区移除 ${name}`);
   } catch (e) {
     setError(e.message);
   }

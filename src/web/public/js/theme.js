@@ -76,6 +76,9 @@ export function applyTheme(pref, { persist = true, syncServer = true } = {}) {
   // CM6：换主题只需重配 Compartment，不重建编辑器（保留光标/撤销栈）
   state.editor?.setTheme?.(effective);
 
+  // 桌面版：让 Windows 原生标题栏/菜单跟随应用主题（浏览器模式 no-op）
+  window.ftmlDesktop?.setTheme?.(effective);
+
   if (syncServer) {
     api('POST', '/api/settings', { theme: next }).catch(() => {
       // 同步失败不影响本地体验；下次保存设置会再次带上 theme

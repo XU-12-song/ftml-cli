@@ -7,7 +7,7 @@
  * 交互约定：最小化 → 隐藏到托盘；点关闭 → 退出应用。
  */
 
-import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, screen, nativeTheme } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { startWebServer } from '../src/web/start.js';
 import { addProject, loadProjects } from '../src/web/projects.js';
+import { loadSettings } from '../src/domain/settings.js';
 import { homeFtmlCliDir } from '../src/infra/paths.js';
 import { findFtmlFileArg, resolveOpenTarget } from './file-open.js';
 import { loadWindowState, trackWindowState } from './window-state.js';
@@ -43,7 +44,7 @@ if (!gotLock) {
 } else {
   app.on('second-instance', (_event, argv) => {
     const file = findFtmlFileArg(argv);
-    if (file) openFtmlFile(file);
+    if (file) openFtmlFile(file).catch((e) => dialog.showErrorBox('无法打开文件', e.message));
     else showWindow();
   });
 
@@ -90,8 +91,10 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    autoHideMenuBar: true,
     backgroundColor: '#14181f',
     title: 'ftml',
+    icon: assetPath(path.join('assets', 'icons', 'app', 'ftml.ico')),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -258,6 +261,53 @@ function registerIpc() {
     pendingTarget = null;
     return target;
   });
+
+  ipcMain.handle('ftml:set-theme', (event, theme) => {
+    if (!isTrustedSender(event)) return;
+    nativeTheme.themeSource = theme === 'light' ? 'light' : 'dark';
+  });
+
+  ipcMain.on('ftml:projects-changed', (event) => {
+    if (!isTrustedSender(event)) return;
+    refreshTray();
+  });
+}
+
+/** 读取保存的主题偏好；auto 跟随系统。用于让原生标题栏/菜单先于网页同步。 */
+function initialThemeSource() {
+  try {
+    const { theme } = loadSettings();
+    if (theme === 'light' || theme === 'dark') return theme;
+  } catch {
+    /* 配置损坏时回退系统 */
+  }
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+}
+
+function isRegisteredProject(root) {
+  const target = path.resolve(root).toLowerCase();
+  return loadProjects().some((p) => path.resolve(p.root).toLowerCase() === target);
+}
+
+/** 松散 .ftml（目录不像项目）注册前询问，避免双击一次就多一个工作区 */
+async function confirmLooseProject(target) {
+  if (target.isProject || isRegisteredProject(target.project)) return true;
+  // 托盘/最小化状态下双击文件时，先让窗口可见，提示框才有明确归属
+  if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
+  const opts = {
+    type: 'question',
+    title: '添加工作区',
+    message: '该目录不是 ftml 项目',
+    detail: `未找到 .ftmlrc.json / .ftml / templates / components：\n${target.project}\n\n要把它添加为工作区吗？之后可从项目下拉菜单移除。`,
+    buttons: [ '添加为工作区', '取消' ],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  };
+  const result = mainWindow
+    ? await dialog.showMessageBox(mainWindow, opts)
+    : await dialog.showMessageBox(opts);
+  return result.response === 0;
 }
 
 function isTrustedSender(event) {
@@ -289,7 +339,9 @@ async function chooseFtmlFile() {
       properties: [ 'openFile' ],
       filters: [ { name: 'FTML', extensions: [ 'ftml' ] }, { name: '所有文件', extensions: [ '*' ] } ],
     });
-  if (!result.canceled && result.filePaths[0]) openFtmlFile(result.filePaths[0]);
+  if (!result.canceled && result.filePaths[0]) {
+    openFtmlFile(result.filePaths[0]).catch((e) => dialog.showErrorBox('无法打开文件', e.message));
+  }
 }
 
 function deliverTarget(target) {
@@ -304,9 +356,13 @@ function deliverTarget(target) {
   }
 }
 
-function openFtmlFile(filePath) {
+async function openFtmlFile(filePath) {
   const target = resolveOpenTarget(filePath);
   if (!target) {
+    showWindow();
+    return;
+  }
+  if (!(await confirmLooseProject(target))) {
     showWindow();
     return;
   }
@@ -335,6 +391,8 @@ function openProjectFolder(root) {
 }
 
 async function boot() {
+  // 先同步原生标题栏/菜单主题，避免深色界面配浅色系统标题栏
+  nativeTheme.themeSource = initialThemeSource();
   createWindow();
   registerIpc();
   setupMenu();
@@ -353,6 +411,9 @@ async function boot() {
 
   const initialFile = findFtmlFileArg(process.argv);
   let target = initialFile ? resolveOpenTarget(initialFile) : null;
+  if (target) {
+    if (!(await confirmLooseProject(target))) target = null;
+  }
   if (target) {
     try {
       addProject(target.project);

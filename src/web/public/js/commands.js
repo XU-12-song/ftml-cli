@@ -17,7 +17,7 @@ import {
   newSource, newTemplate, newComponent,
   saveCurrent, remoteRefresh, validateCurrent, submitCurrent, deployCurrent,
 } from './editor.js';
-import { openAddProject, openNewRepo, initGitProject } from './projects.js';
+import { openAddProject, openNewRepo, initGitProject, removeCurrentProject } from './projects.js';
 import { openVersionsDialog } from './versions.js';
 import { openSettings } from './settings.js';
 import { runDoctor } from './git.js';
@@ -44,6 +44,7 @@ export const COMMANDS = [
   { group: '项目', title: '新建 ftml 仓库', key: 'Ctrl+Alt+R', keywords: 'new repo create', run: openNewRepo },
   { group: '项目', title: '初始化 git 项目', key: 'Ctrl+Alt+I', keywords: 'init git repository', enabled: () => hasProject() && !state.isRepo, run: initGitProject },
   { group: '项目', title: '版本列表 / 回退', key: 'Ctrl+Alt+V', keywords: 'version revert history', enabled: hasProject, run: openVersionsDialog },
+  { group: '项目', title: '从工作区列表移除当前项目…', keywords: 'remove delete workspace project', enabled: hasProject, run: removeCurrentProject },
 
   // ---- 发布 ----
   { group: '发布', title: '提交小版本（本地）', key: 'Ctrl+Alt+B', keywords: 'submit minor commit local version', enabled: hasProject, run: submitCurrent },

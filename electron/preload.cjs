@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld('ftmlDesktop', {
 
   pickDirectory: (opts) => ipcRenderer.invoke('ftml:pick-directory', opts ?? {}),
 
+  /** 同步原生标题栏/菜单主题 */
+  setTheme: (theme) => ipcRenderer.invoke('ftml:set-theme', theme),
+
+  /** 项目注册表变化后刷新托盘「最近项目」 */
+  projectsChanged: () => ipcRenderer.send('ftml:projects-changed'),
+
   /** 渲染层完成 boot 后调用；返回启动期间积压的打开请求 */
   rendererReady: () => ipcRenderer.invoke('ftml:renderer-ready'),
 

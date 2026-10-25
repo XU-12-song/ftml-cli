@@ -42,6 +42,7 @@ test('resolveOpenTarget：优先使用配置文件所在目录作为项目根', 
     const t = resolveOpenTarget(file);
     assert.equal(t.project, root);
     assert.equal(t.file, 'pages/a.ftml');
+    assert.equal(t.isProject, true);
   } finally {
     cleanup(root);
   }
@@ -54,6 +55,33 @@ test('resolveOpenTarget：没有配置文件时回退到文件父目录', () => 
     const t = resolveOpenTarget(file);
     assert.equal(t.project, root);
     assert.equal(t.file, 'index.ftml');
+    assert.equal(t.isProject, false, '只有松散 .ftml 时应提示后再注册');
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveOpenTarget：有 templates + components 标记时视为项目（可向上查找）', () => {
+  const root = makeTmpDir({
+    'templates/x.ftmx': 'x',
+    'components/c.ftml': 'c',
+    'pages/a.ftml': 'a',
+  });
+  try {
+    const t = resolveOpenTarget(path.join(root, 'pages', 'a.ftml'));
+    assert.equal(t.isProject, true);
+    assert.equal(t.project, root);
+    assert.equal(t.file, 'pages/a.ftml');
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveOpenTarget：只有 templates 的松散目录仍视为非项目', () => {
+  const root = makeTmpDir({ 'templates/x.ftmx': 'x', 'a.ftml': 'a' });
+  try {
+    const t = resolveOpenTarget(path.join(root, 'a.ftml'));
+    assert.equal(t.isProject, false);
   } finally {
     cleanup(root);
   }

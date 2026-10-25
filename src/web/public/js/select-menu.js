@@ -20,6 +20,7 @@ let menu = null;
 let ownerSelect = null;
 let items = [];       // [{ node, option }]
 let activeIndex = -1;
+let projectAction = null; // 项目下拉底部的「移除当前工作区」回调
 
 function closeMenu() {
   if (!menu) return;
@@ -120,6 +121,23 @@ function openMenu(select) {
     });
   }
 
+  // 项目下拉：底部提供「移除当前工作区」，仅取消注册，不删除任何文件
+  if (select === el.projectSelect && projectAction && select.value) {
+    const sep = document.createElement('div');
+    sep.className = 'select-menu-sep';
+    const action = document.createElement('div');
+    action.className = 'select-menu-item select-menu-action';
+    action.setAttribute('role', 'menuitem');
+    action.textContent = '移除当前工作区…';
+    action.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+      projectAction?.();
+    });
+    menu.append(sep, action);
+  }
+
   select.setAttribute('aria-expanded', 'true');
   positionMenu(select);
 
@@ -177,7 +195,8 @@ function initOne(select) {
 }
 
 /** 全局接线：两个顶栏下拉 + 关闭时机 */
-export function initSelectMenus() {
+export function initSelectMenus({ onRemoveProject = null } = {}) {
+  projectAction = onRemoveProject;
   initOne(el.projectSelect);
   initOne(el.fileSelect);
   if (useNative) return;

@@ -9,6 +9,37 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findConfigDir } from '../src/infra/paths.js';
 
+/**
+ * 判断目录是否像一个 ftml 项目：
+ *   - 强标记：配置文件 / .ftml 数据目录
+ *   - 弱标记：templates + components 同时存在（避免把任意含 templates 的目录当项目）
+ */
+const CONFIG_MARKERS = [ '.ftmlrc.json', 'ftml.config.json', '.ftmlrc', '.ftml' ];
+const PROJECT_DIRS = [ 'templates', 'components' ];
+
+export function looksLikeFtmlProject(dir) {
+  if (CONFIG_MARKERS.some((name) => fs.existsSync(path.join(dir, name)))) return true;
+  return PROJECT_DIRS.every((name) => fs.existsSync(path.join(dir, name)));
+}
+
+/**
+ * 从文件所在目录向上寻找项目根（最多 4 层）。
+ * 命中配置/项目标记返回该目录；否则回退文件父目录并标记为非项目。
+ */
+export function findFtmlProjectRoot(start) {
+  const config = findConfigDir(start);
+  if (config) return { root: config, isProject: true };
+
+  let dir = path.resolve(start);
+  for (let depth = 0; depth <= 4; depth++) {
+    if (looksLikeFtmlProject(dir)) return { root: dir, isProject: true };
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return { root: path.resolve(start), isProject: false };
+}
+
 /** 从 Electron/命令行 argv 中找出第一个存在的 .ftml 文件（绝对路径） */
 export function findFtmlFileArg(argv = []) {
   for (const arg of argv) {
@@ -25,8 +56,9 @@ export function findFtmlFileArg(argv = []) {
 }
 
 /**
- * .ftml 文件 → { project, file }。
+ * .ftml 文件 → { project, file, isProject }。
  * project 优先取向上找到的配置文件目录，否则用文件父目录；file 为相对路径。
+ * isProject=false 表示只是松散文件，Electron 会在注册前询问用户。
  * 越界（理论上不会）或文件不可读时返回 null。
  */
 export function resolveOpenTarget(filePath) {
@@ -39,8 +71,12 @@ export function resolveOpenTarget(filePath) {
     return null;
   }
 
-  const root = findConfigDir(path.dirname(abs)) ?? path.dirname(abs);
-  const rel = path.relative(root, abs).split(path.sep).join('/');
+  const located = findFtmlProjectRoot(path.dirname(abs));
+  const rel = path.relative(located.root, abs).split(path.sep).join('/');
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
-  return { project: root, file: rel };
+  return {
+    project: located.root,
+    file: rel,
+    isProject: located.isProject,
+  };
 }

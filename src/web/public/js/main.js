@@ -18,7 +18,7 @@
  */
 import { el, state } from './dom.js';
 import { api, setError } from './api.js';
-import { initProjects, loadProjects, openAddProject } from './projects.js';
+import { initProjects, loadProjects, openAddProject, removeCurrentProject } from './projects.js';
 import { initEditor, refreshSidebar, openFile } from './editor.js';
 import { initSnippets, loadSnippets } from './snippets.js';
 import { initSettings, loadSettings } from './settings.js';
@@ -118,7 +118,7 @@ async function boot() {
 initTheme();
 
 // 先装配各面板的事件监听，再拉取初始数据
-initSelectMenus();
+initSelectMenus({ onRemoveProject: removeCurrentProject });
 initLayout();
 initTarget();
 initProjects();

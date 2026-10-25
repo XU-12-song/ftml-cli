@@ -76,3 +76,40 @@ test('Electron 冒烟：窗口、preload、deep link 与文件打开', { skip, t
     cleanup(home);
   }
 });
+
+test('Electron：项目下拉可移除当前工作区（只取消注册）', { skip, timeout: 120000 }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ftml-e2e-remove-'));
+  const root = makeTmpDir({
+    '.ftmlrc.json': JSON.stringify({ site: 'scp-cn', page: 'hello' }),
+    'index.ftml': '[[div]]REMOVE-CHECK[[/div]]\n',
+  });
+  let app = null;
+  try {
+    app = await electron.launch({
+      args: [ '.', path.join(root, 'index.ftml') ],
+      cwd: repoRoot,
+      env: { ...process.env, FTML_CLI_HOME: home, FTML_E2E: '1' },
+      timeout: 60000,
+    });
+    const page = await app.firstWindow();
+    await page.waitForFunction(() => !!document.querySelector('#project-select')?.value, null, { timeout: 60000 });
+
+    page.on('dialog', (d) => d.accept());
+    await page.click('#project-select');
+    await page.waitForSelector('.select-menu-action', { timeout: 10000 });
+    await page.click('.select-menu-action');
+
+    await page.waitForFunction(
+      () => document.querySelector('#project-select')?.value === '',
+      null,
+      { timeout: 30000 }
+    );
+
+    const remaining = await page.evaluate(() => fetch('/api/projects').then((r) => r.json()));
+    assert.deepEqual(remaining, []);
+  } finally {
+    await app?.close().catch(() => {});
+    cleanup(root);
+    cleanup(home);
+  }
+});

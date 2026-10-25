@@ -384,6 +384,13 @@ select:focus, input:focus {
 .select-menu-item[aria-selected="true"] .select-menu-check { opacity: 1; }
 .select-menu-item.disabled { opacity: 0.4; cursor: default; }
 .select-menu-item.disabled:hover { background: transparent; }
+.select-menu-sep {
+  height: 1px;
+  margin: var(--sp-2);
+  background: var(--border);
+}
+.select-menu-action { color: var(--danger); }
+.select-menu-action:hover { background: var(--danger-soft); }
 
 /* 按钮 */
 .btn {
