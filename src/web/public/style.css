@@ -648,8 +648,6 @@ input:focus-visible,
   flex: 0 0 6px;
   position: relative;
   z-index: 5;
-  display: grid;
-  place-items: center;
   min-width: 0;
   min-height: 0;
   background: transparent;
@@ -679,37 +677,9 @@ input:focus-visible,
   height: 1px;
   transform: translateY(-50%);
 }
-#splitter::after {
-  content: "↔";
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  color: var(--fg-dim);
-  font-size: 10px;
-  line-height: 1;
-  opacity: 0;
-  transition: opacity var(--dur-fast), color var(--dur-fast),
-              border-color var(--dur-fast), background-color var(--dur-fast);
-}
-#splitter[data-axis="y"]::after { content: "↕"; }
 #splitter:hover::before,
 #splitter:focus-visible::before,
 #splitter.dragging::before { background: var(--accent); }
-#splitter:hover::after,
-#splitter:focus-visible::after,
-#splitter.dragging::after {
-  opacity: 1;
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--bg-elevated);
-}
-@media (hover: none) { #splitter::after { opacity: 0.9; } }
 @media (pointer: coarse) { #splitter { flex-basis: 12px; } }
 
 /* 拖动期间禁用预览 iframe 的指针事件，避免 pointermove 被它吞掉 */

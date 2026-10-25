@@ -75,10 +75,6 @@ test('Electron 冒烟：窗口、preload、deep link 与文件打开', { skip, t
       await page.locator('#splitter').evaluate((n) => getComputedStyle(n).cursor),
       'col-resize'
     );
-    assert.match(
-      await page.locator('#splitter').evaluate((n) => getComputedStyle(n, '::after').content),
-      /↔/
-    );
 
     const width1 = await page.locator('#editor-container').evaluate((n) => n.getBoundingClientRect().width);
     const box = await page.locator('#splitter').boundingBox();
@@ -102,10 +98,6 @@ test('Electron 冒烟：窗口、preload、deep link 与文件打开', { skip, t
     assert.equal(
       await page.locator('#splitter').evaluate((n) => getComputedStyle(n).cursor),
       'row-resize'
-    );
-    assert.match(
-      await page.locator('#splitter').evaluate((n) => getComputedStyle(n, '::after').content),
-      /↕/
     );
 
     const height1 = await page.locator('#editor-container').evaluate((n) => n.getBoundingClientRect().height);
