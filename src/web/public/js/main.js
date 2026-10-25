@@ -28,6 +28,8 @@ import { initLayout } from './layout.js';
 import { initTarget } from './target.js';
 import { initPalette } from './palette.js';
 import { initKeymap } from './keymap.js';
+import { initTheme } from './theme.js';
+import { initSelectMenus } from './select-menu.js';
 
 async function boot() {
   // 设置（自动预览间隔等）与代码片段均由服务端持久化，启动时拉取
@@ -45,7 +47,11 @@ async function boot() {
   }
 }
 
+// 先确定配色，再建编辑器（CM6 创建时即读取生效主题）
+initTheme();
+
 // 先装配各面板的事件监听，再拉取初始数据
+initSelectMenus();
 initLayout();
 initTarget();
 initProjects();

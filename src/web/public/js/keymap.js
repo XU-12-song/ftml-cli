@@ -1,7 +1,7 @@
 /**
  * keymap.js — 全局快捷键：集中解析 commands.js 里注册的 key 并分发
  *
- * key 格式：'Ctrl+S' / 'Ctrl+Shift+R' / 'Ctrl+Alt+N' / 'Ctrl+,'
+ * key 格式：'Ctrl+S' / 'Ctrl+Alt+Shift+R' / 'Ctrl+Alt+N' / 'Ctrl+,'
  *   - Ctrl 在 macOS 上同时接受 Cmd（metaKey）
  *   - 修饰键按精确匹配，Ctrl+S 不会误触 Ctrl+Shift+S
  *

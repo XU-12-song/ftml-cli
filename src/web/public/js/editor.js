@@ -118,6 +118,7 @@ export function initEditor() {
 
   // 顶栏 / 侧边栏按钮与命令面板共用同一批动作函数（见下方 export）
   el.saveBtn?.addEventListener('click', saveCurrent);
+  el.remoteBtn?.addEventListener('click', remoteRefresh);
   el.newTemplateBtn?.addEventListener('click', newTemplate);
   el.newComponentBtn?.addEventListener('click', newComponent);
   el.newSourceBtn?.addEventListener('click', newSource);
@@ -135,7 +136,7 @@ export function saveCurrent() {
   render();
 }
 
-/** 联网补拉远程 include 并重渲染（Ctrl+Shift+R） */
+/** 联网补拉远程 include 并重渲染（顶栏按钮 / Ctrl+Alt+Shift+R） */
 export function remoteRefresh() {
   if (!state.projectId || !state.filePath) {
     setError('请先打开一个文件');

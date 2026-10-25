@@ -40,6 +40,7 @@ import {
   RangeSetBuilder,
   StateField,
   StateEffect,
+  Compartment,
 } from '../vendor/cm6/cm6.js';
 import { token, startState } from './cm-lexer.js';
 import { ftmlCompletion } from './completion.js';
@@ -76,30 +77,33 @@ const TOKEN_TAGS = {
   'table': tags.contentSeparator,
 };
 
-/** 配色：与 style.css 的 CSS 变量同色系（深色主题） */
+/**
+ * 配色：全部引用 style.css 的主题变量（--syn-*），因此同一套高亮规则
+ * 在「雾蓝夜 / 暖纸白」之间自动切换，不需要维护两份颜色表。
+ */
 const ftmlHighlightStyle = HighlightStyle.define([
-  // 标签名（开 `[[div]]` 与闭 `[[/div]]` 同色）→ VSCode entity.name.tag
-  { tag: tags.macroName, color: '#569cd6' },
-  { tag: tags.tagName, color: '#569cd6' },
-  { tag: tags.attributeName, color: '#9CDCFE' },                // 键 → variable
-  { tag: tags.operator, color: '#d4d4d4' },                     // = 与 |
-  { tag: tags.string, color: '#ce9178' },                       // "…"
-  { tag: tags.atom, color: '#b5cea8' },                         // 裸值/数字
-  { tag: tags.bracket, color: '#6b7280' },                      // `[[` / `]]` 分隔符（与标签名不同色）
-  { tag: tags.content, color: '#d4d4d4' },                      // 惰性区原文（内容为白）
-  { tag: tags.comment, color: '#6A9955', fontStyle: 'italic' },
-  { tag: tags.literal, color: '#c4a7e7' },                      // @@…@@ / @<…>@
-  { tag: tags.link, color: '#4f8cff', textDecoration: 'underline' },
-  { tag: tags.heading, color: '#d6d8dc', fontWeight: '700' },
+  // 标签名（开 `[[div]]` 与闭 `[[/div]]` 同色）
+  { tag: tags.macroName, color: 'var(--syn-tag)' },
+  { tag: tags.tagName, color: 'var(--syn-tag)' },
+  { tag: tags.attributeName, color: 'var(--syn-attr)' },        // 键
+  { tag: tags.operator, color: 'var(--syn-op)' },               // = 与 |
+  { tag: tags.string, color: 'var(--syn-string)' },             // "…"
+  { tag: tags.atom, color: 'var(--syn-atom)' },                 // 裸值/数字
+  { tag: tags.bracket, color: 'var(--syn-bracket)' },           // `[[` / `]]` 分隔符
+  { tag: tags.content, color: 'var(--syn-content)' },           // 惰性区原文
+  { tag: tags.comment, color: 'var(--syn-comment)', fontStyle: 'italic' },
+  { tag: tags.literal, color: 'var(--syn-literal)' },           // @@…@@ / @<…>@
+  { tag: tags.link, color: 'var(--syn-link)', textDecoration: 'underline' },
+  { tag: tags.heading, color: 'var(--syn-heading)', fontWeight: '700' },
   { tag: tags.strong, fontWeight: '700' },
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
-  { tag: tags.monospace, color: '#c4a7e7' },
-  { tag: tags.contentSeparator, color: '#8a8f98' },             // || 表格
+  { tag: tags.monospace, color: 'var(--syn-mono)' },
+  { tag: tags.contentSeparator, color: 'var(--syn-sep)' },      // || 表格
 ]);
 
-/** CM6 深色主题（尺寸/字体交给 style.css 的 .cm-editor 规则，这里只管配色） */
-const cmTheme = EditorView.theme({
+/** CM6 配色规则（尺寸/字体交给 style.css 的 .cm-editor 规则） */
+const CM_RULES = {
   '&': { color: 'var(--fg)', backgroundColor: 'var(--bg)', height: '100%' },
   '&.cm-focused': { outline: 'none' },
   '.cm-content': {
@@ -110,22 +114,35 @@ const cmTheme = EditorView.theme({
   '.cm-line': { padding: '0 12px' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: '#3a5a8c80',
+    backgroundColor: 'var(--selection)',
   },
   '.cm-gutters': {
     backgroundColor: 'var(--bg)',
     color: 'var(--fg-dim)',
     border: 'none',
   },
-  '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.035)' },
-  '.cm-activeLineGutter': { backgroundColor: 'rgba(255, 255, 255, 0.05)' },
+  '.cm-activeLine': { backgroundColor: 'var(--active-line)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--active-line)' },
   '.cm-scroller': { fontFamily: 'inherit', lineHeight: '1.6' },
   // 语义层：未知宏 / wdpr 诊断 / 模板键 / 括号配对
-  '.cm-ftml-unknown': { color: '#f7768e', textDecoration: 'underline dotted #f7768e' },
-  '.cm-ftml-error': { textDecoration: 'underline wavy #f7768e', textUnderlineOffset: '2px' },
-  '.cm-ftml-warn': { textDecoration: 'underline wavy #e0af68', textUnderlineOffset: '2px' },
-  '.cm-ftml-bracket': { backgroundColor: 'rgba(79, 140, 255, 0.30)', borderRadius: '2px' },
-}, { dark: true });
+  '.cm-ftml-unknown': { color: 'var(--danger)', textDecoration: 'underline dotted var(--danger)' },
+  '.cm-ftml-error': { textDecoration: 'underline wavy var(--danger)', textUnderlineOffset: '2px' },
+  '.cm-ftml-warn': { textDecoration: 'underline wavy var(--warn)', textUnderlineOffset: '2px' },
+  '.cm-ftml-bracket': { backgroundColor: 'var(--accent-selection)', borderRadius: '2px' },
+};
+
+/**
+ * 生成某套配色的 CM6 主题。
+ * dark 标记影响 CM 内部对选区/原生控件的默认假设，必须与生效主题一致。
+ */
+function cmThemeFor(theme) {
+  return EditorView.theme(CM_RULES, { dark: theme !== 'light' });
+}
+
+/** 读取当前生效主题（index.html 内联脚本已提前设置 data-theme） */
+function currentTheme() {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
 
 /* ------------------------------------------------------------------ *
  * 语义层：整篇「全局知识」的判断 → Decoration
@@ -139,7 +156,7 @@ const cmTheme = EditorView.theme({
  * 光标移动只重算括号配对，复用已缓存的 token 配对。
  * ------------------------------------------------------------------ */
 
-/** 装饰类型（class 由 cmTheme 定义） */
+/** 装饰类型（class 由 CM_RULES 定义） */
 const unknownMark = Decoration.mark({ class: 'cm-ftml-unknown' });
 const errorMark = Decoration.mark({ class: 'cm-ftml-error' });
 const warnMark = Decoration.mark({ class: 'cm-ftml-warn' });
@@ -285,6 +302,9 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
     for (const h of handlers[ type ].slice()) h(arg);
   };
 
+  // 主题放进 Compartment：切换主题时只重配配色、保留文档/光标/撤销栈
+  const themeCompartment = new Compartment();
+
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -311,7 +331,7 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
           maxRenderedOptions: 12,
           icons: true,
         }),
-        cmTheme,
+        themeCompartment.of(cmThemeFor(currentTheme())),
         keymap.of([ ...defaultKeymap, ...historyKeymap, indentWithTab ]),
         EditorView.updateListener.of((u) => {
           if (u.docChanged && !suppress) emit('input');
@@ -390,6 +410,13 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
         y: c.top - r.top,
         lineHeight: Math.max(1, c.bottom - c.top),
       };
+    },
+
+    /** 切换编辑器配色（'dark' | 'light'），由 theme.js 调用 */
+    setTheme(theme) {
+      view.dispatch({
+        effects: themeCompartment.reconfigure(cmThemeFor(theme === 'light' ? 'light' : 'dark')),
+      });
     },
 
     // ---- 语义层数据通道（由宿主在渲染/刷新侧边栏后注入）----

@@ -4,7 +4,7 @@
 import { el, state } from './dom.js';
 import { api, setStatus } from './api.js';
 
-/** 账号按钮：未登录显示 👤；已登录显示用户名 */
+/** 账号按钮：图标常驻；已登录时在图标旁显示用户名 */
 export async function refreshAuth() {
   try {
     const s = await api('GET', '/api/auth/status');
@@ -13,15 +13,11 @@ export async function refreshAuth() {
     state.auth = { loggedIn: false, username: '' };
   }
   const { loggedIn, username } = state.auth;
-  if (loggedIn) {
-    el.accountBtn.textContent = `👤 ${username}`;
-    el.accountBtn.classList.add('logged-in');
-    el.accountBtn.title = `已登录 ${username}，点击退出`;
-  } else {
-    el.accountBtn.textContent = '👤';
-    el.accountBtn.classList.remove('logged-in');
-    el.accountBtn.title = '登录 Wikidot';
-  }
+  if (el.accountName) el.accountName.textContent = loggedIn ? username : '';
+  el.accountBtn.classList.toggle('logged-in', loggedIn);
+  const label = loggedIn ? `已登录 ${username}，点击退出` : '登录 Wikidot';
+  el.accountBtn.title = label;
+  el.accountBtn.setAttribute('aria-label', label);
 }
 
 /** 已登录则退出，否则弹出登录框（命令面板与账号按钮共用） */

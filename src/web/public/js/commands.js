@@ -24,6 +24,7 @@ import { runDoctor } from './git.js';
 import { toggleLogin } from './auth.js';
 import { toggleLayout, toggleZen } from './layout.js';
 import { openTargetDialog } from './target.js';
+import { cycleTheme } from './theme.js';
 
 const hasProject = () => !!state.projectId;
 const hasFile = () => !!state.projectId && !!state.filePath;
@@ -36,7 +37,7 @@ export const COMMANDS = [
 
   // ---- 编辑 ----
   { group: '编辑', title: '保存并渲染', key: 'Ctrl+S', keywords: 'save render', enabled: hasFile, run: saveCurrent },
-  { group: '编辑', title: '联网刷新 include', key: 'Ctrl+Shift+R', keywords: 'remote refresh include network', enabled: hasFile, run: remoteRefresh },
+  { group: '编辑', title: '联网刷新 include', key: 'Ctrl+Alt+Shift+R', keywords: 'remote refresh include network', enabled: hasFile, run: remoteRefresh },
 
   // ---- 项目 ----
   { group: '项目', title: '添加已有项目', key: 'Ctrl+Alt+O', keywords: 'add project open folder', run: openAddProject },
@@ -51,6 +52,7 @@ export const COMMANDS = [
   { group: '发布', title: '目标页面设置…', key: 'Ctrl+Alt+U', keywords: 'target site page', enabled: hasFile, run: openTargetDialog },
 
   // ---- 视图 ----
+  { group: '视图', title: '切换配色主题（深色 / 浅色）', keywords: 'theme color dark light appearance 配色 主题', run: cycleTheme },
   { group: '视图', title: '编辑器设置…', key: 'Ctrl+,', keywords: 'settings preferences', run: openSettings },
   { group: '视图', title: '切换编辑·预览布局', key: 'Ctrl+Alt+S', keywords: 'layout split vertical horizontal', run: toggleLayout },
   { group: '视图', title: '禅模式', key: 'Ctrl+Shift+F', keywords: 'zen focus distraction', run: toggleZen },

@@ -47,6 +47,9 @@ export const el = {
   saveBtn: $('save-btn'),
   zenBtn: $('zen-btn'),
   zenExit: $('zen-exit'),
+  themeBtn: $('theme-btn'),
+  remoteBtn: $('remote-btn'),
+  accountName: $('account-name'),
   addSnippetBtn: $('add-snippet-btn'),
   snippetList: $('snippet-list'),
   snippetDialog: $('snippet-dialog'),
@@ -76,6 +79,7 @@ export const el = {
   settingsAutopreview: $('settings-autopreview'),
   settingsRemoteinclude: $('settings-remoteinclude'),
   settingsStylemode: $('settings-stylemode'),
+  settingsTheme: $('settings-theme'),
   cacheInfo: $('cache-info'),
   cacheClear: $('cache-clear'),
   problemsDialog: $('problems-dialog'),
@@ -101,6 +105,7 @@ export const state = {
     autoPreview: true,
     renderStyleMode: 'inline',
     useRemoteInclude: true,
+    theme: 'auto', // auto / dark / light；initTheme 会先按 localStorage 覆盖
   },
   lastIncludes: [], // 最近一次渲染的 include 来源（local/cache/remote/miss）
   gitEnv: null,     // 最近一次 git 环境体检结果（detectGitEnv 响应）

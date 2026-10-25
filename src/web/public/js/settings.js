@@ -3,6 +3,7 @@
  */
 import { el, state } from './dom.js';
 import { api, setError, setStatus } from './api.js';
+import { applyTheme } from './theme.js';
 
 export function applySettings(s) {
   state.settings = { ...state.settings, ...s };
@@ -10,6 +11,9 @@ export function applySettings(s) {
   el.settingsAutopreview.checked = !!state.settings.autoPreview;
   el.settingsRemoteinclude.checked = !!state.settings.useRemoteInclude;
   el.settingsStylemode.value = state.settings.renderStyleMode;
+  if (el.settingsTheme) el.settingsTheme.value = state.settings.theme || 'auto';
+  // 服务端设置里的主题为准（启动时覆盖 localStorage 缓存），不再回写服务端
+  if (s.theme) applyTheme(s.theme, { syncServer: false });
 }
 
 export async function loadSettings() {
@@ -49,6 +53,7 @@ export function initSettings() {
       autoPreview: el.settingsAutopreview.checked,
       useRemoteInclude: el.settingsRemoteinclude.checked,
       renderStyleMode: el.settingsStylemode.value,
+      theme: el.settingsTheme.value,
     };
     try {
       applySettings(await api('POST', '/api/settings', patch));

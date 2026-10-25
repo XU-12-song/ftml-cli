@@ -7,7 +7,8 @@
  *     "previewIntervalMs": 600,     自动预览防抖间隔（毫秒）
  *     "autoPreview": true,          是否开启输入即预览
  *     "renderStyleMode": "inline",  预览渲染模式（inline / module）
- *     "useRemoteInclude": true      渲染时是否联网解析远程 [[include]]
+ *     "useRemoteInclude": true,     渲染时是否联网解析远程 [[include]]
+ *     "theme": "auto"               编辑器配色（auto / dark / light）
  *   }
  *
  * 读取时缺失字段用默认值补齐（老配置文件向前兼容）；写入时只接受已知字段。
@@ -22,6 +23,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   autoPreview: true,
   renderStyleMode: 'inline',
   useRemoteInclude: true,
+  theme: 'auto',
 });
 
 /** 预览间隔允许范围（毫秒）：过小会打爆渲染，过大失去实时感 */
@@ -43,6 +45,9 @@ export function normalizeSettings(raw = {}) {
     out.renderStyleMode = raw.renderStyleMode === 'module' ? 'module' : 'inline';
   }
   if (raw.useRemoteInclude !== undefined) out.useRemoteInclude = Boolean(raw.useRemoteInclude);
+  if (raw.theme !== undefined) {
+    out.theme = raw.theme === 'dark' || raw.theme === 'light' ? raw.theme : 'auto';
+  }
   return out;
 }
 
