@@ -68,6 +68,52 @@ test('Electron 冒烟：窗口、preload、deep link 与文件打开', { skip, t
       { timeout: 60000 }
     );
     mark('cm-content');
+
+    // 分隔条：左右布局鼠标拖动 + 键盘调整，再切上下布局验证轴向
+    assert.equal(await page.getAttribute('#splitter', 'data-axis'), 'x');
+    assert.equal(
+      await page.locator('#splitter').evaluate((n) => getComputedStyle(n).cursor),
+      'col-resize'
+    );
+    assert.match(
+      await page.locator('#splitter').evaluate((n) => getComputedStyle(n, '::after').content),
+      /↔/
+    );
+
+    const width1 = await page.locator('#editor-container').evaluate((n) => n.getBoundingClientRect().width);
+    const box = await page.locator('#splitter').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    const widthDragged = await page.locator('#editor-container').evaluate((n) => n.getBoundingClientRect().width);
+    assert.ok(widthDragged < width1 - 40, `鼠标拖动后编辑区应变窄: ${width1} -> ${widthDragged}`);
+
+    await page.focus('#splitter');
+    await page.keyboard.press('Shift+ArrowLeft');
+    await page.waitForTimeout(250);
+    const width2 = await page.locator('#editor-container').evaluate((n) => n.getBoundingClientRect().width);
+    assert.ok(width2 < widthDragged - 20, `键盘调整后编辑区应继续变窄: ${widthDragged} -> ${width2}`);
+
+    await page.click('#layout-toggle');
+    await page.waitForTimeout(250);
+    assert.equal(await page.getAttribute('#splitter', 'data-axis'), 'y');
+    assert.equal(
+      await page.locator('#splitter').evaluate((n) => getComputedStyle(n).cursor),
+      'row-resize'
+    );
+    assert.match(
+      await page.locator('#splitter').evaluate((n) => getComputedStyle(n, '::after').content),
+      /↕/
+    );
+
+    const height1 = await page.locator('#editor-container').evaluate((n) => n.getBoundingClientRect().height);
+    await page.focus('#splitter');
+    await page.keyboard.press('Shift+ArrowUp');
+    await page.waitForTimeout(250);
+    const height2 = await page.locator('#editor-container').evaluate((n) => n.getBoundingClientRect().height);
+    assert.ok(height2 < height1 - 20, `上下布局编辑区应变矮: ${height1} -> ${height2}`);
   } finally {
     mark('before close');
     await app?.close().catch(() => {});
