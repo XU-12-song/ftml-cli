@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run test:electron
+
+      - run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ftml-windows-x64
+          path: |
+            release/*-setup-x64.exe
+            release/*-portable-x64.exe
+          if-no-files-found: error
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*-setup-x64.exe
+            release/*-portable-x64.exe
+          body: |
+            ![ftml](https://github.com/${{ github.repository }}/raw/${{ github.ref_name }}/assets/cover/ftml-cover-1600x900.png)
+
+            **Windows x64** · 安装包 / 便携版
+
+            - 安装包会注册 `.ftml` 文件关联；便携版不会。
+            - 最小化隐藏到托盘，关闭窗口退出应用。
+            - 数据保存在 `~/.ftml-cli`，与 `ftml` CLI 共用。
+            - 当前为未签名构建，首次运行可能出现 SmartScreen 提示。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

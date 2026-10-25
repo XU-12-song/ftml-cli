@@ -8,6 +8,7 @@
  */
 
 import http from 'node:http';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -17,6 +18,117 @@ import { mapStack } from '../render/stack.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+const SESSION_COOKIE = 'ftml_session';
+
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' blob: https:",
+  "style-src 'self' 'unsafe-inline' https:",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data: https:",
+  "frame-src 'self' blob: https:",
+  "connect-src 'self' https:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+].join('; ');
+
+function parseCookies(header) {
+  const out = {};
+  for (const part of String(header ?? '').split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    const key = part.slice(0, eq).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      out[key] = part.slice(eq + 1).trim();
+    }
+  }
+  return out;
+}
+
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+
+function allowedHost(hostHeader, port) {
+  const host = String(hostHeader ?? '').toLowerCase();
+  return host === `127.0.0.1:${port}`
+    || host === `localhost:${port}`
+    || host === `[::1]:${port}`;
+}
+
+function allowedOrigin(origin, port) {
+  if (typeof origin !== 'string') return false;
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== 'http:') return false;
+    const host = u.hostname;
+    const okHost = host === '127.0.0.1' || host === 'localhost'
+      || host === '[::1]' || host === '::1';
+    return okHost && Number(u.port) === port;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Electron 模式安全层：
+ *   - Host 白名单（防 DNS rebinding）
+ *   - 首次 ?ftml_token=… 换成 HttpOnly + SameSite=Strict cookie
+ *   - 写请求校验 Origin
+ *   - CSP / nosniff
+ * 浏览器模式（security=null）完全不启用，保持原有行为。
+ */
+function securityMiddleware(security) {
+  return (req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', CSP);
+
+    const port = security.port;
+    if (!allowedHost(req.headers.host, port)) {
+      res.status(403).json({ error: '非法 Host' });
+      return;
+    }
+
+    const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    if (unsafe && !allowedOrigin(req.headers.origin, port)) {
+      res.status(403).json({ error: '非法 Origin' });
+      return;
+    }
+
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    if (safeEqual(token, security.token)) {
+      next();
+      return;
+    }
+
+    const queryToken = req.query?.ftml_token;
+    if (typeof queryToken === 'string' && safeEqual(queryToken, security.token)) {
+      res.cookie(SESSION_COOKIE, security.token, {
+        httpOnly: true,
+        sameSite: 'strict',
+        path: '/',
+      });
+      const u = new URL(req.originalUrl, `http://${req.headers.host}`);
+      u.searchParams.delete('ftml_token');
+      res.redirect(302, u.pathname + u.search);
+      return;
+    }
+
+    if (req.path.startsWith('/api/')) {
+      res.status(401).json({ error: '未授权：请通过桌面应用打开' });
+      return;
+    }
+    res.status(401).type('text/plain').send('Unauthorized');
+  };
+}
 
 /** 把 async handler 包成 express 中间件，异常统一交给错误中间件 */
 function wrap(fn) {
@@ -153,12 +265,13 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
   });
 }
 
-export function createServer(env = {}) {
+export function createServer(env = {}, { publicDir = PUBLIC_DIR, security = null } = {}) {
   const app = express();
   app.disable('x-powered-by');
+  if (security) app.use(securityMiddleware(security));
   app.use(express.json({ limit: '10mb' }));
   app.use('/api', apiRouter(env));
-  app.use(express.static(PUBLIC_DIR));
+  app.use(express.static(publicDir));
   app.use(errorHandler);
   // 返回 http.Server，保持 web.js 的 listen/once('error') 契约不变
   return http.createServer(app);

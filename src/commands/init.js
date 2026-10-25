@@ -16,9 +16,23 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { hideSync } from 'hidefile';
+import { spawnSync } from 'node:child_process';
 import { projectFtmlDir, historyPath } from '../infra/paths.js';
 import { projectGit, isRepo } from '../infra/git.js';
+
+/**
+ * Windows 上给目录设置隐藏属性。
+ * 不用 hidefile/winattr/fswin（原生模块在 Electron 里需要按 ABI 重建），
+ * 直接调用系统自带 attrib；失败只告警，不影响项目初始化。
+ */
+function hideDirOnWindows(dir) {
+  if (process.platform !== 'win32') return;
+  const attrib = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'attrib.exe');
+  const r = spawnSync(attrib, [ '+H', dir ], { windowsHide: true, stdio: 'ignore' });
+  if (r.error || r.status !== 0) {
+    console.warn(`警告: 无法设置隐藏属性: ${dir}`);
+  }
+}
 
 export async function init(options = {}) {
   const root = path.resolve(options.cwd || process.cwd());
@@ -26,9 +40,7 @@ export async function init(options = {}) {
 
   // 1. 隐藏数据目录 .ftml/
   fs.mkdirSync(ftmlDir, { recursive: true });
-  if (process.platform === 'win32') {
-    hideSync(ftmlDir); // POSIX 下 dot 前缀即隐藏，Windows 需要设置隐藏属性
-  }
+  hideDirOnWindows(ftmlDir); // POSIX 下 dot 前缀即隐藏，Windows 需要设置隐藏属性
 
   // 2. history.json
   const hist = historyPath(root);

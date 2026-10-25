@@ -1,9 +1,13 @@
 [![Dependency: wdpr](https://img.shields.io/badge/dependency-wdpr-blue)](https://github.com/r74tech/wdpr)
 [![Dependency: wikidot-ts](https://img.shields.io/badge/dependency-wikidot--ts-blue)](https://github.com/ukwhatn/wikidot-ts)
 
+![ftml](assets/cover/ftml-cover-1600x900.png)
+
 # ftml-cli
 
 FTML（Wikidot 语法）工作流 CLI：模板展开构建、本地校验、监听重建、HTML 预览，以及 Wikidot 登录 / 提交 / 部署 / 回退，附带本地 web 编辑器。
+
+同一套引擎提供 **CLI 与 Windows 桌面版** 两个入口，数据目录、项目注册表、设置与登录凭证完全共用。
 
 ```
 ftml <命令> [选项]
@@ -28,6 +32,31 @@ npm test           # 运行测试（node:test，零额外依赖）
 ```
 
 要求 Node.js >= 20（全 ESM）。`git` 本身不是启动必需，但 `submit` / `deploy` / `revert` 依赖它，用 `ftml doctor` 体检。
+
+## 桌面版（Windows）
+
+从 GitHub Releases 下载：
+
+- **安装包** `ftml-<version>-setup-x64.exe`：注册 `.ftml` 文件关联。
+- **便携版** `ftml-<version>-portable-x64.exe`：免安装；**不会**注册文件关联。
+
+桌面版行为：
+
+- **最小化 → 隐藏到托盘**；**点关闭 → 退出应用**。托盘菜单可恢复窗口、打开项目或退出。
+- 双击 `.ftml`：若文件所在目录尚未注册为项目，会自动把配置文件根（或文件父目录）注册为项目并打开。
+- 「添加项目」「新建仓库」使用系统原生目录选择器；浏览器版 `ftml web` 仍使用输入框。
+- 打开的窗口地址是 `127.0.0.1` 随机端口，并带一次性会话 token；不会暴露到局域网。
+- 数据仍写入 `~/.ftml-cli`（`FTML_CLI_HOME` 可重定向），与 CLI 共用 projects/settings/snippets/credentials。
+- 当前构建**未签名**，Windows SmartScreen 可能在首次运行时提示；可核对 Releases 中的校验信息后选择「仍要运行」。
+
+开发与打包：
+
+```bash
+npm run electron:dev    # 启动桌面版（开发）
+npm run test:electron   # Electron 冒烟测试（需要图形会话）
+npm run dist:win        # 产出 NSIS 安装包 + Portable（release/）
+npm run assets:build    # 从 assets/masters/*.svg 重新生成 PNG/ICO
+```
 
 ## 命令
 
@@ -194,6 +223,7 @@ ftml web --open                       # 启动后用系统浏览器打开
 - **布局**：左侧编辑器（textarea）、右侧 iframe 实时预览（各 50%）；顶栏可切换上下布局，窄屏下侧边栏变抽屉
 - **侧边栏**：模板 / 组件 / 源文件 / 代码片段四个分组，均可在 web 内新建；模板条目展示其声明的键，支持输入 `[[` 时的自动补全
 - **保存即预览**：编辑防抖后自动保存并重渲染完整 HTML（沙盒外壳 + 内联 runtime），Ctrl/Cmd+S 立即保存；状态栏显示本次渲染的 include 来源统计（本地 / 缓存 / 远程 / 未命中）
+- **联网补拉 include**：自动预览与 Ctrl+S 只读本地 / 磁盘缓存；点顶栏「联网刷新」（Ctrl+Alt+Shift+R）才登录 Wikidot 拉取未命中的远程 include（需先登录）。`Ctrl+Shift+R` 是浏览器硬刷新，页面无法拦截，因此不再使用
 - **多项目**：项目注册表存 `~/.ftml-cli/projects.json`，顶栏下拉切换；「＋项目」注册已有目录、`＋仓库` 新建仓库（见下）、`init` 初始化 git 项目；删除仅注销不删文件
 - **新建 ftml 仓库**：默认落在用户级分区 `~/.ftml-cli/projects/<仓库名>`（`FTML_PROJECTS_DIR` 可改分区），自动 `init` + 写入起始 `index.ftml` + 注册到项目列表；目录已存在且非空时拒绝，仓库名限定字母/数字/中划线/下划线/点/中文
 - **目标页面**：顶栏设置 site / page，保存到 `.ftml/<源文件名>.json` 元数据（优先级不变：命令行 > 配置 > 元数据）
@@ -269,6 +299,7 @@ ftml web --open                       # 启动后用系统浏览器打开
   snippets/snippets.json    自定义代码片段
   projects.json             web 编辑器项目注册表
   projects/<仓库名>/         web「新建仓库」的默认分区
+  window-state.json         桌面版窗口位置 / 大小
 ```
 
 `.ftml/versions.json` 结构：
@@ -298,6 +329,7 @@ ftml web --open                       # 启动后用系统浏览器打开
 | `autoPreview` | `true` | 是否开启输入即预览；关闭后仍可用保存按钮 / Ctrl+S 触发 |
 | `renderStyleMode` | `inline` | 预览渲染模式（透传给 `@wdprlib/render` 的 `styleMode`） |
 | `useRemoteInclude` | `true` | 渲染时是否联网解析本地缺失的 `[[include]]` |
+| `theme` | `auto` | 编辑器配色：`auto` / `dark`（雾蓝夜）/ `light`（暖纸白）；顶栏按钮也可一键切换 |
 
 ### 代码片段
 

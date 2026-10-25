@@ -14,11 +14,13 @@ const tmpdir = () => makeTmpDir({}, { prefix: 'ftml-ut-' });
 // ---------- 用户级目录（FTML_CLI_HOME 隔离，不碰真实家目录） ----------
 
 test('homeFtmlCliDir/credentialsPath/homeCacheDir 尊重 FTML_CLI_HOME', () => {
-  process.env.FTML_CLI_HOME = '/tmp/ftml-cli-test-home';
+  // 用 path.join 构造期望值，避免 Windows（\）与 POSIX（/）分隔符差异
+  const home = path.join(path.sep, 'tmp', 'ftml-cli-test-home');
+  process.env.FTML_CLI_HOME = home;
   try {
-    assert.equal(homeFtmlCliDir(), '/tmp/ftml-cli-test-home');
-    assert.equal(credentialsPath(), '/tmp/ftml-cli-test-home/credentials.json');
-    assert.equal(homeCacheDir(), '/tmp/ftml-cli-test-home/cache');
+    assert.equal(homeFtmlCliDir(), home);
+    assert.equal(credentialsPath(), path.join(home, 'credentials.json'));
+    assert.equal(homeCacheDir(), path.join(home, 'cache'));
   } finally {
     delete process.env.FTML_CLI_HOME;
   }

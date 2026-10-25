@@ -5,11 +5,8 @@
 import fs from 'node:fs';
 import { Client } from '@ukwhatn/wikidot';
 
-import {
-  getCredentials,
-  saveCredentials,
-  CREDENTIALS_PATH,
-} from '../../infra/credentials.js';
+import { getCredentials, saveCredentials } from '../../infra/credentials.js';
+import { credentialsPath } from '../../infra/paths.js';
 import { HttpError } from './shared.js';
 
 export function authStatus() {
@@ -36,7 +33,7 @@ export async function authLogin(body) {
 
 export async function authLogout() {
   try {
-    fs.rmSync(CREDENTIALS_PATH, { force: true });
+    fs.rmSync(credentialsPath(), { force: true });
   } catch {
     /* 文件不存在 */
   }

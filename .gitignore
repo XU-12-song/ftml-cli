@@ -3,3 +3,5 @@ node_modules/
 CLAUDE.md
 .claudex-profile.json
 THIRD-PARTY-LICENSE-REVIEW.md
+release/
+tests/electron/artifacts/

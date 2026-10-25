@@ -10,11 +10,8 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { Client } from '@ukwhatn/wikidot';
-import {
-  envCredentials,
-  saveCredentials,
-  CREDENTIALS_PATH,
-} from '../infra/credentials.js';
+import { envCredentials, saveCredentials } from '../infra/credentials.js';
+import { credentialsPath } from '../infra/paths.js';
 
 async function promptHidden(query) {
   // readline 不支持不回显，退化为普通输入（本地使用）
@@ -49,5 +46,5 @@ export async function login(options) {
   }
 
   saveCredentials({ username, password });
-  console.log(`登录成功（${result.value.username}），凭证已保存到 ${CREDENTIALS_PATH}`);
+  console.log(`登录成功（${result.value.username}），凭证已保存到 ${credentialsPath()}`);
 }

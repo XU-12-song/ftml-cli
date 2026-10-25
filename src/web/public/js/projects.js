@@ -45,9 +45,12 @@ export function initProjects() {
   // 顶栏控件已移除，以下动作函数统一由命令面板（Ctrl+K）调用
 }
 
-/** 添加已有项目：输入目录绝对路径 */
+/** 添加已有项目：桌面版用原生目录选择，浏览器版输入绝对路径 */
 export async function openAddProject() {
-  const root = await openNameDialog('添加项目（输入目录绝对路径）', '', '添加');
+  const bridge = window.ftmlDesktop;
+  const root = bridge?.pickDirectory
+    ? await bridge.pickDirectory({ title: '添加 ftml 项目' })
+    : await openNameDialog('添加项目（输入目录绝对路径）', '', '添加');
   if (!root) return;
   try {
     await api('POST', '/api/projects', { root });
@@ -77,13 +80,22 @@ export async function initGitProject() {
   }
 }
 
-/** 新建 ftml 仓库（~/.ftml-cli/projects/<名称>） */
+/** 新建 ftml 仓库（默认 ~/.ftml-cli/projects/<名称>；桌面版可选父目录） */
 export async function openNewRepo() {
   const name = await openNameDialog('新建 ftml 仓库（建在 ~/.ftml-cli/projects 分区）', '仓库名（如 my-scp-page）', '创建');
   if (!name) return;
+
+  // 桌面版允许用原生选择器改父目录；取消则保持默认分区
+  let parent = null;
+  if (window.ftmlDesktop?.pickDirectory) {
+    parent = await window.ftmlDesktop.pickDirectory({
+      title: '选择新仓库的父目录（取消则使用默认分区）',
+    });
+  }
+
   try {
     setStatus('创建仓库…');
-    const r = await api('POST', '/api/projects/create', { name });
+    const r = await api('POST', '/api/projects/create', parent ? { name, parent } : { name });
     await loadProjects();
     state.projectId = r.root;
     el.projectSelect.value = r.root;

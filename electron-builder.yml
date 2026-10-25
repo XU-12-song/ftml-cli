@@ -1,0 +1,49 @@
+appId: com.ftml.cli
+productName: ftml
+copyright: Copyright © ftml contributors
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - package.json
+  - LICENSE.md
+  - THIRD-PARTY-LICENSE.md
+  - electron/**/*
+  - src/**/*
+  - templates/**/*
+  - assets/icons/**/*
+  - "!**/*.swp"
+  - "!**/.DS_Store"
+
+asar: true
+npmRebuild: false
+
+win:
+  icon: assets/icons/app/ftml.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+fileAssociations:
+  - ext: ftml
+    name: FTML Document
+    description: FTML source file
+    role: Editor
+    icon: assets/icons/file/ftml.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ftml
+  artifactName: ${productName}-${version}-setup-${arch}.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-portable-${arch}.${ext}

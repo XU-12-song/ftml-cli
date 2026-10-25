@@ -2,14 +2,19 @@
   "name": "ftml-cli",
   "version": "0.1.0",
   "description": "FTML 工作流 CLI：模板展开构建、本地校验、监听重建、Wikidot 登录/提交/部署/回退",
+  "author": "ftml contributors",
   "type": "module",
   "bin": {
     "ftml": "./src/cli.js"
   },
-  "main": "./src/core/expand.js",
+  "main": "./electron/main.js",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "build:cm6": "node scripts/build-cm6.mjs"
+    "build:cm6": "node scripts/build-cm6.mjs",
+    "electron:dev": "electron .",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "test:electron": "node --test tests/electron/smoke.test.js",
+    "assets:build": "node scripts/build-assets.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -25,7 +30,6 @@
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "express": "^4.22.3",
-    "hidefile": "^3.0.0",
     "simple-git": "^3.36.0"
   },
   "devDependencies": {
@@ -35,6 +39,11 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
     "@lezer/highlight": "^1.2.5",
-    "esbuild": "^0.28.2"
+    "@resvg/resvg-js": "^2.6.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.64.1",
+    "png-to-ico": "^3.0.2"
   }
 }

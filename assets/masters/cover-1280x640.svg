@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="coverBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E141B"/>
+      <stop offset="0.52" stop-color="#162230"/>
+      <stop offset="1" stop-color="#0B1016"/>
+    </linearGradient>
+    <radialGradient id="coverGlow" cx="0.79" cy="0.40" r="0.48">
+      <stop offset="0" stop-color="#5B8CFF" stop-opacity="0.26"/>
+      <stop offset="0.55" stop-color="#5B8CFF" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#5B8CFF" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.035"/>
+    </pattern>
+    <linearGradient id="iconBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#243449"/>
+      <stop offset="0.48" stop-color="#141B24"/>
+      <stop offset="1" stop-color="#0C1118"/>
+    </linearGradient>
+    <linearGradient id="iconTop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E4F0FF"/>
+      <stop offset="1" stop-color="#8AB4F8"/>
+    </linearGradient>
+    <linearGradient id="iconMid" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9CC2FF"/>
+      <stop offset="1" stop-color="#5B8CFF"/>
+    </linearGradient>
+    <filter id="iconShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#coverBg)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <rect width="1280" height="640" fill="url(#coverGlow)"/>
+
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="96" y="190" font-size="17" font-weight="600" letter-spacing="6"
+          fill="#8AB4F8">FTML WORKFLOW</text>
+    <text x="90" y="322" font-size="112" font-weight="700" letter-spacing="-4"
+          fill="#E7EDF5">ftml</text>
+    <text x="96" y="382" font-size="26" fill="#A9CBFF">CLI + desktop editor for FTML</text>
+    <text x="96" y="424" font-size="18" fill="#8D95A3">Local preview · Template expansion · Git history · Wikidot deploy</text>
+
+    <rect x="96" y="510" width="322" height="48" rx="24"
+          fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <text x="257" y="541" font-size="17" text-anchor="middle"
+          fill="#C7D2E2">Windows · Installer + Portable</text>
+  </g>
+
+  <g transform="translate(854 158) scale(0.306)">
+    <rect width="1024" height="1024" rx="224" fill="url(#iconBg)"
+          stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="3"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M512 268 792 424 512 580 232 424 512 268Z" stroke="url(#iconTop)" stroke-width="58"/>
+      <path d="M232 512 512 668 792 512" stroke="url(#iconMid)" stroke-width="58"/>
+      <path d="M232 636 512 792 792 636" stroke="url(#iconMid)" stroke-width="58" opacity="0.66"/>
+    </g>
+  </g>
+</svg>
