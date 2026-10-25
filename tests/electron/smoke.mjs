@@ -1,5 +1,5 @@
 /**
- * electron/smoke.test.js — Electron 冒烟测试（不进入 npm test 的顶层 glob）
+ * electron/smoke.mjs — Electron 冒烟测试（不属于 *.test.js 发现规则）
  *
  *   npm run test:electron
  *

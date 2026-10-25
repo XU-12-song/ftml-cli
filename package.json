@@ -9,11 +9,11 @@
   },
   "main": "./electron/main.js",
   "scripts": {
-    "test": "node --test tests/*.test.js",
+    "test": "node --test",
     "build:cm6": "node scripts/build-cm6.mjs",
     "electron:dev": "electron .",
     "dist:win": "electron-builder --win --x64 --publish never",
-    "test:electron": "node --test tests/electron/smoke.test.js",
+    "test:electron": "node --test tests/electron/smoke.mjs",
     "assets:build": "node scripts/build-assets.mjs"
   },
   "engines": {
