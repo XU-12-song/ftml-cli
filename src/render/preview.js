@@ -22,6 +22,9 @@ import { getSite, getPage, fetchPageSource } from '../infra/wikidot.js';
 import { readPageCache, writePageCache } from '../infra/cache.js';
 import { memoByFile } from '../infra/mtime-cache.js';
 import { resolveIncludeFile } from '../domain/include-resolve.js';
+import { DEFAULT_MODULE_CAPS } from './module-caps.js';
+import { applyListUsersRepeat } from './module-placeholders.js';
+import { createModuleDataProvider } from './module-data.js';
 
 // 解析逻辑在 domain（发布路径也要用同一套规则），这里转出保持既有 import 路径可用。
 export { resolveIncludeFile };
@@ -168,16 +171,40 @@ async function fetchRemoteInclude(pageRef, {
  */
 export async function renderPreview(
   ftml,
-  { page, styleMode = 'inline', includeBaseDir, includeTemplates, client, allowNetwork = true, clientError = null } = {}
+  {
+    page,
+    styleMode = 'inline',
+    includeBaseDir,
+    includeTemplates,
+    client,
+    allowNetwork = true,
+    clientError = null,
+    moduleMode = 'placeholder',
+    modulePlaceholders,
+    moduleCaps = DEFAULT_MODULE_CAPS,
+  } = {}
 ) {
   const settings = { ...createSettings('page'), allowStyleElements: true };
   const remoteWarnings = [];
   const sourceWarnings = findIndentedIncludes(ftml);
   const includes = [];
 
-  const dataProvider = includeBaseDir || client
-    ? {
-      fetchInclude: async (pageRef) => {
+  // ListUsers 在 Wikidot 里只有当前用户一行；占位模式允许复制块来观察多行布局。
+  const source = moduleMode === 'placeholder'
+    ? applyListUsersRepeat(ftml, modulePlaceholders?.listUsers?.count)
+    : ftml;
+
+  const moduleData = createModuleDataProvider({
+    mode: moduleMode,
+    placeholders: modulePlaceholders,
+    page,
+    client,
+    clientError,
+    caps: moduleCaps,
+  });
+
+  const includeFetcher = includeBaseDir || client
+    ? async (pageRef) => {
         const label = { site: pageRef.site ?? page?.site ?? null, page: pageRef.page };
         // 1. 本地文件（基准目录内 .ftml）
         if (includeBaseDir) {
@@ -213,10 +240,14 @@ export async function renderPreview(
         return includeTemplates
           ? expand(r.source, includeTemplates, { baseDir: includeBaseDir })
           : r.source;
-      },
-    }
-    : undefined;
-  const doc = await processWikitext(ftml, {
+      }
+    : null;
+
+  const dataProvider = {
+    ...(includeFetcher ? { fetchInclude: includeFetcher } : {}),
+    ...moduleData.fetchers,
+  };
+  const doc = await processWikitext(source, {
     page: page ?? { fullName: 'preview', unixName: 'preview', tags: [] },
     settings,
     dataProvider,
@@ -234,8 +265,15 @@ export async function renderPreview(
       ...sourceWarnings,
       ...(result.diagnostics ?? doc.diagnostics ?? []),
       ...remoteWarnings,
+      ...moduleData.warnings,
     ],
     includes,
     dependencies: doc.dependencies ?? [],
+    moduleResolution: {
+      mode: moduleMode,
+      fallback: moduleData.summary.fallback,
+      warnings: moduleData.warnings,
+      summary: moduleData.summary,
+    },
   };
 }

@@ -19,6 +19,7 @@ import {
 } from './editor.js';
 import { openAddProject, openNewRepo, initGitProject, removeCurrentProject } from './projects.js';
 import { openVersionsDialog } from './versions.js';
+import { resolveModulesReal } from './preview.js';
 import { openSettings } from './settings.js';
 import { runDoctor } from './git.js';
 import { toggleLogin } from './auth.js';
@@ -38,6 +39,7 @@ export const COMMANDS = [
   // ---- 编辑 ----
   { group: '编辑', title: '保存并渲染', key: 'Ctrl+S', keywords: 'save render', enabled: hasFile, run: saveCurrent },
   { group: '编辑', title: '联网刷新 include', key: 'Ctrl+Alt+Shift+R', keywords: 'remote refresh include network', enabled: hasFile, run: remoteRefresh },
+  { group: '编辑', title: '真实解析模块（联网，可能较慢）…', keywords: 'real resolve module listpages listusers tagcloud rate network 真实解析', enabled: hasFile, run: resolveModulesReal },
 
   // ---- 项目 ----
   { group: '项目', title: '添加已有项目', key: 'Ctrl+Alt+O', keywords: 'add project open folder', run: openAddProject },

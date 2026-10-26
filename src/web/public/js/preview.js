@@ -90,12 +90,13 @@ function loadFullDocument(documentHtml) {
 
 /**
  * 渲染当前文件。
- * @param {{ remote?: boolean, forceFull?: boolean }} [opts]
+ * @param {{ remote?: boolean, forceFull?: boolean, resolveModules?: boolean }} [opts]
  *   remote=true 时允许联网解析远程 [[include]]（手动刷新路径）；默认 false：
  *   只解析本地文件 + 磁盘缓存，落盘即预览不再等网络。
  *   forceFull=true 时强制整篇重载（补丁失败后的回退路径）。
+ *   resolveModules=true 时一次性真实解析 module（命令面板显式触发，不写入 state）。
  */
-export async function render({ remote = false, forceFull = false } = {}) {
+export async function render({ remote = false, forceFull = false, resolveModules = false } = {}) {
   if (!state.projectId || !state.filePath) return;
   // 最新者胜：先取消上一次在飞的渲染，并立刻占住槽位（否则后发者会漏掉它的控制器）
   const ac = new AbortController();
@@ -113,6 +114,7 @@ export async function render({ remote = false, forceFull = false } = {}) {
       site: el.siteInput.value.trim() || undefined,
       page: el.pageInput.value.trim() || undefined,
       allowNetwork: remote, // 仅手动刷新联网；自动预览走本地 + 磁盘缓存
+      resolveModules,       // 一次性真实解析 module；仅本次请求有效
       full: wantFull,
     }, { signal: ac.signal });
 
@@ -144,22 +146,28 @@ export async function render({ remote = false, forceFull = false } = {}) {
       title: r.title,
     })) {
       // 外壳刚好被卸载/导航走：退回整篇重载（forceFull 阻断二次递归）
-      await render({ remote, forceFull: true });
+      await render({ remote, forceFull: true, resolveModules });
       return;
     }
 
     // 远程请求已发出但没有可用客户端（未登录/凭证失效）：状态栏直接说清楚，
     // 否则只会看到「未命中」，很容易误判成网络问题。
     const noClient = (r.diagnostics || []).some((d) => d.code === 'remote-include-no-client');
-    setError(noClient
-      ? '远程 include 需要登录 Wikidot：请点击右上角账号按钮登录后重试'
-      : '');
+    const moduleFallback = resolveModules && r.moduleResolution?.fallback;
+    if (moduleFallback) {
+      setError('模块真实解析未完全成功：失败项已回退占位数据（详见渲染问题）');
+    } else {
+      setError(noClient
+        ? '远程 include 需要登录 Wikidot：请点击右上角账号按钮登录后重试'
+        : '');
+    }
 
     const misses = (state.lastIncludes || []).filter((i) => i.from === 'miss').length;
     const hint = !remote && misses > 0
       ? '（有未命中的远程 include，点顶栏「联网刷新」补拉）'
       : '';
-    setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}${hint}`);
+    const moduleNote = resolveModules ? '，模块已真实解析' : '';
+    setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}${moduleNote}${hint}`);
   } catch (e) {
     // 被更新的渲染取代（客户端已中止 / 服务端 409）：静默，交回给后发的那次
     if (isAbortError(e) || e?.superseded || ac.signal.aborted) return;
@@ -173,6 +181,21 @@ export async function render({ remote = false, forceFull = false } = {}) {
 export function renderRemote() {
   clearTimeout(state.saveTimer);
   return render({ remote: true });
+}
+
+/**
+ * 一次性真实解析 module：联网拉取 ListPages / ListUsers / TagCloud / Rate 数据。
+ * 只影响本次渲染；之后任何编辑/自动预览都会回到占位模式。
+ */
+export async function resolveModulesReal() {
+  if (!state.projectId || !state.filePath) return;
+  const ok = confirm(
+    '真实解析会联网拉取 ListPages / ListUsers / TagCloud / Rate 数据，可能需要较长时间。\n' +
+    '仅对本次渲染生效，之后编辑会自动恢复占位数据。是否继续？'
+  );
+  if (!ok) return;
+  clearTimeout(state.saveTimer);
+  return render({ remote: true, resolveModules: true });
 }
 
 export function scheduleSaveRender() {

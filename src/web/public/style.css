@@ -1025,6 +1025,32 @@ dialog textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(-
 #settings-dialog select { width: 100%; }
 #settings-dialog .dlg-hint { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-5); }
 #settings-dialog .dlg-hint .btn { height: 24px; padding: 0 var(--sp-4); }
+#settings-dialog details.settings-group {
+  margin-top: var(--sp-5);
+  padding: 0 var(--sp-4) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+#settings-dialog details.settings-group > summary {
+  cursor: pointer;
+  padding: var(--sp-4) 0;
+  font-weight: 600;
+}
+#settings-dialog details.settings-group[open] > summary { border-bottom: 1px solid var(--border); }
+#settings-dialog details.settings-group h4 {
+  margin: var(--sp-5) 0 var(--sp-3);
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+#settings-dialog .settings-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 1.4fr;
+  gap: var(--sp-3) var(--sp-4);
+  align-items: center;
+}
+#settings-dialog .settings-grid label { font-size: 12px; color: var(--fg-faint); }
+#settings-dialog .settings-grid input { width: 100%; }
+#settings-dialog .settings-group .dlg-hint { display: block; margin: var(--sp-3) 0; }
 
 /* 日志对话框 */
 #log-content {

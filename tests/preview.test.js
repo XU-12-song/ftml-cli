@@ -11,6 +11,7 @@ import { loadTemplates } from '../src/core/expand.js';
 import { clearMtimeCache } from '../src/infra/mtime-cache.js';
 import { readPageCache } from '../src/infra/cache.js';
 import { THEME_SOURCES, absolutizeUrls, readThemeCss, refreshThemeCss } from '../src/render/theme.js';
+import { DEFAULT_MODULE_PLACEHOLDERS } from '../src/domain/settings.js';
 import { makeTmpDir, cleanup, useIsolatedHome } from './helpers/fixtures.js';
 import { fakeRemoteClient, fakeWorld } from './helpers/fake-wikidot.js';
 
@@ -582,4 +583,46 @@ test('__ftmlPatch：外壳缺失（被导航走）时返回 false，供父页退
   const { ctx, dom } = runPatchBridge();
   dom.document.getElementById = () => null;
   assert.equal(ctx.window.__ftmlPatch({ html: '<p>z</p>', htmlBlocks: [] }), false);
+});
+
+// ---------- module 占位数据（快速预览） ----------
+
+test('ListPages：快速预览注入多行占位数据', async () => {
+  const { html } = await renderPreview(
+    '[[module ListPages limit="5"]]\n* %%title_linked%% — %%rating%%\n[[/module]]'
+  );
+  assert.equal((html.match(/示例页面 \d/g) || []).length, 3);
+});
+
+test('ListPages：占位数量为 0 时不输出正文', async () => {
+  const { html } = await renderPreview(
+    '[[module ListPages limit="5"]]\n* %%title_linked%%\n[[/module]]',
+    { modulePlaceholders: {
+      ...DEFAULT_MODULE_PLACEHOLDERS,
+      listPages: { count: 0, title: 'x', text: '', tags: '', date: '2024-01-01', rating: 0 },
+    } }
+  );
+  assert.ok(!html.includes('示例页面'));
+});
+
+test('TagCloud：快速预览输出可配置的标签', async () => {
+  const { html } = await renderPreview('[[module TagCloud limit="10"]]');
+  assert.equal((html.match(/class="tag"/g) || []).length, 8);
+  assert.ok(html.includes('标签1'));
+});
+
+test('Rate：快速预览渲染只读评分控件', async () => {
+  const { html } = await renderPreview('[[module Rate]]');
+  assert.ok(html.includes('page-rate-widget-box'));
+});
+
+test('ListUsers：占位数量 > 1 时复制模块块', async () => {
+  const { html } = await renderPreview(
+    '[[module ListUsers users="."]]\n%%name%%\n[[/module]]',
+    { modulePlaceholders: {
+      ...DEFAULT_MODULE_PLACEHOLDERS,
+      listUsers: { count: 3, name: 'user-{n}', title: '示例用户 {n}' },
+    } }
+  );
+  assert.equal((html.match(/user-\d/g) || []).length, 3);
 });

@@ -19,6 +19,7 @@ import { refreshThemeCss } from '../render/theme.js';
 import { buildPageContext } from '../render/context.js';
 import { formatDiagnostics } from '../render/diagnostics.js';
 import { createClient } from '../infra/wikidot.js';
+import { loadSettings } from '../domain/settings.js';
 
 export async function preview(options) {
   const config = loadConfig(options);
@@ -47,6 +48,7 @@ export async function preview(options) {
     includeBaseDir: path.dirname(r.input),
     includeTemplates: templates,
     client,
+    modulePlaceholders: loadSettings().modulePlaceholders,
   });
 
   if (client) {

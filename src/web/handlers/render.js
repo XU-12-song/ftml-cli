@@ -79,11 +79,13 @@ export async function renderProjectFile(id, body, env = {}) {
     // 建客户端登录 + 发远程请求。只有前端显式请求（手动刷新 allowNetwork:true）
     // 才联网，且仍受 settings.useRemoteInclude 总开关约束。
     const allowNetwork = body?.allowNetwork === true && settings.useRemoteInclude;
+    // 真实解析 module 是一次性、显式触发的联网操作，与 include 的联网开关相互独立。
+    const resolveModules = body?.resolveModules === true;
 
     let client = env.injectClient ?? null;
     let clientError = null;
     let ownsClient = false;
-    if (!client && allowNetwork) {
+    if (!client && (allowNetwork || resolveModules)) {
       try {
         // clientFactory 供测试注入（与 versions/deploy 的注入方式一致）
         client = await (env.clientFactory ?? createClient)();
@@ -97,7 +99,7 @@ export async function renderProjectFile(id, body, env = {}) {
 
     try {
       checkpoint(); // 联网建客户端期间若已有更新的请求，放弃本次
-      const { html, styles, htmlBlocks, diagnostics, includes } = await renderPreview(expanded, {
+      const { html, styles, htmlBlocks, diagnostics, includes, moduleResolution } = await renderPreview(expanded, {
         page,
         styleMode: body?.styleMode ?? settings.renderStyleMode,
         includeBaseDir: path.dirname(config.sourceAbs),
@@ -105,6 +107,8 @@ export async function renderProjectFile(id, body, env = {}) {
         client,
         allowNetwork,
         clientError,
+        moduleMode: resolveModules ? 'real' : 'placeholder',
+        modulePlaceholders: settings.modulePlaceholders,
       });
       const title = config.page || page.fullName;
       const wantFull = body?.full !== false;
@@ -129,6 +133,7 @@ export async function renderProjectFile(id, body, env = {}) {
         diagnosticReport,
         includes,
         settings,
+        moduleResolution,
         problems,
       };
     } catch (e) {

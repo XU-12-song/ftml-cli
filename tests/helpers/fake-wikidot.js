@@ -85,6 +85,74 @@ export function fakeDeployClient({ pageExists = true, revisionsCount = 7 } = {})
 }
 
 /**
+ * module 真实解析用的假客户端：ListPages 搜索 / TagCloud AMC / Rate 投票。
+ *
+ * @param {object} [opts]
+ * @param {Array} [opts.pages] ListPages 返回的 Page 列表
+ * @param {string} [opts.tagCloudBody] TagCloud AMC 返回的 HTML
+ * @param {object} [opts.me] 当前登录用户
+ * @param {boolean} [opts.failSearch] 让 pages.search 返回错误结果
+ */
+export function fakeModuleClient({
+  pages = [],
+  tagCloudBody = '<a class="tag" style="font-size: 100%;">real-tag</a>',
+  me = { id: 7, name: 'alice', unixName: 'alice', displayName: 'Alice' },
+  failSearch = false,
+} = {}) {
+  const calls = { search: 0, amc: 0, votes: 0 };
+  const votes = [];
+  votes.findByUser = (u) => votes.find((v) => v.user === u);
+  const pageObj = {
+    id: 1,
+    fullname: 'hello',
+    name: 'hello',
+    category: '_default',
+    title: 'Hello',
+    rating: 42,
+    votesCount: 5,
+    ratingPercent: 84,
+    getVotes: async () => {
+      calls.votes++;
+      return { isOk: () => true, value: votes };
+    },
+  };
+
+  const site = {
+    title: '测试站',
+    unixName: 'scp-cn',
+    domain: 'scp-cn.wikidot.com',
+    client: null,
+    pages: {
+      search: async () => {
+        calls.search++;
+        return failSearch
+          ? { isOk: () => false, error: new Error('search failed') }
+          : { isOk: () => true, value: pages };
+      },
+    },
+    amcRequestSingle: async (body) => {
+      calls.amc++;
+      const value = body.module_body === '%%total%%'
+        ? { status: 'ok', body: String(pages.length) }
+        : { status: 'ok', body: tagCloudBody };
+      return { isOk: () => true, value };
+    },
+    page: {
+      get: async () => ({ isOk: () => true, value: pageObj }),
+    },
+  };
+
+  const client = {
+    me,
+    site: { get: async () => ({ isOk: () => true, value: site }) },
+    isLoggedIn: () => true,
+    close: async () => {},
+  };
+  site.client = client;
+  return { client, site, calls, votes };
+}
+
+/**
  * 多页面假站点：按页名 get、支持 create（建页），记录 edit/create 的页名顺序。
  *
  * 发布依赖闭包要在一次会话里写多个页面，且首次发布时依赖页线上通常还不存在

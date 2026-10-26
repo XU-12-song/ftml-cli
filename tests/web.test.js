@@ -31,7 +31,7 @@ import { saveSettings } from '../src/domain/settings.js';
 import { init } from '../src/commands/init.js';
 import { projectGit, commitAll } from '../src/infra/git.js';
 import { makeTmpDir, cleanup, withHome } from './helpers/fixtures.js';
-import { fakeDeployClient as fakeClient, fakeRemoteClient, fakeMultiPageClient } from './helpers/fake-wikidot.js';
+import { fakeDeployClient as fakeClient, fakeRemoteClient, fakeMultiPageClient, fakeModuleClient } from './helpers/fake-wikidot.js';
 
 /** 供 fakeRemoteClient 使用的页面桩：getSource 返回固定源码 */
 const remotePage = (src) => ({ getSource: async () => ({ isOk: () => true, value: src }) });
@@ -663,4 +663,123 @@ test('latestOnly：checkpoint 在执行途中发现更新的请求即放弃', as
 test('latestOnly：顺序调用共享同一 key 正常完成（gate 回收）', async () => {
   assert.equal(await latestOnly('k-seq', async () => 1), 1);
   assert.equal(await latestOnly('k-seq', async () => 2), 2);
+});
+
+// ---------- module 一次性真实解析 ----------
+
+function pageData(i) {
+  const now = new Date('2024-01-01T00:00:00Z');
+  return {
+    id: i,
+    name: `real-${i}`,
+    category: '_default',
+    fullname: `real-${i}`,
+    title: `真实页面${i}`,
+    tags: ['real'],
+    createdAt: now,
+    updatedAt: now,
+    createdBy: null,
+    updatedBy: null,
+    commentedBy: null,
+    commentedAt: null,
+    childrenCount: 0,
+    commentsCount: 0,
+    size: 10,
+    rating: 5,
+    votesCount: 6,
+    ratingPercent: 91,
+    revisionsCount: 1,
+    parentFullname: null,
+  };
+}
+
+const MODULE_SOURCE = [
+  '[[module ListPages limit="5"]]',
+  '* %%title_linked%%',
+  '[[/module]]',
+  '[[module TagCloud limit="10"]]',
+  '[[module Rate]]',
+  '[[module ListUsers users="."]]',
+  '%%name%%',
+  '[[/module]]',
+].join('\n');
+
+test('render：resolveModules=true 用真实数据，下一次普通渲染回到占位', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      saveProjectFile(root, { path: 'm.ftml', source: MODULE_SOURCE });
+      const { client, calls } = fakeModuleClient({ pages: [pageData(1), pageData(2)] });
+
+      const real = await renderProjectFile(
+        root,
+        { path: 'm.ftml', site: 'scp-cn', page: 'hello', resolveModules: true },
+        { injectClient: client }
+      );
+      assert.equal(real.moduleResolution.mode, 'real');
+      assert.equal(real.moduleResolution.fallback, false);
+      assert.ok(real.fragment.includes('真实页面1'));
+      assert.ok(real.fragment.includes('real-tag'));
+      assert.ok(real.fragment.includes('page-rate-widget-box'));
+      assert.ok(real.fragment.includes('alice'));
+
+      const before = { ...calls };
+      const fast = await renderProjectFile(
+        root,
+        { path: 'm.ftml', site: 'scp-cn', page: 'hello' },
+        { injectClient: client }
+      );
+      assert.equal(fast.moduleResolution.mode, 'placeholder');
+      assert.ok(fast.fragment.includes('示例页面 1'));
+      assert.ok(!fast.fragment.includes('真实页面1'));
+      assert.deepEqual(calls, before); // 占位模式不触发任何真实请求
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：真实解析失败回退占位并带 module-real-* 诊断', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      saveProjectFile(root, { path: 'm2.ftml', source: MODULE_SOURCE });
+      const { client } = fakeModuleClient({ failSearch: true });
+
+      const r = await renderProjectFile(
+        root,
+        { path: 'm2.ftml', site: 'scp-cn', page: 'hello', resolveModules: true },
+        { injectClient: client }
+      );
+      assert.equal(r.moduleResolution.fallback, true);
+      assert.ok(r.fragment.includes('示例页面 1'));
+      assert.ok(r.diagnostics.some((d) => d.code === 'module-real-listpages-failed'));
+      assert.ok(r.problems.some((p) => p.code === 'module-real-listpages-failed'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：resolveModules=true 但无客户端时回退占位并告警', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      saveProjectFile(root, { path: 'm3.ftml', source: MODULE_SOURCE });
+
+      const r = await renderProjectFile(
+        root,
+        { path: 'm3.ftml', site: 'scp-cn', page: 'hello', resolveModules: true },
+        { clientFactory: () => { throw new Error('未登录 Wikidot'); } }
+      );
+      assert.equal(r.moduleResolution.fallback, true);
+      assert.ok(r.fragment.includes('示例页面 1'));
+      assert.ok(r.diagnostics.some((d) => d.code === 'module-real-no-client'));
+    });
+  } finally {
+    cleanup(root);
+  }
 });

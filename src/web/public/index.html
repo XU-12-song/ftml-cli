@@ -248,6 +248,59 @@
         <option value="inline">inline（样式内联）</option>
         <option value="module">module（独立样式表）</option>
       </select>
+
+      <details class="settings-group">
+        <summary>模块占位数据（快速预览）</summary>
+        <p class="dlg-hint">仅影响无需联网的快速预览；“真实解析模块”命令会临时使用线上数据。</p>
+
+        <h4>ListPages</h4>
+        <div class="settings-grid">
+          <label for="settings-mp-lp-count">行数</label>
+          <input id="settings-mp-lp-count" type="number" min="0" max="50" step="1">
+          <label for="settings-mp-lp-title">标题模板（{n}）</label>
+          <input id="settings-mp-lp-title" type="text" maxlength="200">
+          <label for="settings-mp-lp-text">正文</label>
+          <input id="settings-mp-lp-text" type="text" maxlength="500">
+          <label for="settings-mp-lp-tags">标签（空格分隔）</label>
+          <input id="settings-mp-lp-tags" type="text" maxlength="500">
+          <label for="settings-mp-lp-date">日期</label>
+          <input id="settings-mp-lp-date" type="date">
+          <label for="settings-mp-lp-rating">评分</label>
+          <input id="settings-mp-lp-rating" type="number" step="1">
+        </div>
+
+        <h4>ListUsers</h4>
+        <p class="dlg-hint">Wikidot 只显示当前登录用户；行数 &gt; 1 是预览用合成重复。</p>
+        <div class="settings-grid">
+          <label for="settings-mp-lu-count">行数</label>
+          <input id="settings-mp-lu-count" type="number" min="0" max="20" step="1">
+          <label for="settings-mp-lu-name">用户名模板（{n}）</label>
+          <input id="settings-mp-lu-name" type="text" maxlength="200">
+          <label for="settings-mp-lu-title">显示名模板（{n}）</label>
+          <input id="settings-mp-lu-title" type="text" maxlength="200">
+        </div>
+
+        <h4>TagCloud</h4>
+        <div class="settings-grid">
+          <label for="settings-mp-tc-count">标签数</label>
+          <input id="settings-mp-tc-count" type="number" min="0" max="100" step="1">
+          <label for="settings-mp-tc-tags">标签名（空格/逗号分隔，可空）</label>
+          <input id="settings-mp-tc-tags" type="text" maxlength="500">
+          <label for="settings-mp-tc-minweight">最小权重</label>
+          <input id="settings-mp-tc-minweight" type="number" min="0" max="100000" step="1">
+          <label for="settings-mp-tc-maxweight">最大权重</label>
+          <input id="settings-mp-tc-maxweight" type="number" min="0" max="100000" step="1">
+        </div>
+
+        <h4>Rate</h4>
+        <div class="settings-grid">
+          <label for="settings-mp-rate-score">评分（points）</label>
+          <input id="settings-mp-rate-score" type="number" step="1">
+          <label for="settings-mp-rate-votes">票数</label>
+          <input id="settings-mp-rate-votes" type="number" min="0" step="1">
+        </div>
+      </details>
+
       <div class="dlg-hint">
         include 缓存：<span id="cache-info">读取中…</span>
         <button type="button" id="cache-clear" class="btn btn-danger">清空缓存</button>
