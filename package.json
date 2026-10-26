@@ -1,6 +1,6 @@
 {
   "name": "ftml-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "FTML 工作流 CLI：模板展开构建、本地校验、监听重建、Wikidot 登录/提交/部署/回退",
   "author": "ftml contributors",
   "type": "module",
