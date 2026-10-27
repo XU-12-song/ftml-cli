@@ -723,6 +723,7 @@ test('render：resolveModules=true 用真实数据，下一次普通渲染回到
       assert.ok(real.fragment.includes('real-tag'));
       assert.ok(real.fragment.includes('page-rate-widget-box'));
       assert.ok(real.fragment.includes('alice'));
+      assert.ok(!real.fragment.includes('class="newpage"')); // ListPages 结果页面已知存在
 
       const before = { ...calls };
       const fast = await renderProjectFile(

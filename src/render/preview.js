@@ -29,6 +29,27 @@ import { createModuleDataProvider } from './module-data.js';
 // 解析逻辑在 domain（发布路径也要用同一套规则），这里转出保持既有 import 路径可用。
 export { resolveIncludeFile };
 
+/**
+ * 页面名归一化（与 @wdprlib/render 的 normalizePageName 同口径）。
+ * renderer 传给 resolvePageExistence 的目标已归一化，已知页面也要归一化后再比较。
+ */
+function normalizePageName(page) {
+  let name = Array.from(String(page ?? '').trim().replace(/^\//, '').normalize('NFKC'), (c) =>
+    c.toLowerCase()
+  ).join('').replace(/[^\p{L}\p{N}:_-]/gu, '-');
+  const category = name.lastIndexOf(':');
+  if (category !== -1) {
+    name = name.slice(0, category).replace(/:/g, '-') + name.slice(category);
+  }
+  name = name
+    .replace(/(?<!^|:)_/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .replace(/-*([:_])-*/g, '$1')
+    .replace(/^:|:$/g, '');
+  return name.startsWith('_default:') ? name.slice(9) : name;
+}
+
 /** 只报一次的远程不可用警告（同一类原因不随 include 数量刷屏） */
 function pushWarningOnce(warnings, warning) {
   if (!warnings.some((w) => w.code === warning.code)) warnings.push(warning);
@@ -253,7 +274,18 @@ export async function renderPreview(
     dataProvider,
   });
 
-  const result = await renderWikitext(doc, { styleMode });
+  // 已知存在的页面：当前页 + ListPages（真实或占位）返回的页面。
+  // 不传时 renderer 会把所有页面链接标成 newpage（红链）。
+  if (page?.fullName) moduleData.knownPages.add(page.fullName);
+  const knownPages = new Set(
+    [...moduleData.knownPages].map(normalizePageName).filter(Boolean)
+  );
+  const result = await renderWikitext(doc, {
+    styleMode,
+    resolvers: {
+      resolvePageExistence: async (targets) => new Set(targets.filter((t) => knownPages.has(t))),
+    },
+  });
   // 注：Wikidot 处理顺序型分歧（embed-structural-escape）的检测只在 validate
   // 路径（collectProblems）里跑，不进热渲染路径——它需要额外一趟 tokenize，
   // 而渲染期结果与它无关（见 compat/divergence.js）。

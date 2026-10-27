@@ -592,6 +592,15 @@ test('ListPages：快速预览注入多行占位数据', async () => {
     '[[module ListPages limit="5"]]\n* %%title_linked%% — %%rating%%\n[[/module]]'
   );
   assert.equal((html.match(/示例页面 \d/g) || []).length, 3);
+  assert.ok(!html.includes('class="newpage"')); // 占位页面被视为已存在
+});
+
+test('当前页链接不标红：page.fullName 作为已知页面传给渲染器', async () => {
+  const { html } = await renderPreview('[[[theairorgo]]]', {
+    page: { fullName: 'theairorgo', unixName: 'theairorgo', tags: [], site: 'scpsandboxcn' },
+  });
+  assert.ok(html.includes('href="/theairorgo"'));
+  assert.ok(!html.includes('class="newpage"'));
 });
 
 test('ListPages：占位数量为 0 时不输出正文', async () => {

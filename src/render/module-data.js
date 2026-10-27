@@ -49,6 +49,8 @@ export function createModuleDataProvider({
 } = {}) {
   const warnings = [];
   const summary = { mode, fallback: false, listPages: 0, listUsers: 0, tagCloud: 0, ratings: 0 };
+  // ListPages 返回的页面确实存在；交给渲染器作为 pageExists 依据，避免全部标红链。
+  const knownPages = new Set();
 
   const placeholder = buildPlaceholderFetchers({ placeholders, page, caps });
   const real = mode === 'real' && Boolean(client);
@@ -65,17 +67,27 @@ export function createModuleDataProvider({
 
   const opts = { placeholders, page, client, clientError, caps, warnings };
 
+  function recordPages(kind, value) {
+    if (kind !== 'listPages') return;
+    for (const p of value?.pages ?? []) {
+      if (p?.fullname) knownPages.add(p.fullname);
+    }
+  }
+
   /** 统一包装：真实模式失败 → 占位数据 + 去重 warning */
   function wrap(kind, realFn, fallbackFn) {
     return async (...args) => {
       const countKey = kind === 'rate' ? 'ratings' : kind;
       if (!real) {
         summary[countKey]++;
-        return fallbackFn(...args);
+        const value = await fallbackFn(...args);
+        recordPages(kind, value);
+        return value;
       }
       try {
         const value = await realFn(...args, opts);
         summary[countKey]++;
+        recordPages(kind, value);
         return value;
       } catch (e) {
         summary[countKey]++;
@@ -86,7 +98,9 @@ export function createModuleDataProvider({
           message: `${MODULE_LABELS[kind]} 真实解析失败，已回退占位数据: ${e.message}`,
           position: null,
         });
-        return fallbackFn(...args);
+        const value = await fallbackFn(...args);
+        recordPages(kind, value);
+        return value;
       }
     };
   }
@@ -100,5 +114,6 @@ export function createModuleDataProvider({
     },
     warnings,
     summary,
+    knownPages,
   };
 }
