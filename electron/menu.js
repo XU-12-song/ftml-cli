@@ -6,6 +6,18 @@
 
 import { Menu } from 'electron';
 
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.isDev]
+ * @param {() => void} [options.onOpenProject]
+ * @param {() => void} [options.onOpenFile]
+ * @param {() => void} [options.onHide]
+ * @param {() => void} [options.onQuit]
+ * @param {() => void} [options.onReload]
+ * @param {() => void} [options.onToggleDevTools]
+ * @param {() => void} [options.onOpenDataDir]
+ * @param {() => void} [options.onAbout]
+ */
 export function buildAppMenu({
   isDev = false,
   onOpenProject,
@@ -18,13 +30,14 @@ export function buildAppMenu({
   onAbout,
 } = {}) {
   const isMac = process.platform === 'darwin';
+  /** @type {import('electron').MenuItemConstructorOptions[]} */
   const viewItems = [
     { label: '重新加载', accelerator: 'CmdOrCtrl+R', click: () => onReload?.() },
     ...(isDev
-      ? [
+      ? /** @type {import('electron').MenuItemConstructorOptions[]} */ ([
         { label: '开发者工具', accelerator: 'F12', click: () => onToggleDevTools?.() },
         { type: 'separator' },
-      ]
+      ])
       : []),
     { role: 'resetZoom', label: '实际大小' },
     { role: 'zoomIn', label: '放大' },
@@ -33,8 +46,11 @@ export function buildAppMenu({
     { role: 'togglefullscreen', label: '全屏' },
   ];
 
+  /** @type {import('electron').MenuItemConstructorOptions[]} */
   const template = [
-    ...(isMac ? [ { role: 'appMenu' } ] : []),
+    ...(isMac
+      ? /** @type {import('electron').MenuItemConstructorOptions[]} */ ([ { role: 'appMenu' } ])
+      : []),
     {
       label: '文件',
       submenu: [

@@ -215,7 +215,7 @@ function apiRouter(env) {
     submit: (req) => handlers.submitProject(req.params.id, req.body),
     deploy: (req) => handlers.deployProject(req.params.id, req.body, env),
     revert: (req) => handlers.revertProject(req.params.id, req.body, env),
-    init: (req) => handlers.initProject(req.params.id, env),
+    init: (req) => handlers.initProject(req.params.id),
   };
 
   router.all('/projects/:id/:action', wrap(async (req, res) => {
@@ -248,7 +248,7 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
     return;
   }
   // express.json 解析失败 → SyntaxError（带 status 400）
-  if (err instanceof SyntaxError && err.status === 400) {
+  if (err instanceof SyntaxError && /** @type {any} */ (err).status === 400) {
     res.status(400).json({ error: '请求体不是合法 JSON' });
     return;
   }

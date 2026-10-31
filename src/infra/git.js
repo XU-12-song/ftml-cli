@@ -4,7 +4,7 @@
  * submit: add('.') + commit；revert: 真 git revert（生成反向提交）。
  */
 
-import simpleGit from 'simple-git';
+import { simpleGit } from 'simple-git';
 
 export { simpleGit };
 
@@ -72,6 +72,8 @@ function revertErrorLine(e) {
  * reverting 状态），下一次命令会被 git 拒绝。这里一律 abort 还原工作区再抛错——
  * 绝不把卡死的仓库留给调用方。
  *
+ * @param {object} git
+ * @param {string} [rev]
  * @param {object} [options]
  * @param {string} [options.message]  反向提交说明
  * @param {string} [options.keepFrom] 回退前的提交：从它取回 keepPaths，覆盖 revert 的影响
@@ -146,6 +148,10 @@ export async function tagCommit(git, tag) {
 /**
  * 推送当前分支到远端。
  * 未配置远端时返回 { pushed:false, reason } 而不是抛错（本地项目无远端属正常情况）。
+ * @param {object} git
+ * @param {object} [options]
+ * @param {string} [options.remote]
+ * @param {string} [options.branch]
  */
 export async function pushCurrent(git, { remote = 'origin', branch } = {}) {
   if (!(await hasRemote(git, remote))) {

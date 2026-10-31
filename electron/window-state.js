@@ -22,6 +22,15 @@ function visibleOnDisplays(bounds, displays) {
   return displays.some((d) => intersects(bounds, d.workArea ?? d.bounds));
 }
 
+/**
+ * @typedef {{ x?: number, y?: number, width: number, height: number, maximized?: boolean }} WindowState
+ */
+
+/**
+ * @param {string} filePath
+ * @param {Array} [displays]
+ * @returns {WindowState}
+ */
 export function loadWindowState(filePath, displays = []) {
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));

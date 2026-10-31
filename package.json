@@ -10,6 +10,7 @@
   "main": "./electron/main.js",
   "scripts": {
     "test": "node --test",
+    "typecheck": "tsc --noEmit",
     "build:cm6": "node scripts/build-cm6.mjs",
     "electron:dev": "electron .",
     "dist:win": "electron-builder --win --x64 --publish never",
@@ -44,6 +45,7 @@
     "electron-builder": "^26.0.0",
     "esbuild": "^0.28.2",
     "playwright-core": "^1.64.1",
-    "png-to-ico": "^3.0.2"
+    "png-to-ico": "^3.0.2",
+    "typescript": "^6.0.3"
   }
 }

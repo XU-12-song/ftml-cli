@@ -81,7 +81,8 @@ export async function startWebServer({
     server.listen(listenPort, host);
   });
 
-  const actualPort = server.address().port;
+  const addr = server.address();
+  const actualPort = typeof addr === 'object' && addr !== null ? addr.port : listenPort;
   if (security) security.port = actualPort;
 
   // 0.0.0.0 / :: 不能直接给浏览器打开；统一回落到回环地址

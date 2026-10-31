@@ -21,6 +21,9 @@ jobs:
 
       - run: npm ci
 
+      # 渐进式 TS 迁移基线（JSDoc 类型检查，无构建步骤）。
+      - run: npm run typecheck
+
       - run: npm test
 
       - run: npm run test:electron

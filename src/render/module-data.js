@@ -37,7 +37,7 @@ function pushWarningOnce(warnings, warning) {
  * @param {object|null} [opts.client] 已登录 Wikidot 客户端
  * @param {Error|null} [opts.clientError] 客户端创建失败原因
  * @param {object} [opts.caps]
- * @returns {{ fetchers: object, warnings: Array, summary: object }}
+ * @returns {{ fetchers: object, warnings: Array, summary: object, knownPages: Set<string> }}
  */
 export function createModuleDataProvider({
   mode = 'placeholder',

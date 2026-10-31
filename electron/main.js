@@ -223,6 +223,7 @@ function setupMenu() {
 }
 
 function showAbout() {
+  /** @type {import('electron').MessageBoxOptions} */
   const opts = {
     type: 'info',
     title: '关于 ftml',
@@ -243,6 +244,7 @@ function quitApp() {
 function registerIpc() {
   ipcMain.handle('ftml:pick-directory', async (event, opts = {}) => {
     if (!isTrustedSender(event)) return null;
+    /** @type {import('electron').OpenDialogOptions} */
     const dialogOpts = {
       title: opts.title || '选择目录',
       defaultPath: opts.defaultPath || undefined,
@@ -294,6 +296,7 @@ async function confirmLooseProject(target) {
   if (target.isProject || isRegisteredProject(target.project)) return true;
   // 托盘/最小化状态下双击文件时，先让窗口可见，提示框才有明确归属
   if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
+  /** @type {import('electron').MessageBoxOptions} */
   const opts = {
     type: 'question',
     title: '添加工作区',

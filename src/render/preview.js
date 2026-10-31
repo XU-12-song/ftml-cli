@@ -109,9 +109,10 @@ export function findIndentedIncludes(source) {
  * @param {{ site: string|null, page: string }} pageRef
  * @param {object} opts
  * @param {object} [opts.page] 页面上下文（提供当前站点名）
- * @param {object} [opts.client] 已登录的 @ukwhatn/wikidot 客户端
+ * @param {object} [opts.client] 已登录的 `@ukwhatn/wikidot` 客户端
  * @param {Array} opts.warnings 收集远程拉取失败的警告诊断
  * @param {boolean} [opts.allowNetwork] 是否允许联网补拉（false 时只用磁盘缓存）
+ * @param {Error|null} [opts.clientError] 客户端创建失败的原因（联网但未登录时用于诊断）
  * @returns {Promise<{ source: string|null, from: 'cache'|'remote'|'miss' }>}
  */
 async function fetchRemoteInclude(pageRef, {
@@ -184,10 +185,13 @@ async function fetchRemoteInclude(pageRef, {
  * @param {'inline'|'separate'} [options.styleMode] inline=样式内联进 HTML；separate=单独收集到 styles
  * @param {string} [options.includeBaseDir] 解析 [[include]] 的基准目录；省略则本地解析关闭
  * @param {Map} [options.includeTemplates] 模板表，include 目标源码展开模板时使用
- * @param {object} [options.client] 已登录的 @ukwhatn/wikidot 客户端；提供后本地找不到的 include 自动远程拉取
+ * @param {object} [options.client] 已登录的 `@ukwhatn/wikidot` 客户端；提供后本地找不到的 include 自动远程拉取
  * @param {boolean} [options.allowNetwork] 是否允许联网补拉远程 include（默认 true；false 时只用磁盘缓存）
  * @param {Error|null} [options.clientError] 客户端创建失败的原因（allowNetwork 但未登录时用于诊断）
- * @returns {{ html, styles, htmlBlocks, diagnostics, includes, dependencies }}
+ * @param {'placeholder'|'real'} [options.moduleMode] 模块数据模式：placeholder=占位（默认），real=一次性真实解析
+ * @param {object} [options.modulePlaceholders] 模块占位数据（settings.modulePlaceholders）
+ * @param {object} [options.moduleCaps] 模块数量上限（见 module-caps.js）
+ * @returns {Promise<{ html, styles, htmlBlocks, diagnostics, includes, dependencies, moduleResolution }>}
  *   includes: 本次渲染解析的 [[include]] 列表 [{ site, page, from }]（from: local/cache/remote/miss）
  */
 export async function renderPreview(

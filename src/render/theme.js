@@ -18,7 +18,7 @@
  * 分工——
  *   readThemeCss()    同步，只读缓存（新鲜或过期都用），不联网。渲染路径用。
  *   refreshThemeCss() 异步，联网刷新缓存。web 启动与 `ftml preview` 用。
- * 拿不到缓存时退回原来的远程 @import（见 preview-page.js），行为与改动前一致。
+ * 拿不到缓存时退回原来的远程 `@import`（见 preview-page.js），行为与改动前一致。
  */
 
 import fs from 'node:fs';
@@ -92,7 +92,7 @@ function isFresh(entry, now = Date.now()) {
  * @param {object} [opts]
  * @param {string[]} [opts.sources]
  * @param {boolean} [opts.requireFresh] true 时过期缓存视为未命中
- * @returns {{ css: string, missing: string[] }} css 为空串表示缓存不全，调用方应退回 @import
+ * @returns {{ css: string, missing: string[] }} css 为空串表示缓存不全，调用方应退回 `@import`
  */
 export function readThemeCss({ sources = THEME_SOURCES, requireFresh = false } = {}) {
   const parts = [];
@@ -111,9 +111,9 @@ export function readThemeCss({ sources = THEME_SOURCES, requireFresh = false } =
   return { css: parts.join('\n'), missing: [] };
 }
 
-/** @import 规则（url(...) 与裸字符串两种写法），末尾可带媒体条件 */
+/** `@import` 规则（url(...) 与裸字符串两种写法），末尾可带媒体条件 */
 const IMPORT_RE = /@import\s+(?:url\(\s*(['"]?)([^'")]+)\1\s*\)|(['"])([^'"]+)\3)([^;]*);/gi;
-/** @import 递归展开的最大深度：既防环，也防病态嵌套 */
+/** `@import` 递归展开的最大深度：既防环，也防病态嵌套 */
 const MAX_IMPORT_DEPTH = 4;
 
 /**
@@ -169,7 +169,7 @@ async function resolveImports(css, baseUrl, fetchImpl, seen, depth = 0) {
   return parts.join('');
 }
 
-/** 抓一份样式表并展开其中的 @import；成功写缓存（存的是展开后的 CSS）并返回 */
+/** 抓一份样式表并展开其中的 `@import`；成功写缓存（存的是展开后的 CSS）并返回 */
 async function fetchOne(url, fetchImpl, seen = new Set()) {
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -183,7 +183,7 @@ async function fetchOne(url, fetchImpl, seen = new Set()) {
 
 /**
  * 联网刷新主题缓存（并发抓取），随后按 readThemeCss 的规则返回可用 CSS。
- * 单份失败只记入 errors，不影响另一份；拿不到就用过期缓存/退回 @import。
+ * 单份失败只记入 errors，不影响另一份；拿不到就用过期缓存/退回 `@import`。
  *
  * @param {object} [opts]
  * @param {string[]} [opts.sources]

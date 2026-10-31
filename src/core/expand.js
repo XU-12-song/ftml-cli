@@ -218,7 +218,7 @@ function replaceCssPlaceholders(css, values) {
  * @param {Map} templates
  * @param {string[]} stack 当前模板调用栈（防循环）
  * @param {number} depth
- * @param {{ css: string[], baseDir: string }} ctx CSS 块 + 组件相对路径基准目录
+ * @param {{ css: string[], baseDir: string, file?: string|null }} ctx CSS 块 + 组件相对路径基准目录 + 出错时归属的文件
  * @param {string[]} fileStack 当前组件文件绝对路径栈（防循环依赖）
  */
 function expandInner(src, templates, stack, depth, ctx, fileStack) {

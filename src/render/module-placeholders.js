@@ -163,7 +163,7 @@ function buildRatings(refs, opts) {
 
 /**
  * 构造占位 dataProvider。
- * @param {{ placeholders?: object, page?: object, caps: object }} opts
+ * @param {{ placeholders?: object, page?: object, caps?: object }} opts
  */
 export function buildPlaceholderFetchers(opts = {}) {
   const placeholders = opts.placeholders ?? DEFAULT_MODULE_PLACEHOLDERS;

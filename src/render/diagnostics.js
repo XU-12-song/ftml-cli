@@ -65,7 +65,7 @@ function excerpt(srcLines, pos, gutterWidth) {
 /**
  * 格式化单条 wdpr 诊断。
  *
- * @param {object} d @wdprlib Diagnostic
+ * @param {object} d `@wdprlib` Diagnostic
  * @param {string} source 诊断位置所指的源码（与 position 同一坐标系）
  * @param {{ file?: string }} [opts] 位置前缀显示的文件名
  * @returns {string}
@@ -94,7 +94,7 @@ export function formatDiagnostic(d, source, { file = '' } = {}) {
 /**
  * 格式化一组 wdpr 诊断，供 CLI 输出。
  *
- * @param {Array<object>} diagnostics @wdprlib Diagnostic[]
+ * @param {Array<object>} diagnostics `@wdprlib` Diagnostic[]
  * @param {string} source 源码（与诊断位置同一坐标系）
  * @param {{ file?: string }} [opts]
  * @returns {string} 无诊断时返回空串

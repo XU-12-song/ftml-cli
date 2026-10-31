@@ -20,6 +20,17 @@ import path from 'node:path';
 import { settingsPath } from '../infra/paths.js';
 
 /**
+ * 用户设置（已归一化）。modulePlaceholders 用宽泛的 object，具体字段见 normalizeModulePlaceholders。
+ * @typedef {object} Settings
+ * @property {number} previewIntervalMs
+ * @property {boolean} autoPreview
+ * @property {'inline'|'module'} renderStyleMode
+ * @property {boolean} useRemoteInclude
+ * @property {'auto'|'dark'|'light'} theme
+ * @property {object} modulePlaceholders
+ */
+
+/**
  * 快速预览时各 module 的占位数据。
  * 只影响预览观感，不参与真实渲染；数值在 normalize 时收敛到安全范围。
  */
@@ -49,6 +60,7 @@ export const DEFAULT_MODULE_PLACEHOLDERS = Object.freeze({
   }),
 });
 
+/** @type {Readonly<Settings>} */
 export const DEFAULT_SETTINGS = Object.freeze({
   previewIntervalMs: 600,
   autoPreview: true,
@@ -138,6 +150,7 @@ export function normalizeModulePlaceholders(raw = {}) {
 
 /** 只保留已知字段并做类型/范围收敛 */
 export function normalizeSettings(raw = {}) {
+  /** @type {Settings} */
   const out = {
     ...DEFAULT_SETTINGS,
     modulePlaceholders: normalizeModulePlaceholders(DEFAULT_MODULE_PLACEHOLDERS),
@@ -173,6 +186,7 @@ export function loadSettings() {
  */
 export function saveSettings(patch = {}) {
   const base = loadSettings();
+  /** @type {Settings} */
   const next = { ...base };
   if (patch.previewIntervalMs !== undefined) next.previewIntervalMs = patch.previewIntervalMs;
   if (patch.autoPreview !== undefined) next.autoPreview = patch.autoPreview;

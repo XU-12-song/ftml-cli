@@ -36,13 +36,13 @@ function runtimeSource() {
  * 把渲染结果包装成完整预览文档。
  *
  * @param {object} opts
- * @param {string} opts.html @wdprlib/render 输出的正文 fragment（styleMode: 'inline'，
+ * @param {string} opts.html `@wdprlib/render` 输出的正文 fragment（styleMode: 'inline'，
  *                           [[module CSS]] 已含在 html 里）
  * @param {Array<string>} [opts.styles] 收集到的 CSS 段（集中放进 <style id="ftml-styles">，
  *                                     便于热补丁整段替换）
  * @param {string} [opts.title] 文档标题（默认 "ftml preview"）
  * @param {string} [opts.themeCss] 本地化的主题样式表（src/render/theme.js）。给了就内联，
- *                                 否则退回远程 @import —— @import 是异步加载，失败/慢时
+ *                                 否则退回远程 `@import` —— `@import` 是异步加载，失败/慢时
  *                                 文档会先按无样式渲染（纯黑白），且该状态随网络命中与否
  *                                 在每次整篇重载间闪烁。
  * @returns {string} 完整 HTML 文档字符串
