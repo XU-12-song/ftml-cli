@@ -1,4 +1,0 @@
-[[div class="interview" name item]]
-[[strong]]{ name }[[/strong]] —— { item }
-{ children }
-[[/div]]
