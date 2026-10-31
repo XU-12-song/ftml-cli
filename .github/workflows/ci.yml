@@ -30,3 +30,6 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
+
+      # 确保前端打包脚本可用（产物 dist/ 不入库）
+      - run: npm run build:web

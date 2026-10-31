@@ -27,6 +27,7 @@ ftml <命令> [选项]
 git clone https://github.com/XU-12-song/ftml-cli
 cd ftml-cli
 npm install        # 安装依赖
+npm run build:web  # 构建 web 编辑器前端（dist/ 不入库，克隆后必须先构建）
 npm link           # 全局安装 ftml 命令（可选）
 npm test           # 运行测试（node:test，零额外依赖）
 ```
@@ -54,11 +55,15 @@ npm test           # 运行测试（node:test，零额外依赖）
 开发与打包：
 
 ```bash
-npm run electron:dev    # 启动桌面版（开发）
+npm run electron:dev    # 启动桌面版（开发；会先构建前端）
 npm run test:electron   # Electron 冒烟测试（需要图形会话）
 npm run dist:win        # 产出 NSIS 安装包 + Portable（release/）
 npm run assets:build    # 从 assets/masters/*.svg 重新生成 PNG/ICO
+npm run build:web       # 构建前端 src/web/public/js → dist/app.js（产物不入库）
+npm run build:web:watch # 开发时监听前端改动并重建
 ```
+
+改动 `src/web/public/js/` 后需要重新构建前端（`npm run build:web`）。打包产物 `dist/` 已被 gitignore，克隆仓库后需先构建；`electron:dev` 与 `dist:win` 会自动执行构建。
 
 ## 命令
 

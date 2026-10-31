@@ -5,6 +5,9 @@ CLAUDE.md
 .claudex-profile.json
 THIRD-PARTY-LICENSE-REVIEW.md
 
+# 构建产物
+dist/
+
 # electron-builder 产物 / 测试截图
 release/
 tests/electron/artifacts/
