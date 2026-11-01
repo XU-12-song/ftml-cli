@@ -9,7 +9,9 @@
   },
   "main": "./electron/main.js",
   "scripts": {
-    "test": "node --test",
+	  
+    "test": "node --import tsx --test",
+    "test:watch": "node --import tsx --test --watch tests",
     "typecheck": "tsc --noEmit",
     "build:cm6": "node scripts/build-cm6.mjs",
     "build:web": "node scripts/build-web.mjs",
@@ -33,7 +35,8 @@
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "express": "^4.22.3",
-    "simple-git": "^3.36.0"
+    "simple-git": "^3.36.0",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",

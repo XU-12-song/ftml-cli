@@ -1,5 +1,5 @@
 /**
- * parse-ftmx.mjs — 解析 .ftmx 模板文件
+ * parse-ftmx.ts — 解析 .ftmx 模板文件
  *
  * 语法（来自 SCPack README 的虚构规格）：
  *   - 整个文件必须被单个元素包裹（多元素需用 [[]] ... [[/]] 空名根包裹）
@@ -9,15 +9,15 @@
  *   - body 内 { 键名 } 为占位符，children 为内置键（调用时的子内容）
  *   - 转义：\{ \} \\ 输出字面字符
  */
-
+import type {Template,srcSource,ParsedTemplate} from '../types/ftmx.ts';
 import { FtmlError } from './errors.js';
 
-/** 把元素名从标签内 token 中提取出来，返回 { element, literalAttrs, declaredKeys } */
-function splitTagTokens(inner) {
+/** 把元素名从标签内 token 中提取出来，返回  @link{Template}  */
+function splitTagTokens(inner:string):Template {
   const tokens = [];
   // 按空格切分，尊重单/双引号
   const re = /"[^"]*"|'[^']*'|\S+/g;
-  let m;
+  let m:RegExpExecArray|null;
   while ((m = re.exec(inner)) !== null) tokens.push(m[0]);
 
   if (tokens.length === 0) {
@@ -25,14 +25,14 @@ function splitTagTokens(inner) {
   }
 
   const element = tokens[0];
-  const literalAttrs = [];
-  const declaredKeys = [];
+  const literalAttrs:string[] = [];
+  const declaredKeys:string[] = [];
   for (const t of tokens.slice(1)) {
     // 去掉包裹引号判断：带 = 且等号前无空白 → 字面属性（保留原文，含引号）
     if (/^\S+=/.test(t) && !/^=[^=]/.test(t)) {
-      literalAttrs.push(t);
+      literalAttrs.push(t as string);
     } else {
-      declaredKeys.push(t);
+      declaredKeys.push(t as string);
     }
   }
   return { element, literalAttrs, declaredKeys };
@@ -40,11 +40,8 @@ function splitTagTokens(inner) {
 
 /**
  * 解析 .ftmx 源码
- * @param {string} src .ftmx 文件内容
- * @param {string} name 模板名（用于报错信息）
- * @returns {{ name, element, literalAttrs: string[], keys: string[], body: string }}
- */
-export function parseFtmx(src, name) {
+*/
+export function parseFtmx(src:srcSource, name:string):ParsedTemplate {
   const text = src.trim();
 
   // 找开标签：[[ 元素名 ... ]]
@@ -61,7 +58,7 @@ export function parseFtmx(src, name) {
   const { element, literalAttrs, declaredKeys } = splitTagTokens(openInner);
 
   // 空名根 [[]] 表示 body-only（多元素模板）
-  let closeTag;
+  let closeTag:string;
   if (element === null) {
     closeTag = '[[/]]';
   } else {
