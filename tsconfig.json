@@ -27,7 +27,7 @@
     "electron/**/*.js",
     "electron/**/*.cjs",
     "scripts/**/*.mjs"
-, "src/core/errors.ts", "src/core/expand.ts"  ],
+, "src/**/*.ts"  ],
   "exclude": [
     "node_modules",
     "release",
