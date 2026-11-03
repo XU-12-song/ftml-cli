@@ -1,6 +1,6 @@
-appId: com.ftml.cli
-productName: ftml
-copyright: Copyright © ftml contributors
+appId: com.ftml-cli.contributors
+productName: Ftml Editor
+copyright: Copyright © ftml-cli contributors
 
 directories:
   output: release
@@ -42,7 +42,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: ftml
+  shortcutName: Ftml Editor
   artifactName: ${productName}-${version}-setup-${arch}.${ext}
 
 portable:
