@@ -1,5 +1,5 @@
 /**
- * mtime-cache.js — 进程内「按修改时间复用」缓存
+ * mtime-cache.ts — 进程内「按修改时间复用」缓存
  *
  * 把「读盘 + 解析/展开」这类昂贵且反复发生的工作摊销掉：只要文件的
  * mtime 与大小没变，就复用上次的结果；文件真被改动就自动失效。
@@ -14,10 +14,20 @@
 
 import fs from 'node:fs';
 
-/** namespace -> Map<absPath, { sig, extra, value }> */
-const stores = new Map();
+interface CacheEntry {
+  sig: string;
+  extra: string;
+  value: unknown;
+}
 
-function storeOf(ns, create = true) {
+type Store = Map<string, CacheEntry>;
+
+/** namespace -> Map<absPath, { sig, extra, value }> */
+const stores = new Map<string, Store>();
+
+function storeOf(ns: string, create?: true): Store;
+function storeOf(ns: string, create: false): Store | undefined;
+function storeOf(ns: string, create: boolean = true): Store | undefined {
   let s = stores.get(ns);
   if (!s && create) {
     s = new Map();
@@ -27,7 +37,7 @@ function storeOf(ns, create = true) {
 }
 
 /** 文件签名（mtimeMs + size）；文件不存在返回 null */
-export function fileSignature(abs) {
+export function fileSignature(abs: string): string | null {
   try {
     const st = fs.statSync(abs);
     return `${st.mtimeMs}:${st.size}`;
@@ -39,13 +49,18 @@ export function fileSignature(abs) {
 /**
  * 按文件签名复用计算结果。
  *
- * @param {string} ns 命名空间
- * @param {string} abs 文件绝对路径
- * @param {() => any} compute 未命中时的计算（同步）
- * @param {string} [extra] 附加失效键：与缓存记录不一致即作废（如模板表签名）
- * @returns {any} compute 的返回值；文件不存在返回 null
+ * @param ns 命名空间
+ * @param abs 文件绝对路径
+ * @param compute 未命中时的计算（同步）
+ * @param extra 附加失效键：与缓存记录不一致即作废（如模板表签名）
+ * @returns compute 的返回值；文件不存在返回 null
  */
-export function memoByFile(ns, abs, compute, extra = '') {
+export function memoByFile<T>(
+  ns: string,
+  abs: string,
+  compute: () => T,
+  extra: string = '',
+): T | null {
   const sig = fileSignature(abs);
   if (sig === null) {
     storeOf(ns, false)?.delete(abs);
@@ -53,14 +68,14 @@ export function memoByFile(ns, abs, compute, extra = '') {
   }
   const store = storeOf(ns);
   const hit = store.get(abs);
-  if (hit && hit.sig === sig && hit.extra === extra) return hit.value;
+  if (hit && hit.sig === sig && hit.extra === extra) return hit.value as T;
   const value = compute();
   store.set(abs, { sig, extra, value });
   return value;
 }
 
 /** 清空缓存：传入命名空间只清该用途，省略则全清（测试/诊断用） */
-export function clearMtimeCache(ns) {
+export function clearMtimeCache(ns?: string): void {
   if (ns) stores.delete(ns);
   else stores.clear();
 }

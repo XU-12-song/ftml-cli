@@ -1,5 +1,5 @@
 /**
- * config.js — 项目配置加载
+ * config.ts — 项目配置加载
  *
  * site/page 来源（优先级从低到高）：
  *   1. <root>/.ftml/<源文件名>.json  元数据（submit/revert 时写入）
@@ -17,29 +17,36 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findConfigDir, CONFIG_FILES, projectMetaPath } from './paths.js';
 import { fileURLToPath } from 'node:url';
+import type {
+  ConfigCliOptions,
+  ProjectConfig,
+  ProjectConfigFile,
+  ProjectMeta,
+  ProjectMetaPatch,
+} from '../types/infra/config.ts';
 
 export { findConfigDir };
 
 /** 加载配置：无配置文件时返回默认值 */
-export function loadConfig(cliOptions = {}) {
+export function loadConfig(cliOptions: ConfigCliOptions = {}): ProjectConfig {
   // 显式 root 优先（web 编辑器多项目场景）；否则从 cwd 向上查找配置文件
   const configDir = cliOptions.root || findConfigDir();
-  let file = {};
+  let file: ProjectConfigFile = {};
   if (configDir) {
     for (const name of CONFIG_FILES) {
       const p = path.join(configDir, name);
       if (fs.existsSync(p)) {
         try {
-          file = JSON.parse(fs.readFileSync(p, 'utf8'));
+          file = JSON.parse(fs.readFileSync(p, 'utf8')) as ProjectConfigFile;
         } catch (e) {
-          throw new Error(`配置文件 ${p} 解析失败: ${e.message}`);
+          throw new Error(`配置文件 ${p} 解析失败: ${(e as Error).message}`);
         }
         break;
       }
     }
   }
 
-  const config = {
+  const config: Omit<ProjectConfig, 'sourceAbs' | 'outputAbs' | 'templatesDirAbs'> = {
     root: configDir || process.cwd(),
     source: file.source ?? 'index.ftml',
     output: file.output ?? 'dist/index.ftml',
@@ -60,32 +67,39 @@ export function loadConfig(cliOptions = {}) {
   if (cliOptions.watch !== undefined) config.watch = cliOptions.watch;
 
   // 路径相对于配置所在目录解析
-  config.sourceAbs = path.resolve(config.root, config.source);
-  config.outputAbs = path.resolve(config.root, config.output);
-  config.templatesDirAbs = path.resolve(config.root, config.templatesDir);
+  const sourceAbs = path.resolve(config.root, config.source);
 
   // 最低优先级：.ftml/<源文件名>.json 元数据（site/page）
-  const meta = loadProjectMeta(config.sourceAbs, config.root);
+  const meta = loadProjectMeta(sourceAbs, config.root);
   if (meta) {
     if (!config.site) config.site = meta.site ?? null;
     if (!config.page) config.page = meta.page ?? null;
     if (config.lastRev == null) config.lastRev = meta.lastRev ?? null;
   }
 
-  return config;
+  return {
+    ...config,
+    sourceAbs,
+    outputAbs: path.resolve(config.root, config.output),
+    templatesDirAbs: path.resolve(config.root, config.templatesDir),
+  };
 }
 
 /** 读取 <root>/.ftml/<源文件名>.json 元数据；不存在或损坏返回 null */
-export function loadProjectMeta(sourceAbs, root = process.cwd()) {
+export function loadProjectMeta(sourceAbs: string, root: string = process.cwd()): ProjectMeta | null {
   try {
-    return JSON.parse(fs.readFileSync(projectMetaPath(sourceAbs, root), 'utf8'));
+    return JSON.parse(fs.readFileSync(projectMetaPath(sourceAbs, root), 'utf8')) as ProjectMeta;
   } catch {
     return null;
   }
 }
 
 /** 写入/更新某源文件的元数据（site/page/lastRev 合并，保留已有字段） */
-export function saveProjectMeta(sourceAbs, fields, root = process.cwd()) {
+export function saveProjectMeta(
+  sourceAbs: string,
+  fields: ProjectMetaPatch,
+  root: string = process.cwd(),
+): void {
   const p = projectMetaPath(sourceAbs, root);
   const prev = loadProjectMeta(sourceAbs, root) ?? {};
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -93,7 +107,10 @@ export function saveProjectMeta(sourceAbs, fields, root = process.cwd()) {
 }
 
 /** 解析模板目录：优先项目配置；回退输入文件同级 templates/；再回退内置模板 */
-export default function resolveTemplatesDir(config, inputFile) {
+export default function resolveTemplatesDir(
+  config: Pick<ProjectConfig, 'root' | 'templatesDir'>,
+  inputFile: string,
+): string {
   const projectDir = path.resolve(config.root, config.templatesDir);
   if (fs.existsSync(projectDir)) return projectDir;
   const nearInput = path.join(path.dirname(path.resolve(inputFile)), 'templates');

@@ -1,5 +1,5 @@
 /**
- * credentials.js — Wikidot 凭证管理
+ * credentials.ts — Wikidot 凭证管理
  *
  * 凭证来源（优先级从高到低）：
  *   1. 环境变量 WIKIDOT_USERNAME / WIKIDOT_PASSWORD
@@ -12,18 +12,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { credentialsPath } from './paths.js';
+import type { Credentials, CredentialInput } from '../types/infra/credentials.ts';
 
 // dotenv 只在真正读取环境凭证时加载一次；Electron 主进程不会在启动阶段
 // 因为 import 本模块而读取 cwd 下的 .env。
 let dotenvLoaded = false;
-function loadDotenvOnce() {
+function loadDotenvOnce(): void {
   if (dotenvLoaded) return;
   dotenvLoaded = true;
   try { dotenv.config(); } catch { /* 无 .env / 读取失败都忽略 */ }
 }
 
 /** 从环境变量读取凭证 */
-export function envCredentials() {
+export function envCredentials(): Credentials | null {
   loadDotenvOnce();
   const username = process.env.WIKIDOT_USERNAME;
   const password = process.env.WIKIDOT_PASSWORD;
@@ -32,10 +33,10 @@ export function envCredentials() {
 }
 
 /** 从 ~/.ftml-cli/credentials.json 读取凭证（尊重 FTML_CLI_HOME） */
-export function fileCredentials() {
+export function fileCredentials(): Credentials | null {
   try {
     const raw = fs.readFileSync(credentialsPath(), 'utf8');
-    const data = JSON.parse(raw);
+    const data = JSON.parse(raw) as { username?: string; password?: string };
     if (data.username && data.password) {
       return { username: data.username, password: data.password, source: 'file' };
     }
@@ -46,12 +47,12 @@ export function fileCredentials() {
 }
 
 /** 按优先级获取凭证 */
-export function getCredentials() {
+export function getCredentials(): Credentials | null {
   return envCredentials() ?? fileCredentials();
 }
 
 /** 保存凭证到文件（0600） */
-export function saveCredentials({ username, password }) {
+export function saveCredentials({ username, password }: CredentialInput): void {
   const p = credentialsPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(
@@ -61,6 +62,6 @@ export function saveCredentials({ username, password }) {
   );
 }
 
-export function hasCredentials() {
+export function hasCredentials(): boolean {
   return getCredentials() !== null;
 }

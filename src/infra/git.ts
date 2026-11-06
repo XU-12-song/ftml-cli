@@ -1,20 +1,28 @@
 /**
- * git.js — git 操作封装（simple-git，命令统一走这里）
+ * git.ts — git 操作封装（simple-git，命令统一走这里）
  *
  * submit: add('.') + commit；revert: 真 git revert（生成反向提交）。
  */
 
 import { simpleGit } from 'simple-git';
+import type { SimpleGit } from 'simple-git';
+import type {
+  CommitOutcome,
+  GitRevertOptions,
+  PushCurrentOptions,
+  PushOutcome,
+  RecentCommit,
+} from '../types/infra/git.ts';
 
 export { simpleGit };
 
 /** 以某目录为根创建 git 句柄 */
-export function projectGit(root) {
+export function projectGit(root: string): SimpleGit {
   return simpleGit(root);
 }
 
 /** 当前 HEAD 提交 hash；仓库尚无提交时返回 null */
-export async function headHash(git) {
+export async function headHash(git: SimpleGit): Promise<string | null> {
   try {
     return (await git.revparse([ 'HEAD' ])).trim();
   } catch {
@@ -29,7 +37,7 @@ export async function headHash(git) {
  * deploy/submit 会连续提交多次（.ftml/ 与 dist/ 都在 .gitignore 里，
  * 中间步骤常常确实无改动），空提交会让 git 直接报错。
  */
-export async function commitAll(git, message) {
+export async function commitAll(git: SimpleGit, message: string): Promise<CommitOutcome> {
   await git.add('.');
   const st = await git.status();
   if (st.staged.length === 0) {
@@ -40,12 +48,12 @@ export async function commitAll(git, message) {
 }
 
 /** 读取某次提交中的文件内容（文件不在该提交中时抛错） */
-export async function showFileAt(git, commit, relPath) {
+export async function showFileAt(git: SimpleGit, commit: string, relPath: string): Promise<string> {
   return git.show([ `${commit}:${relPath}` ]);
 }
 
 /** 是否停在「revert 半途」（冲突现场）——REVERT_HEAD 存在即表示有未完成的 revert */
-async function inProgressRevert(git) {
+async function inProgressRevert(git: SimpleGit): Promise<boolean> {
   try {
     await git.raw([ 'rev-parse', '--verify', '--quiet', 'REVERT_HEAD' ]);
     return true;
@@ -55,8 +63,9 @@ async function inProgressRevert(git) {
 }
 
 /** 取 git 报错里最有用的一行（冲突路径等），避免把整段 hint 抛给用户 */
-function revertErrorLine(e) {
-  const text = String(e.stderr || e.message || '').trim();
+function revertErrorLine(e: unknown): string {
+  const err = e as { stderr?: unknown; message?: unknown };
+  const text = String(err.stderr || err.message || '').trim();
   const line = text.split('\n').find((l) => l.trim() && !l.startsWith('hint:'));
   return line || '未知原因';
 }
@@ -72,14 +81,17 @@ function revertErrorLine(e) {
  * reverting 状态），下一次命令会被 git 拒绝。这里一律 abort 还原工作区再抛错——
  * 绝不把卡死的仓库留给调用方。
  *
- * @param {object} git
- * @param {string} [rev]
- * @param {object} [options]
- * @param {string} [options.message]  反向提交说明
- * @param {string} [options.keepFrom] 回退前的提交：从它取回 keepPaths，覆盖 revert 的影响
- * @param {string[]} [options.keepPaths] 不参与回退的路径（版本账本等），需配 keepFrom
+ * @param git
+ * @param rev
+ * @param options.message  反向提交说明
+ * @param options.keepFrom 回退前的提交：从它取回 keepPaths，覆盖 revert 的影响
+ * @param options.keepPaths 不参与回退的路径（版本账本等），需配 keepFrom
  */
-export async function gitRevert(git, rev = 'HEAD', { message, keepFrom, keepPaths = [] } = {}) {
+export async function gitRevert(
+  git: SimpleGit,
+  rev: string = 'HEAD',
+  { message, keepFrom, keepPaths = [] }: GitRevertOptions = {},
+): Promise<string | null> {
   try {
     await git.raw([ 'revert', '--no-commit', rev ]);
   } catch (e) {
@@ -103,24 +115,24 @@ export async function gitRevert(git, rev = 'HEAD', { message, keepFrom, keepPath
 }
 
 /** 工作区是否干净（revert 前置要求：有未提交改动会失败） */
-export async function isClean(git) {
+export async function isClean(git: SimpleGit): Promise<boolean> {
   const st = await git.status();
   return st.isClean();
 }
 
 /** 是否为 git 仓库 */
-export async function isRepo(git) {
+export async function isRepo(git: SimpleGit): Promise<boolean> {
   return git.checkIsRepo();
 }
 
 /** 最近 n 条提交（新→旧），元素含 hash / message / date */
-export async function recentLog(git, n = 20) {
+export async function recentLog(git: SimpleGit, n: number = 20): Promise<RecentCommit[]> {
   const log = await git.log({ n });
   return (log.all ?? []).map((c) => ({ hash: c.hash, message: c.message, date: c.date }));
 }
 
 /** 当前分支名；仓库尚无提交（unborn HEAD）时返回 null */
-export async function currentBranch(git) {
+export async function currentBranch(git: SimpleGit): Promise<string | null> {
   try {
     const name = (await git.raw([ 'rev-parse', '--abbrev-ref', 'HEAD' ])).trim();
     return name === 'HEAD' ? null : name;
@@ -130,7 +142,7 @@ export async function currentBranch(git) {
 }
 
 /** 是否存在指定远端 */
-export async function hasRemote(git, name = 'origin') {
+export async function hasRemote(git: SimpleGit, name: string = 'origin'): Promise<boolean> {
   try {
     const remotes = await git.getRemotes(true);
     return remotes.some((r) => r.name === name);
@@ -140,7 +152,7 @@ export async function hasRemote(git, name = 'origin') {
 }
 
 /** 打标签（已存在则强制指向当前提交），返回标签名 */
-export async function tagCommit(git, tag) {
+export async function tagCommit(git: SimpleGit, tag: string): Promise<string> {
   await git.raw([ 'tag', '-f', tag ]);
   return tag;
 }
@@ -148,12 +160,15 @@ export async function tagCommit(git, tag) {
 /**
  * 推送当前分支到远端。
  * 未配置远端时返回 { pushed:false, reason } 而不是抛错（本地项目无远端属正常情况）。
- * @param {object} git
- * @param {object} [options]
- * @param {string} [options.remote]
- * @param {string} [options.branch]
+ * @param git
+ * @param options
+ * @param options.remote
+ * @param options.branch
  */
-export async function pushCurrent(git, { remote = 'origin', branch } = {}) {
+export async function pushCurrent(
+  git: SimpleGit,
+  { remote = 'origin', branch }: PushCurrentOptions = {},
+): Promise<PushOutcome> {
   if (!(await hasRemote(git, remote))) {
     return { pushed: false, reason: `未配置远端 ${remote}，跳过推送` };
   }
@@ -166,6 +181,7 @@ export async function pushCurrent(git, { remote = 'origin', branch } = {}) {
     }
     return { pushed: true, remote, branch: target };
   } catch (e) {
-    return { pushed: false, reason: `推送 ${remote} 失败: ${e.stderr || e.message}` };
+    const err = e as { stderr?: unknown; message?: unknown };
+    return { pushed: false, reason: `推送 ${remote} 失败: ${err.stderr || err.message}` };
   }
 }

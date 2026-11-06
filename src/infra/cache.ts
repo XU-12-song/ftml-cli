@@ -1,5 +1,5 @@
 /**
- * cache.js — 用户级磁盘缓存（~/.ftml-cli/cache/，跨 ftml 项目共享）
+ * cache.ts — 用户级磁盘缓存（~/.ftml-cli/cache/，跨 ftml 项目共享）
  *
  * 结构：<cache>/<site>/<page 斜杠化>.ftml
  * 当前缓存远程拉取的页面源码（[[include]] 解析的第三级来源）。
@@ -9,15 +9,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homeCacheDir } from './paths.js';
+import type { PageCacheEntry } from '../types/infra/cache.ts';
 
 /** 缓存文件路径：<site>/<page:→/>.ftml */
-export function cacheFilePath(site, page) {
+export function cacheFilePath(site: string, page: string): string {
   const slash = page.replaceAll(':', '/');
   return path.join(homeCacheDir(), site, `${slash}.ftml`);
 }
 
 /** 读取页面源码缓存；不存在返回 null */
-export function readPageCache(site, page) {
+export function readPageCache(site: string, page: string): string | null {
   try {
     return fs.readFileSync(cacheFilePath(site, page), 'utf8');
   } catch {
@@ -26,16 +27,16 @@ export function readPageCache(site, page) {
 }
 
 /** 写入页面源码缓存（自动建目录） */
-export function writePageCache(site, page, source) {
+export function writePageCache(site: string, page: string, source: string): void {
   const p = cacheFilePath(site, page);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, source, 'utf8');
 }
 
 /** 列出全部缓存的页面条目 [{ site, page, bytes, mtime }] */
-export function listPageCache(dir = homeCacheDir()) {
-  const out = [];
-  let sites;
+export function listPageCache(dir: string = homeCacheDir()): PageCacheEntry[] {
+  const out: PageCacheEntry[] = [];
+  let sites: fs.Dirent[];
   try {
     sites = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
@@ -47,7 +48,7 @@ export function listPageCache(dir = homeCacheDir()) {
     for (const f of fs.readdirSync(siteDir)) {
       if (!f.endsWith('.ftml')) continue;
       const abs = path.join(siteDir, f);
-      let st;
+      let st: fs.Stats;
       try {
         st = fs.statSync(abs);
       } catch {
@@ -65,7 +66,7 @@ export function listPageCache(dir = homeCacheDir()) {
 }
 
 /** 清空页面源码缓存；返回删除的文件数 */
-export function clearPageCache(dir = homeCacheDir()) {
+export function clearPageCache(dir: string = homeCacheDir()): number {
   const n = listPageCache(dir).length;
   fs.rmSync(dir, { recursive: true, force: true });
   return n;
