@@ -9,11 +9,12 @@
  *   - body 内 { 键名 } 为占位符，children 为内置键（调用时的子内容）
  *   - 转义：\{ \} \\ 输出字面字符
  */
-import type {Template,srcSource,ParsedTemplate} from '../types/ftmx.ts';
+import type { ParsedTemplate, TemplateHeader } from '../types/core/template.ts';
+import type { SourceText } from '../types/common.ts';
 import { FtmlError } from './errors.js';
 
-/** 把元素名从标签内 token 中提取出来，返回  @link{Template}  */
-function splitTagTokens(inner:string):Template {
+/** 把元素名从标签内 token 中提取出来，返回 @link{TemplateHeader} */
+function splitTagTokens(inner:string):TemplateHeader {
   const tokens = [];
   // 按空格切分，尊重单/双引号
   const re = /"[^"]*"|'[^']*'|\S+/g;
@@ -41,7 +42,7 @@ function splitTagTokens(inner:string):Template {
 /**
  * 解析 .ftmx 源码
 */
-export function parseFtmx(src:srcSource, name:string):ParsedTemplate {
+export function parseFtmx(src:SourceText, name:string):ParsedTemplate {
   const text = src.trim();
 
   // 找开标签：[[ 元素名 ... ]]

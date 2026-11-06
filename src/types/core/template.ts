@@ -1,9 +1,6 @@
-export type srcSource = string;
-
 /**
- * @description 在源码中收集的 [[style]] CSS 块
+ * template.ts — .ftmx 模板解析与调用的数据结构
  */
-export type cssBlocks = string[];
 
 /**
  * @description 源码位置信息
@@ -32,10 +29,22 @@ export interface TagAttr {
 /**
  * @description 解析后的标签调用结构
  */
-export type TagCall = {
+export interface TagCall {
   name: string;
   attrs: TagAttr[];
-};
+}
+
+/**
+ * @description 模板开标签的解析结果
+ */
+export interface TemplateHeader {
+  /** 包裹模板内容的根元素（如 div、span 等）；空名根为 null */
+  element: string | null;
+  /** 直接透传的原始字面量属性 */
+  literalAttrs: string[];
+  /** 模板声明的占位符键名列表 */
+  declaredKeys: string[];
+}
 
 /**
  * @description 完整的 FTML 模板解析结果
@@ -57,34 +66,3 @@ export interface ParsedTemplate {
  * @description 模板表，键为模板名，值为解析后的模板结构
  */
 export type TemplatesMap = Map<string, ParsedTemplate>;
-
-/**
- * @description 展开操作的内置上下文对象
- */
-export interface Context {
-  /** 收集到的 CSS 块列表 */
-  css: cssBlocks;
-  /** 解析 [[component]] 相对路径的基准目录（默认 CWD） */
-  baseDir: string;
-  /** 源文件名（附在 FtmlError 上，供 web 端定位） */
-  file: string | null;
-}
-
-/**
- * @description 用于获取模板/组件内容路径的选项
- */
-export interface expandOptions {
-  /** 解析 [[component]] 相对路径的基准目录（默认 CWD） */
-  baseDir?: string;
-  /** 源文件名（附在 FtmlError 上，供 web 端定位） */
-  file?: string;
-}
-
-/**
- * @description 基础模板结构（用于其他未完全解析的上下文）
- */
-export interface Template {
-  element: string | null;
-  literalAttrs: string[];
-  declaredKeys: string[];
-}

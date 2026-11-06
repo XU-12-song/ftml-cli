@@ -1,5 +1,5 @@
 /**
- * snippets.js — 自定义代码片段（用户级持久化 + Ace/TextMate .snippets 导入导出）
+ * snippets.ts — 自定义代码片段（用户级持久化 + Ace/TextMate .snippets 导入导出）
  *
  *   存储：~/.ftml-cli/snippets/*.json       ← 目录下所有 .json 都会被读取并合并
  *   导入：Ace 编辑器 .snippets 文本格式（与 /public/.acode-snippets/*.snippets 一致）
@@ -22,11 +22,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { snippetsDir } from '../infra/paths.js';
+import type {
+  MergeSnippetsResult,
+  ParsedSnippet,
+  RemoveSnippetResult,
+  SaveSnippetsOptions,
+  Snippet,
+  SnippetInput,
+} from '../types/domain/snippets.ts';
 
 const DEFAULT_FILE = 'snippets.json';
 
 /** 列出目录下所有 .json 文件（绝对路径） */
-export function listSnippetFiles() {
+export function listSnippetFiles(): string[] {
   try {
     return fs.readdirSync(snippetsDir())
       .filter((f) => f.toLowerCase().endsWith('.json'))
@@ -40,16 +48,16 @@ export function listSnippetFiles() {
  * 读取目录下所有 .json 片段并合并。
  * 每个条目带上 `_file` 字段（来源文件名），便于后续写回。
  */
-export function loadSnippets() {
-  const out = [];
+export function loadSnippets(): Snippet[] {
+  const out: Snippet[] = [];
   for (const abs of listSnippetFiles()) {
     const base = path.basename(abs);
     try {
-      const arr = JSON.parse(fs.readFileSync(abs, 'utf8'));
+      const arr: unknown = JSON.parse(fs.readFileSync(abs, 'utf8'));
       if (!Array.isArray(arr)) continue;
       for (const s of arr) {
         if (!s || typeof s !== 'object') continue;
-        out.push({ ...s, _file: s._file || base });
+        out.push({ ...(s as Snippet), _file: (s as Snippet)._file || base });
       }
     } catch {
       /* 单个文件损坏时跳过，不影响其它文件 */
@@ -61,19 +69,18 @@ export function loadSnippets() {
 /**
  * 写入片段。
  *
- * @param {Array} list
- * @param {object} [opts]
- * @param {string} [opts.file]  指定单一文件名（仅写这一个文件，丢弃结构）
- * @param {boolean} [opts.group] 强制按 _file 分组写回（默认行为）
+ * @param list 片段列表
+ * @param opts.file 指定单一文件名（仅写这一个文件，丢弃结构）
+ * @param opts.group 强制按 _file 分组写回（默认行为）
  *
  * 默认行为（不传 file）：按片段自带的 `_file` 分组写回各自文件；
  * 目录中已存在但本次不再出现的 .json 会被写成空数组（保留文件，避免误删）。
  */
-export function saveSnippets(list, opts = {}) {
+export function saveSnippets(list: Snippet[], opts: SaveSnippetsOptions = {}): Snippet[] {
   const dir = snippetsDir();
   fs.mkdirSync(dir, { recursive: true });
 
-  const writeOne = (fname, arr) => {
+  const writeOne = (fname: string, arr: Snippet[]): void => {
     const p = path.join(dir, fname);
     const clean = arr.map(({ _file, ...rest }) => rest);
     fs.writeFileSync(p, JSON.stringify(clean, null, 2) + '\n', 'utf8');
@@ -86,11 +93,15 @@ export function saveSnippets(list, opts = {}) {
   }
 
   // 2) 默认：按 _file 分组写回
-  const groups = new Map();
+  const groups = new Map<string, Snippet[]>();
   for (const s of list) {
     const f = s._file || DEFAULT_FILE;
-    if (!groups.has(f)) groups.set(f, []);
-    groups.get(f).push(s);
+    let group = groups.get(f);
+    if (!group) {
+      group = [];
+      groups.set(f, group);
+    }
+    group.push(s);
   }
   // 目录里已有但本次分组没有的文件 → 写空
   for (const abs of listSnippetFiles()) {
@@ -104,10 +115,10 @@ export function saveSnippets(list, opts = {}) {
 const NAME_RE = /^snippet\s+(.+?)\s*$/;
 
 /** 解析 Ace/TextMate .snippets 文本为片段数组 */
-export function parseSnippetsText(text) {
-  const out = [];
-  let current = null;
-  const push = () => {
+export function parseSnippetsText(text: string): ParsedSnippet[] {
+  const out: ParsedSnippet[] = [];
+  let current: { name: string; lines: string[] } | null = null;
+  const push = (): void => {
     if (!current) return;
     const body = current.lines.join('\n').replace(/\s+$/, '');
     if (body.trim()) out.push({ name: current.name, body });
@@ -122,7 +133,10 @@ export function parseSnippetsText(text) {
     }
     if (!current) continue;
     if (line.trim().startsWith('#')) continue;
-    if (line.trim() === '') { current.lines.push(''); continue; }
+    if (line.trim() === '') {
+      current.lines.push('');
+      continue;
+    }
     current.lines.push(line.replace(/^(\t| {4})/, ''));
   }
   push();
@@ -130,7 +144,7 @@ export function parseSnippetsText(text) {
 }
 
 /** 把片段数组序列化为 Ace .snippets 文本 */
-export function formatSnippetsText(list) {
+export function formatSnippetsText(list: ReadonlyArray<Pick<Snippet, 'name' | 'body'>>): string {
   return list
     .map((s) => {
       const body = String(s.body ?? '').split('\n').map((l) => (l ? `\t${l}` : '')).join('\n');
@@ -140,19 +154,22 @@ export function formatSnippetsText(list) {
 }
 
 /** 片段唯一键：优先 prefix，否则 name */
-function keyOf(s) {
+function keyOf(s: Pick<Snippet, 'prefix' | 'name'>): string {
   return String(s.prefix || s.name || '').trim();
 }
 
 /**
  * 合并导入：同 key 覆盖，否则追加。
  *
- * @param {Array}  incoming
- * @param {string} source  来源标记（文件名/描述）
- * @param {object} [opts]
- * @param {string} [opts.file]  新片段写入哪个文件（默认 'snippets.json'）
+ * @param incoming 待合并片段
+ * @param source 来源标记（文件名/描述）
+ * @param opts.file 新片段写入哪个文件（默认 'snippets.json'）
  */
-export function mergeSnippets(incoming, source = 'import', opts = {}) {
+export function mergeSnippets(
+  incoming: ReadonlyArray<SnippetInput>,
+  source = 'import',
+  opts: SaveSnippetsOptions = {},
+): MergeSnippetsResult {
   const targetFile = opts.file || DEFAULT_FILE;
   const list = loadSnippets();
   const index = new Map(list.map((s, i) => [keyOf(s), i]));
@@ -162,7 +179,7 @@ export function mergeSnippets(incoming, source = 'import', opts = {}) {
   for (const raw of incoming) {
     const name = String(raw.name ?? '').trim();
     if (!name) continue;
-    const entry = {
+    const entry: Snippet = {
       name,
       prefix: String(raw.prefix ?? raw.name ?? '').trim(),
       description: String(raw.description ?? '').trim(),
@@ -170,8 +187,8 @@ export function mergeSnippets(incoming, source = 'import', opts = {}) {
       source,
     };
     const k = keyOf(entry);
-    if (index.has(k)) {
-      const i = index.get(k);
+    const i = index.get(k);
+    if (i !== undefined) {
       // 保留原有 _file，覆盖其它字段
       list[i] = { ...list[i], ...entry };
       updated += 1;
@@ -182,28 +199,32 @@ export function mergeSnippets(incoming, source = 'import', opts = {}) {
     }
   }
 
-  saveSnippets(list, opts);   // 默认按 _file 分组
+  saveSnippets(list, opts); // 默认按 _file 分组
   return { added, updated, total: list.length, snippets: list };
 }
 
 /** 导入 Ace .snippets 文本 */
-export function importSnippetsText(text, source = 'import', opts = {}) {
+export function importSnippetsText(
+  text: string,
+  source = 'import',
+  opts: SaveSnippetsOptions = {},
+): MergeSnippetsResult {
   const parsed = parseSnippetsText(text);
   return mergeSnippets(parsed, source, opts);
 }
 
 /** 读取磁盘上的 .snippets 文件并导入 */
-export function importSnippetsFile(file, opts = {}) {
+export function importSnippetsFile(file: string, opts: SaveSnippetsOptions = {}): MergeSnippetsResult {
   const abs = path.resolve(file);
   if (!fs.existsSync(abs)) throw new Error(`文件不存在: ${abs}`);
   return importSnippetsText(fs.readFileSync(abs, 'utf8'), path.basename(abs), opts);
 }
 
 /** 新增/更新单条片段 */
-export function upsertSnippet(input, opts = {}) {
+export function upsertSnippet(input: SnippetInput, opts: SaveSnippetsOptions = {}): MergeSnippetsResult {
   const name = String(input?.name ?? '').trim();
   if (!name) throw new Error('片段名称不能为空');
-  const entry = {
+  const entry: Snippet = {
     name,
     prefix: String(input.prefix ?? name).trim(),
     description: String(input.description ?? '').trim(),
@@ -214,7 +235,7 @@ export function upsertSnippet(input, opts = {}) {
 }
 
 /** 删除片段（按 prefix 或 name 匹配） */
-export function removeSnippet(name, opts = {}) {
+export function removeSnippet(name: string, opts: SaveSnippetsOptions = {}): RemoveSnippetResult {
   const k = String(name).trim();
   const list = loadSnippets();
   const kept = list.filter((s) => keyOf(s) !== k && String(s.name) !== k);
@@ -224,6 +245,6 @@ export function removeSnippet(name, opts = {}) {
 }
 
 /** 导出为 Ace .snippets 文本（前端下载用） */
-export function exportSnippetsText() {
+export function exportSnippetsText(): string {
   return formatSnippetsText(loadSnippets());
 }

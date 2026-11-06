@@ -1,5 +1,5 @@
 /**
- * versions.js — 版本清单（大版本 / 小版本）
+ * versions.ts — 版本清单（大版本 / 小版本）
  *
  * 语义（与 deploy/submit/revert 对应）：
  *   submit  本地 git commit + 递增一个小版本号  x.y
@@ -20,8 +20,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { versionsPath } from '../infra/paths.js';
+import type { SourceText } from '../types/common.ts';
+import type {
+  AddMajorInput,
+  AddMinorInput,
+  MajorVersionEntry,
+  MinorVersionEntry,
+  MinorVersionPointer,
+  VersionRow,
+  VersionsData,
+  VersionTarget,
+} from '../types/domain/versions.ts';
 
-const EMPTY = () => ({ major: [], minor: [] });
+function emptyVersions(): VersionsData {
+  return { major: [], minor: [] };
+}
 
 /**
  * 大版本快照文件：<root>/.ftml/versions/<x>.ftml
@@ -30,12 +43,12 @@ const EMPTY = () => ({ major: [], minor: [] });
  * 「大版本 x 创建时提交的版本」，直接读快照最可靠——dist/ 被 gitignore，
  * 无法从 git 历史里取回产物。
  */
-export function majorSnapshotPath(root, majorVersion) {
+export function majorSnapshotPath(root: string, majorVersion: string): string {
   return path.join(path.dirname(versionsPath(root)), 'versions', `${majorVersion}.ftml`);
 }
 
 /** 写入大版本快照 */
-export function writeMajorSnapshot(root, majorVersion, source) {
+export function writeMajorSnapshot(root: string, majorVersion: string, source: SourceText): string {
   const p = majorSnapshotPath(root, majorVersion);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, source, 'utf8');
@@ -43,7 +56,7 @@ export function writeMajorSnapshot(root, majorVersion, source) {
 }
 
 /** 读取大版本快照；不存在返回 null */
-export function readMajorSnapshot(root, majorVersion) {
+export function readMajorSnapshot(root: string, majorVersion: string): SourceText | null {
   try {
     return fs.readFileSync(majorSnapshotPath(root, majorVersion), 'utf8');
   } catch {
@@ -52,37 +65,37 @@ export function readMajorSnapshot(root, majorVersion) {
 }
 
 /** 读取版本清单；文件缺失/损坏返回空结构 */
-export function loadVersions(root) {
+export function loadVersions(root: string): VersionsData {
   try {
-    const data = JSON.parse(fs.readFileSync(versionsPath(root), 'utf8'));
+    const data = JSON.parse(fs.readFileSync(versionsPath(root), 'utf8')) as Partial<VersionsData>;
     return {
       major: Array.isArray(data.major) ? data.major : [],
       minor: Array.isArray(data.minor) ? data.minor : [],
     };
   } catch {
-    return EMPTY();
+    return emptyVersions();
   }
 }
 
 /** 写入版本清单（自动建目录） */
-export function saveVersions(root, data) {
+export function saveVersions(root: string, data: VersionsData): void {
   const p = versionsPath(root);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(data, null, 2) + '\n', 'utf8');
 }
 
 /** 最新大版本号（数字，无大版本时为 0） */
-export function latestMajor(data) {
+export function latestMajor(data: VersionsData): number {
   return data.major.reduce((max, e) => Math.max(max, Number(e.version) || 0), 0);
 }
 
 /** 下一个大版本号（字符串） */
-export function nextMajorVersion(root) {
+export function nextMajorVersion(root: string): string {
   return String(latestMajor(loadVersions(root)) + 1);
 }
 
 /** 下一个小版本号（字符串 x.y，归属最近的大版本） */
-export function nextMinorVersion(root) {
+export function nextMinorVersion(root: string): MinorVersionPointer {
   const data = loadVersions(root);
   const major = String(latestMajor(data) || 0);
   const n = data.minor.filter((e) => e.major === major).length + 1;
@@ -90,9 +103,12 @@ export function nextMinorVersion(root) {
 }
 
 /** 追加一条大版本记录 */
-export function addMajor(root, { commit, message, tag, wikidotVersion }) {
+export function addMajor(
+  root: string,
+  { commit, message, tag, wikidotVersion }: AddMajorInput,
+): MajorVersionEntry {
   const data = loadVersions(root);
-  const entry = {
+  const entry: MajorVersionEntry = {
     version: String(latestMajor(data) + 1),
     commit,
     tag: tag ?? null,
@@ -106,10 +122,10 @@ export function addMajor(root, { commit, message, tag, wikidotVersion }) {
 }
 
 /** 追加一条小版本记录 */
-export function addMinor(root, { commit, message }) {
+export function addMinor(root: string, { commit, message }: AddMinorInput): MinorVersionEntry {
   const data = loadVersions(root);
   const { version, major } = nextMinorVersion(root);
-  const entry = {
+  const entry: MinorVersionEntry = {
     version,
     major,
     commit,
@@ -122,12 +138,12 @@ export function addMinor(root, { commit, message }) {
 }
 
 /** 合并成展示用列表（新版本在前），带 kind/大版本归属 */
-export function listVersions(root) {
+export function listVersions(root: string): VersionRow[] {
   const data = loadVersions(root);
-  const rows = [
+  const rows: VersionRow[] = [
     ...data.major.map((e) => ({
       version: e.version,
-      kind: 'major',
+      kind: 'major' as const,
       major: e.version,
       commit: e.commit,
       message: e.message,
@@ -136,7 +152,7 @@ export function listVersions(root) {
     })),
     ...data.minor.map((e) => ({
       version: e.version,
-      kind: 'minor',
+      kind: 'minor' as const,
       major: e.major,
       commit: e.commit,
       message: e.message,
@@ -145,27 +161,25 @@ export function listVersions(root) {
     })),
   ];
   return rows.sort((a, b) => {
-    const [ aM, aN ] = a.version.split('.').map(Number);
-    const [ bM, bN ] = b.version.split('.').map(Number);
+    const [aM, aN] = a.version.split('.').map(Number);
+    const [bM, bN] = b.version.split('.').map(Number);
     return bM - aM || (bN || 0) - (aN || 0);
   });
 }
 
 /** 版本号格式：`x` 或 `x.y` */
-export function isVersionSpec(spec) {
+export function isVersionSpec(spec: unknown): boolean {
   return /^\d+(\.\d+)?$/.test(String(spec ?? '').trim());
 }
 
 /**
  * 把版本号解析为回退目标。
  *
- * @param {string} root
- * @param {string} spec `x`（大版本）或 `x.y`（小版本）
- * @returns {{ kind:'major'|'minor', entry:object, commit:string, remoteCommit:string|null,
- *            remoteVersion:string }} 解析结果
- * @throws {Error} 版本不存在时
+ * @param root 项目根目录
+ * @param spec `x`（大版本）或 `x.y`（小版本）
+ * @throws 版本不存在时
  */
-export function resolveVersionTarget(root, spec) {
+export function resolveVersionTarget(root: string, spec: string): VersionTarget {
   const s = String(spec).trim();
   const data = loadVersions(root);
 

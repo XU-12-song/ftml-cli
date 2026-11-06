@@ -1,5 +1,5 @@
 /**
- * publish.js — 发布依赖闭包：把入口页 `[[include]]` 到的**本地镜像页**一并发布
+ * publish.ts — 发布依赖闭包：把入口页 `[[include]]` 到的**本地镜像页**一并发布
  *
  * 背景：Wikidot 的 `[[include X]]` 在渲染时按**页面全名**去站上找页面 X。本地项目里
  * X 往往以路径镜像存放（`components/box` ↔ `components/box.ftml`），线上全名却是冒号
@@ -26,22 +26,26 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { expand, loadTemplates } from '../core/expand.js';
-import { resolveIncludeFile } from './include-resolve.js';
-import { scanIncludeRefs, canonicalTarget, rewriteIncludeRefs } from './include-refs.js';
+import { expand, loadTemplates } from '../core/expand.ts';
+import { resolveIncludeFile } from './include-resolve.ts';
+import { scanIncludeRefs, canonicalTarget, rewriteIncludeRefs } from './include-refs.ts';
+import type { AbsolutePath, SourceText } from '../types/common.ts';
+import type {
+  BuildPublishPlanOptions,
+  PublishConflict,
+  PublishPage,
+  PublishPlan,
+} from '../types/domain/publish.ts';
 
 /**
  * 收集发布计划。
  *
- * @param {object} opts
- * @param {string} opts.entrySource 入口构建产物（已展开模板/组件）
- * @param {string} opts.entryDir 镜像根（= 入口源文件所在目录），所有 include 都相对它解析
- * @param {string} opts.currentSite 当前站点名，用于判断同站/跨站
- * @param {string} [opts.entryName] 入口页的线上全名；若依赖重名会记冲突（防依赖覆盖入口）
- * @param {string} [opts.templatesDir] 模板目录（未传 templates 时按它加载）
- * @param {Map} [opts.templates] 已加载的模板表（复用以免重复读盘）
- * @returns {Promise<{ entry: string, pages: Array<{name,file,source}>, rewrites: Map<string,string>, conflicts: Array }>}
- *   entry 为**重写后**的入口源码；pages 叶子在前；rewrites 为 原引用名 → 线上全名
+ * @param opts.entrySource 入口构建产物（已展开模板/组件）
+ * @param opts.entryDir 镜像根（= 入口源文件所在目录），所有 include 都相对它解析
+ * @param opts.currentSite 当前站点名，用于判断同站/跨站
+ * @param opts.entryName 入口页的线上全名；若依赖重名会记冲突（防依赖覆盖入口）
+ * @param opts.templatesDir 模板目录（未传 templates 时按它加载）
+ * @param opts.templates 已加载的模板表（复用以免重复读盘）
  */
 export async function buildPublishPlan({
   entrySource,
@@ -50,15 +54,15 @@ export async function buildPublishPlan({
   entryName,
   templatesDir,
   templates,
-}) {
+}: BuildPublishPlanOptions): Promise<PublishPlan> {
   const tpl = templates ?? (await loadTemplates(templatesDir));
-  const rewrites = new Map();
-  const pages = [];
-  const conflicts = [];
-  const fileToName = new Map();
-  const nameToFile = new Map();
+  const rewrites = new Map<string, string>();
+  const pages: PublishPage[] = [];
+  const conflicts: PublishConflict[] = [];
+  const fileToName = new Map<AbsolutePath, string>();
+  const nameToFile = new Map<string, AbsolutePath>();
 
-  const walk = (source) => {
+  const walk = (source: SourceText): void => {
     for (const ref of scanIncludeRefs(source)) {
       // 先判本地镜像命中——只有它是「我们确知名字↔路径」的引用，才敢动引用名。
       // 纯远程引用（Wikidot 页面名允许含 `/`）blindly 归一反而会改坏别人的页名。
@@ -72,7 +76,9 @@ export async function buildPublishPlan({
       // 同一文件被两种引用名指到（如 `:s:p:q` 与同站的 `s:p:q`）：线上到底是哪个页面说不清
       const seenName = fileToName.get(abs);
       if (seenName !== undefined) {
-        if (seenName !== name) conflicts.push({ kind: 'file-alias', file: abs, names: [seenName, name] });
+        if (seenName !== name) {
+          conflicts.push({ kind: 'file-alias', file: abs, names: [seenName, name] });
+        }
         continue;
       }
       // 两个不同文件要发布成同一个线上页面名：后一个会覆盖前一个
@@ -104,19 +110,22 @@ export async function buildPublishPlan({
 }
 
 /** 把依赖页源码按计划重写引用名（与 entry 同一张映射表） */
-export function rewriteDepSource(plan, source) {
+export function rewriteDepSource(plan: PublishPlan, source: SourceText): SourceText {
   return rewriteIncludeRefs(source, plan.rewrites);
 }
 
 /** 冲突转成可读的多行文本，供 CLI 报错 */
-export function describeConflicts(conflicts) {
-  return conflicts.map((c) => {
-    if (c.kind === 'file-alias') {
-      return `· 同一文件被两种引用名指到：${c.names.join(' / ')} ← ${c.file}`;
-    }
-    if (c.kind === 'name-clash') {
-      return `· 两个文件要发布成同一个页面名 ${c.name}：${c.files.join(' / ')}`;
-    }
-    return `· 依赖页名与入口页重名：${c.name} ← ${c.file}`;
-  }).join('\n');
+export function describeConflicts(conflicts: readonly PublishConflict[]): string {
+  return conflicts.map(describeConflict).join('\n');
+}
+
+function describeConflict(conflict: PublishConflict): string {
+  switch (conflict.kind) {
+    case 'file-alias':
+      return `· 同一文件被两种引用名指到：${conflict.names.join(' / ')} ← ${conflict.file}`;
+    case 'name-clash':
+      return `· 两个文件要发布成同一个页面名 ${conflict.name}：${conflict.files.join(' / ')}`;
+    case 'entry-cycle':
+      return `· 依赖页名与入口页重名：${conflict.name} ← ${conflict.file}`;
+  }
 }

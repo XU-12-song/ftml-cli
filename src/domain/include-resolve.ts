@@ -6,10 +6,12 @@
  * 这类口径漂移。纯路径逻辑，不依赖 parser/render。
  */
 
+import type {PageRef} from '../types/domain/include.ts';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-
+import type {AbsolutePath} from '../types/common.ts';
 /**
+ * @description
  * 把 include 的 pageRef 解析为本地 .ftml 文件。
  *
  * 候选路径（按顺序，以 baseDir 为基准）：
@@ -24,12 +26,8 @@ import path from 'node:path';
  *
  * 解析结果限制在 baseDir 内，拒绝 `../` 越界；找不到返回 null（渲染为"页面不存在"占位）。
  *
- * @param {{ site: string|null, page: string }} pageRef
- * @param {string} baseDir 基准目录（镜像根）
- * @param {string} [currentSite] 当前页面所属站点，用于判断是否跨站
- * @returns {string|null} 文件绝对路径，找不到返回 null
  */
-export function resolveIncludeFile(pageRef, baseDir, currentSite) {
+export function resolveIncludeFile(pageRef:PageRef, baseDir:string, currentSite:string):AbsolutePath|null {
   const { site, page } = pageRef;
   const slashRef = page.replaceAll(':', '/');
   const crossSite = Boolean(site) && site !== currentSite;

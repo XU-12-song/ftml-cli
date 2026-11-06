@@ -26,18 +26,16 @@ import { escapeString } from "./escape.js";
 import { parseFtmx } from "./parse-ftmx.js";
 import { FtmlError } from "./errors.js";
 import { memoByFile, fileSignature } from "../infra/mtime-cache.js";
+import type { CssBlocks, ExpandContext, ExpandOptions } from "../types/core/expand.ts";
 import type {
-  cssBlocks,
-  expandOptions,
   ParsedTemplate,
-  srcSource,
   TagAttr,
   TagCall,
   TagValueType,
   TemplateLocation,
   TemplatesMap,
-  Context,
-} from "../types/ftmx.js";
+} from "../types/core/template.ts";
+import type { SourceText } from "../types/common.ts";
 
 export const MAX_DEPTH = 32;
 
@@ -192,7 +190,7 @@ function findClosingTag(src: string, openEnd: number, name: string): number {
 /**
  * 收集 CSS 块：相同内容只保留第一次出现（模板被多次调用时其 [[style]] 只输出一次）
  */
-function pushCss(ctx: Context, css: string) {
+function pushCss(ctx: ExpandContext, css: string) {
   const block = css.trim();
   if (!ctx.css.includes(block)) ctx.css.push(block);
 }
@@ -208,9 +206,9 @@ function pushCss(ctx: Context, css: string) {
 export function expand(
   src: string,
   templates: TemplatesMap,
-  opts: expandOptions = {},
+  opts: ExpandOptions = {},
 ): string {
-  const ctx: Context = {
+  const ctx: ExpandContext = {
     css: [],
     baseDir: opts.baseDir || process.cwd(),
     file: opts.file ?? null,
@@ -222,7 +220,7 @@ export function expand(
 /**
  * 收集到的 CSS 块组装进输出：非空时在结果开头生成一个 [[module CSS]]。
  */
-function assembleResult(text: string, cssBlocks: cssBlocks): string {
+function assembleResult(text: string, cssBlocks: CssBlocks): string {
   if (cssBlocks.length === 0) return text;
   const css = cssBlocks.join("\n\n");
   return `${text}\n\n\n[[module CSS]]\n${css}\n[[/module]]\n`;
@@ -250,11 +248,11 @@ function replaceCssPlaceholders(css: string, values: Map<string, TagAttr>): stri
  * @param fileStack 当前组件文件绝对路径栈（防循环依赖）
  */
 function expandInner(
-  src: srcSource,
+  src: SourceText,
   templates: TemplatesMap,
   stack: string[],
   depth: number,
-  ctx: Context,
+  ctx: ExpandContext,
   fileStack: string[],
 ): string {
   if (depth > MAX_DEPTH) {
@@ -479,7 +477,7 @@ function renderTemplate(
   values: Map<string, TagAttr>,
   childrenExpanded: string,
   name: string,
-  ctx: Context,
+  ctx: ExpandContext,
   stack: string[],
   fileStack: string[],
   depth: number,

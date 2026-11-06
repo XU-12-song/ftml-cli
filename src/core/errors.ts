@@ -9,7 +9,7 @@
  * 若错误发生在模板 body（偏移相对模板自身而非调用方源文件）则不设 offset，
  * 由 message 里的模板名定位。
  */
-import type {FtmlErrorOptions} from "../types/errors.ts";
+import type {FtmlErrorOptions} from "../types/core/errors.ts";
 
 export class FtmlError extends Error {
   constructor(
