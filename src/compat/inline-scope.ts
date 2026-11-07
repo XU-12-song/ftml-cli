@@ -19,12 +19,27 @@
  */
 
 import { tokenize } from '@wdprlib/parser';
+import type { Diagnostic, Token } from '@wdprlib/parser';
 import { INLINE_TAGS } from './divergence.js';
+import type {
+  CompatOptions,
+  ElementEvent,
+  EnforceInlineScopeResult,
+  InlineChange,
+  LineColumn,
+} from '../types/compat.ts';
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
+/** 栈帧：一个已打开、尚未闭合的元素 */
+interface ScopeFrame {
+  name: string;
+  inline: boolean;
+  start: number;
+}
+
 /** offset → {line, column}（1 基） */
-function makeLocator(src) {
+function makeLocator(src: string): (offset: number) => LineColumn {
   const starts = [0];
   for (let i = 0; i < src.length; i++) {
     if (src[i] === '\n') starts.push(i + 1);
@@ -48,8 +63,8 @@ function makeLocator(src) {
  *   值内含 [[...]] 的标签都能正确取界）。
  * 闭标签：BLOCK_END_OPEN IDENTIFIER BLOCK_CLOSE。
  */
-export function elementEvents(tokens) {
-  const events = [];
+export function elementEvents(tokens: Token[]): ElementEvent[] {
+  const events: ElementEvent[] = [];
   let i = 0;
   while (i < tokens.length) {
     const t = tokens[i];
@@ -111,16 +126,19 @@ export function elementEvents(tokens) {
  *   changes: 每次插入闭合标签的记录（含原坐标系 line/column）
  *   diagnostics: 未闭合块 / 游离闭标签的警告（wdpr Diagnostic 形状）
  */
-export function enforceInlineScope(src, { inlineTags = INLINE_TAGS } = {}) {
+export function enforceInlineScope(
+  src: string,
+  { inlineTags = INLINE_TAGS }: CompatOptions = {}
+): EnforceInlineScopeResult {
   const locate = makeLocator(src);
   const events = elementEvents(tokenize(src));
-  const stack = [];
-  const changes = [];
-  const diagnostics = [];
+  const stack: ScopeFrame[] = [];
+  const changes: InlineChange[] = [];
+  const diagnostics: Diagnostic[] = [];
   /** offset -> 待插入的闭合标签（最内层在前） */
-  const insertions = new Map();
+  const insertions = new Map<number, string[]>();
 
-  const noteUnclosed = (frame, reason) => {
+  const noteUnclosed = (frame: ScopeFrame, reason: string): void => {
     const loc = locate(frame.start);
     diagnostics.push({
       severity: 'warning',
@@ -133,7 +151,7 @@ export function enforceInlineScope(src, { inlineTags = INLINE_TAGS } = {}) {
     });
   };
 
-  const queueClose = (frame, atOffset) => {
+  const queueClose = (frame: ScopeFrame, atOffset: number): void => {
     const arr = insertions.get(atOffset) ?? [];
     arr.push(frame.name);
     insertions.set(atOffset, arr);
@@ -196,7 +214,7 @@ export function enforceInlineScope(src, { inlineTags = INLINE_TAGS } = {}) {
   // 从后往前落盘，避免 offset 位移
   let out = src;
   for (const off of [...insertions.keys()].sort((a, b) => b - a)) {
-    const text = insertions.get(off).map((name) => `[[/${name}]]`).join('');
+    const text = insertions.get(off)!.map((name) => `[[/${name}]]`).join('');
     out = out.slice(0, off) + text + out.slice(off);
   }
 

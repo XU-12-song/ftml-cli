@@ -14,17 +14,21 @@
 
 import { enforceInlineScope } from './inline-scope.js';
 import { DIRECTION } from './divergence.js';
+import type { CompatDirection, CompatOptions, NormalizeResult } from '../types/compat.ts';
 
 export * from './divergence.js';
 export { detectEmbedStructuralEscape, RAW_CONTAINERS } from './embed-scope.js';
 
 /**
- * @param {string} src
- * @param {string} direction DIRECTION.*
- * @param {object} [opts] 透传给规则（如 inlineTags）
- * @returns {{ src, changed, direction, changes, diagnostics }}
+ * @param src 源码
+ * @param direction DIRECTION.*
+ * @param opts 透传给规则（如 inlineTags）
  */
-function normalize(src, direction, opts) {
+function normalize(
+  src: string,
+  direction: CompatDirection,
+  opts: CompatOptions
+): NormalizeResult {
   const r = enforceInlineScope(src, opts);
   return {
     src: r.src,
@@ -36,11 +40,11 @@ function normalize(src, direction, opts) {
 }
 
 /** Wikidot 脏源码 → 理想 FTML */
-export function dirtToIdeal(src, opts = {}) {
+export function dirtToIdeal(src: string, opts: CompatOptions = {}): NormalizeResult {
   return normalize(src, DIRECTION.DIRT_TO_IDEAL, opts);
 }
 
 /** 理想 FTML → Wikidot 兼容源码 */
-export function idealToDirt(src, opts = {}) {
+export function idealToDirt(src: string, opts: CompatOptions = {}): NormalizeResult {
   return normalize(src, DIRECTION.IDEAL_TO_DIRT, opts);
 }

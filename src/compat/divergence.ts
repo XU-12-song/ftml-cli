@@ -19,6 +19,12 @@
  * 表只会由"对照真实 Wikidot 的 fixture 实验"来增改，不凭推测。
  */
 
+import type {
+  CompatDirection,
+  Divergence,
+  DivergenceVerdict,
+} from '../types/compat.ts';
+
 /** 分歧性质 */
 export const VERDICT = {
   /** 两种语言语义确实不同，需要转换 */
@@ -27,7 +33,7 @@ export const VERDICT = {
   BUG: 'bug',
   /** 尚未对照真实 Wikidot 验证 */
   UNRESOLVED: 'unresolved',
-};
+} as const satisfies Record<string, DivergenceVerdict>;
 
 /** 转换方向 */
 export const DIRECTION = {
@@ -35,7 +41,7 @@ export const DIRECTION = {
   DIRT_TO_IDEAL: 'dirt->ideal',
   /** 理想 FTML → Wikidot 兼容源码（部署/提交前保证可解析） */
   IDEAL_TO_DIRT: 'ideal->dirt',
-};
+} as const satisfies Record<string, CompatDirection>;
 
 /**
  * 行内标签：不构成块，必须在所属块内显式闭合。
@@ -47,7 +53,7 @@ export const INLINE_TAGS = new Set([
   'em', 'strong', 'mark', 'ruby', 'del', 'ins',
 ]);
 
-export const DIVERGENCES = [
+export const DIVERGENCES: Divergence[] = [
   {
     id: 'inline-scope-cross-block',
     title: '未闭合的行内标签跨越块边界',
@@ -122,17 +128,17 @@ export const DIVERGENCES = [
 ];
 
 /** 按 id 取一条分歧；不存在返回 null */
-export function getDivergence(id) {
+export function getDivergence(id: string): Divergence | null {
   return DIVERGENCES.find((d) => d.id === id) ?? null;
 }
 
 /** 取在某个方向需要处理的分歧 */
-export function divergencesFor(direction) {
+export function divergencesFor(direction: CompatDirection): Divergence[] {
   return DIVERGENCES.filter((d) => d.directions.includes(direction));
 }
 
 /** 把分歧表渲染为可读文本，供 `ftml compat --list` 输出 */
-export function describeTable() {
+export function describeTable(): string {
   const lines = ['语言分歧表（Wikidot / 理想 FTML）', ''];
   for (const d of DIVERGENCES) {
     lines.push(`● ${d.id}  [${d.verdict}]`);

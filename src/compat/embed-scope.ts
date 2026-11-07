@@ -22,13 +22,26 @@
  */
 
 import { tokenize } from '@wdprlib/parser';
+import type { Diagnostic } from '@wdprlib/parser';
 import { elementEvents } from './inline-scope.js';
+import type {
+  BlankLineSplitTagHit,
+  ElementEvent,
+  EmbedScopeOptions,
+  LineColumn,
+} from '../types/compat.ts';
 
 /** 原样保留 body 的块：其体内的裸闭合记号才可能突破收容 */
 export const RAW_CONTAINERS = new Set(['embed', 'embedvideo', 'embedaudio', 'html']);
 
+/** 栈帧：一个已打开、尚未闭合的块 */
+interface EmbedFrame {
+  name: string;
+  bodyStart: number;
+}
+
 /** offset → {line, column}（1 基） */
-function makeLocator(src) {
+function makeLocator(src: string): (offset: number) => LineColumn {
   const starts = [0];
   for (let i = 0; i < src.length; i++) {
     if (src[i] === '\n') starts.push(i + 1);
@@ -55,9 +68,9 @@ function makeLocator(src) {
  * @param {number} base text 在源中的起始 offset
  * @returns {Array<{start:number,end:number,tag:string}>} 源坐标
  */
-function scanBlankLineSplitTags(text, base) {
-  const hits = [];
-  const blankLineAt = (j) => {
+function scanBlankLineSplitTags(text: string, base: number): BlankLineSplitTagHit[] {
+  const hits: BlankLineSplitTagHit[] = [];
+  const blankLineAt = (j: number): boolean => {
     let k = j + 1;
     while (k < text.length && (text[k] === ' ' || text[k] === '\t' || text[k] === '\r')) k++;
     return text[k] === '\n';
@@ -72,7 +85,7 @@ function scanBlankLineSplitTags(text, base) {
     }
     const name = /^[a-zA-Z][a-zA-Z0-9-]*/.exec(text.slice(lt + 1))[0];
     let j = lt + 1;
-    let quote = null;
+    let quote: string | null = null;
     let splitAt = -1;
     while (j < text.length) {
       const c = text[j];
@@ -101,26 +114,29 @@ function scanBlankLineSplitTags(text, base) {
  * @param {{ rawContainers?: Set<string> }} [opts]
  * @returns {Array<object>} wdpr 形状的诊断（severity/code/message/position）
  */
-export function detectEmbedStructuralEscape(src, { rawContainers = RAW_CONTAINERS } = {}) {
+export function detectEmbedStructuralEscape(
+  src: string,
+  { rawContainers = RAW_CONTAINERS }: EmbedScopeOptions = {}
+): Diagnostic[] {
   const locate = makeLocator(src);
   const events = elementEvents(tokenize(src));
-  const diagnostics = [];
+  const diagnostics: Diagnostic[] = [];
   /** 当前开着的块栈：{ name, bodyStart } */
-  const stack = [];
+  const stack: EmbedFrame[] = [];
   /** 已扫描过 body 的容器（bodyStart），避免同一容器重复扫描 */
   const scanned = new Set();
   /** 已告警的空行截断标签起点（源 offset）：嵌套 raw 容器的 body 相互包含，
    *  同一处命中会被内外层各扫一遍，按偏移去重保证只报一次 */
   const warnedAt = new Set();
 
-  const innermostRaw = () => {
+  const innermostRaw = (): string | null => {
     for (let i = stack.length - 1; i >= 0; i--) {
       if (rawContainers.has(stack[i].name)) return stack[i].name;
     }
     return null;
   };
 
-  const warn = (container, closeName, ev) => {
+  const warn = (container: string, closeName: string, ev: ElementEvent): void => {
     const start = locate(ev.start);
     const end = locate(ev.end);
     diagnostics.push({
@@ -138,7 +154,7 @@ export function detectEmbedStructuralEscape(src, { rawContainers = RAW_CONTAINER
   };
 
   /** 扫描某个 raw 容器 body 里被空行截断的标签，逐个告警 */
-  const scanBody = (frame, endOffset) => {
+  const scanBody = (frame: EmbedFrame, endOffset: number): void => {
     if (scanned.has(frame.bodyStart)) return;
     scanned.add(frame.bodyStart);
     for (const hit of scanBlankLineSplitTags(src.slice(frame.bodyStart, endOffset), frame.bodyStart)) {
