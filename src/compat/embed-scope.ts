@@ -83,7 +83,7 @@ function scanBlankLineSplitTags(text: string, base: number): BlankLineSplitTagHi
       i = lt + 1; // 只看开标签（跳过 </、<!--、<!DOCTYPE 等）
       continue;
     }
-    const name = /^[a-zA-Z][a-zA-Z0-9-]*/.exec(text.slice(lt + 1))[0];
+    const name = /^[a-zA-Z][a-zA-Z0-9-]*/.exec(text.slice(lt + 1))![0];
     let j = lt + 1;
     let quote: string | null = null;
     let splitAt = -1;

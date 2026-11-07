@@ -46,6 +46,6 @@ async function openInBrowser(url: string): Promise<void> {
       await execAsync(`xdg-open "${url}"`);
     }
   } catch (e) {
-    console.error(`警告: 打开浏览器失败（${e.message}），地址仍在 ${url}`);
+    console.error(`警告: 打开浏览器失败（${(e as Error).message}），地址仍在 ${url}`);
   }
 }

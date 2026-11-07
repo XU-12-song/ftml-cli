@@ -20,6 +20,7 @@ import { buildPageContext } from '../render/context.js';
 import { formatDiagnostics } from '../render/diagnostics.js';
 import { createClient } from '../infra/wikidot.js';
 import { loadSettings } from '../domain/settings.js';
+import type { Client } from '@ukwhatn/wikidot';
 import type {
   PreviewCommandOptions,
   PreviewCommandResult,
@@ -42,7 +43,7 @@ export async function preview(
   const templates = await loadTemplates(config.templatesDirAbs);
 
   // 本地找不到的 include 自动用已登录客户端远程拉取；未登录则跳过（渲染占位）
-  let client = null;
+  let client: Client | null = null;
   try {
     client = await createClient();
   } catch {
@@ -120,6 +121,6 @@ async function openInBrowser(fileAbs: string): Promise<void> {
       await execAsync(`xdg-open "${url}"`);
     }
   } catch (e) {
-    console.error(`警告: 打开浏览器失败（${e.message}），预览文件仍在 ${fileAbs}`);
+    console.error(`警告: 打开浏览器失败（${(e as Error).message}），预览文件仍在 ${fileAbs}`);
   }
 }

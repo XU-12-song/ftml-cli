@@ -21,7 +21,7 @@ export async function warmThemeCache(): Promise<void> {
       console.error(`警告: 主题样式表预热失败（${errors.map((e) => e.url).join(', ')}），预览将退回远程 @import`);
     }
   } catch (e) {
-    console.error(`警告: 主题样式表预热失败（${e.message}），预览将退回远程 @import`);
+    console.error(`警告: 主题样式表预热失败（${(e as Error).message}），预览将退回远程 @import`);
   }
 }
 
@@ -56,7 +56,7 @@ export async function startWebServer({
   sessionToken = null,
   warmTheme = true,
 }: StartWebServerOptions = {}): Promise<WebServerController> {
-  let projectRoot = null;
+  let projectRoot: string | null = null;
   if (root) {
     const abs = path.resolve(root);
     if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {

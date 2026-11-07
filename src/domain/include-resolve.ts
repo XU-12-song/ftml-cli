@@ -6,10 +6,24 @@
  * 这类口径漂移。纯路径逻辑，不依赖 parser/render。
  */
 
-import type {PageRef} from '../types/domain/include.ts';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import type {AbsolutePath} from '../types/common.ts';
+import type { PageRef } from "../types/domain/include.ts";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import type { AbsolutePath } from "../types/common.ts";
+
+
+/**
+ * @description 是否为不同的站点
+ * @param {string|null} site `include` 拉取的目标站点
+ * @param {string} currentSite 设置的目标站点
+ */
+export function isDifferentSite(
+  site?: string | null,
+  currentSite?: string | null,
+): site is string {
+  return Boolean(site) && site !== currentSite;
+}
+
 /**
  * @description
  * 把 include 的 pageRef 解析为本地 .ftml 文件。
@@ -27,24 +41,27 @@ import type {AbsolutePath} from '../types/common.ts';
  * 解析结果限制在 baseDir 内，拒绝 `../` 越界；找不到返回 null（渲染为"页面不存在"占位）。
  *
  */
-export function resolveIncludeFile(pageRef:PageRef, baseDir:string, currentSite:string):AbsolutePath|null {
+export function resolveIncludeFile(
+  pageRef: PageRef,
+  baseDir: string,
+  currentSite?: string | null,
+): AbsolutePath | null {
   const { site, page } = pageRef;
-  const slashRef = page.replaceAll(':', '/');
-  const crossSite = Boolean(site) && site !== currentSite;
-  const candidates = crossSite
-    ? [
-      path.join(baseDir, site, `${slashRef}.ftml`),
-      path.join(baseDir, site, `${page}.ftml`),
-      path.join(baseDir, `${slashRef}.ftml`),
-      path.join(baseDir, `${page}.ftml`),
-    ]
-    : [
-      path.join(baseDir, `${slashRef}.ftml`),
-      path.join(baseDir, `${page}.ftml`),
-    ];
+  const slashRef = page.replaceAll(":", "/");
+  const candidates: string[] = [];
+  if (isDifferentSite(site, currentSite)) {
+    candidates.push(path.join(baseDir, site, `${slashRef}.ftml`));
+    candidates.push(path.join(baseDir, site, `${page}.ftml`));
+  }
+
+  candidates.push(path.join(baseDir, `${slashRef}.ftml`));
+  candidates.push(path.join(baseDir, `${page}.ftml`));
   for (const p of candidates) {
     const abs = path.resolve(p);
-    if (!abs.startsWith(path.resolve(baseDir) + path.sep) && abs !== path.resolve(baseDir)) {
+    if (
+      !abs.startsWith(path.resolve(baseDir) + path.sep) &&
+      abs !== path.resolve(baseDir)
+    ) {
       continue; // 越界路径跳过（防御 page 名含 ../）
     }
     if (existsSync(abs)) return abs;

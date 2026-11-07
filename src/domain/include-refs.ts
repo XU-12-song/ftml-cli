@@ -68,7 +68,7 @@ export function remotePageName(page:string):string {
  * @description 把一条引用的目标渲染回线上写法：同站（无 site 或 site === currentSite）用
  * 归一名；跨站保留 `:site:page` 前缀并只归一 page 部分。
  */
-export function canonicalTarget(ref:PageRef, currentSite:string):string {
+export function canonicalTarget(ref:PageRef, currentSite:string|null):string {
   const page = remotePageName(ref.page);
   return ref.site && ref.site !== currentSite ? `:${ref.site}:${page}` : page;
 }
@@ -135,7 +135,7 @@ export function scanIncludeRefs(text: string): ScannedIncludeRef[] {
 export function rewriteIncludeRefs(text:string, map:IncludeRewriteMap) {
   const get = map instanceof Map ? (k:string) => map.get(k) : (k:string) => map[k];
   const src = String(text ?? '');
-  const edits = [];
+  const edits: Array<{ start: number; end: number; next: string }> = [];
   for (const ref of scanIncludeRefs(src)) {
     const next = get(ref.target);
     if (next !== undefined && next !== ref.target) edits.push({ start: ref.start, end: ref.end, next });

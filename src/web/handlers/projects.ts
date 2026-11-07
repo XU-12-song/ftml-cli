@@ -33,7 +33,7 @@ export async function listProjects(): Promise<ProjectListItem[]> {
       isClean: isRepoResult ? await isClean(g).catch(() => false) : true,
     };
   }));
-  return results.filter(Boolean);
+  return results.filter((r): r is NonNullable<typeof r> => r !== null);
 }
 
 export async function createProject(body: CreateProjectBody): Promise<ProjectEntry[]> {

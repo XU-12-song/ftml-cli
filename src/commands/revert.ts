@@ -118,7 +118,7 @@ export async function revert(options: RevertOptions): Promise<RevertResult> {
       message: `revert ${to}`,
       // 版本回退只回退「内容」：.ftml/ 是版本账本，不能跟着倒回去（否则
       // versions.json 会被删成空，revert 完版本列表就没了）
-      keepFrom: target ? head : undefined,
+      keepFrom: target ? head ?? undefined : undefined,
       keepPaths: [ '.ftml' ],
     });
     console.log(`✓ 已 git revert ${to}（${String(gitTarget).slice(0, 7)} → 新提交 ${String(hash).slice(0, 7)}）`);

@@ -42,7 +42,7 @@ export async function watch(options: WatchOptions): Promise<void> {
       const r = await build(options);
       console.log(`构建完成 → ${r.output}（${r.bytes} 字节，${Date.now() - t0}ms）`);
     } catch (e) {
-      console.error(`构建失败: ${e.message}`);
+      console.error(`构建失败: ${(e as Error).message}`);
     } finally {
       building = false;
       if (pending) {

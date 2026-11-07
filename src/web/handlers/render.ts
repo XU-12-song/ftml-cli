@@ -23,7 +23,7 @@ import { diagnosticToProblem, errorToProblem, sortProblems } from '../../render/
 import { collectProblems } from '../../commands/validate.js';
 import { createClient } from '../../infra/wikidot.js';
 import { loadSettings } from '../../domain/settings.js';
-import { HttpError, resolveInProject, findProject, latestOnly } from './shared.js';
+import { HttpError, resolveInProject, findProject, latestOnly, SupersededError } from './shared.js';
 import type { Settings } from '../../types/domain/settings.ts';
 import type { CollectedProblems } from '../../types/commands/validate.ts';
 import type { HandlerEnv } from '../../types/web/handlers/shared.ts';
@@ -88,7 +88,7 @@ export async function renderProjectFile(
         file: relPath,
       });
     } catch (e) {
-      return failedRender(text, relPath, e, settings, p.root);
+      return failedRender(text, relPath, e as Error, settings, p.root);
     }
 
     const page = buildPageContext({ site: config.site, page: config.page });
@@ -101,7 +101,7 @@ export async function renderProjectFile(
     const resolveModules = body?.resolveModules === true;
 
     let client = env.injectClient ?? null;
-    let clientError = null;
+    let clientError: Error | null = null;
     let ownsClient = false;
     if (!client && (allowNetwork || resolveModules)) {
       try {
@@ -111,7 +111,7 @@ export async function renderProjectFile(
       } catch (e) {
         client = null;
         // 不要静默：把「为什么连不上远程」带到诊断里，前端问题面板会展示
-        clientError = e;
+        clientError = e as Error;
       }
     }
 
@@ -155,11 +155,11 @@ export async function renderProjectFile(
         problems,
       };
     } catch (e) {
-      if (e?.superseded) throw e; // 被更新的请求取代：交回 409 处理，不能当成渲染问题
+      if (e instanceof SupersededError) throw e; // 被更新的请求取代：交回 409 处理，不能当成渲染问题
       // 渲染期异常同样不做 500：转成 problems，保留堆栈供前端展开
-      return failedRender(text, relPath, e, settings, p.root);
+      return failedRender(text, relPath, e as Error, settings, p.root);
     } finally {
-      if (ownsClient) await client.close?.();
+      if (ownsClient) await client?.close?.();
     }
   });
 }

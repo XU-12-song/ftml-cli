@@ -570,9 +570,10 @@ export function templatesSignature(map: TemplatesMap): string {
  * 
  * @param dir 模板目录绝对路径
  */
-export async function loadTemplates(dir: string): Promise<TemplatesMap> {
+export async function loadTemplates(dir: string | undefined): Promise<TemplatesMap> {
   const { readdir } = await import("node:fs/promises");
   const map: TemplatesMap = new Map();
+  if (!dir) return map;
   let entries: Dirent[];
   try {
     entries = await readdir(dir, { withFileTypes: true });

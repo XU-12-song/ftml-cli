@@ -373,7 +373,7 @@ async function openFtmlFile(filePath: string): Promise<void> {
   try {
     addProject(target.project);
   } catch (e) {
-    dialog.showErrorBox('无法打开文件', e.message);
+    dialog.showErrorBox('无法打开文件', (e as Error).message);
     return;
   }
   refreshTray();
@@ -386,7 +386,7 @@ function openProjectFolder(root: string): void {
   try {
     addProject(abs);
   } catch (e) {
-    dialog.showErrorBox('无法打开项目', e.message);
+    dialog.showErrorBox('无法打开项目', (e as Error).message);
     return;
   }
   refreshTray();

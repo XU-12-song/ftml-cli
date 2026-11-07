@@ -18,7 +18,7 @@ export async function list(options: ListOptions): Promise<void> {
       JSON.stringify(
         names.map((n) => ({
           name: n,
-          keys: templates.get(n).keys,
+          keys: templates.get(n)!.keys,
         })),
         null,
         2
@@ -33,7 +33,7 @@ export async function list(options: ListOptions): Promise<void> {
   }
   console.log('可用模板:');
   for (const n of names) {
-    const keys = templates.get(n).keys;
+    const keys = templates.get(n)!.keys;
     console.log(`  ${n}${keys.length ? `  { ${keys.join(', ')} }` : ''}`);
   }
 }

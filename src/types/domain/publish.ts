@@ -13,10 +13,10 @@ export interface BuildPublishPlanOptions {
   entryDir: string;
 
   /** 当前站点名，用于判断同站/跨站引用 */
-  currentSite: string;
+  currentSite: string | null;
 
   /** 入口页的线上全名；依赖与其重名时记为冲突 */
-  entryName?: string;
+  entryName?: string | null;
 
   /** 模板目录（未传 templates 时按它加载） */
   templatesDir?: string;

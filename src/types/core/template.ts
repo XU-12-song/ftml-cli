@@ -52,8 +52,8 @@ export interface TemplateHeader {
 export interface ParsedTemplate {
   /** 模板名字 */
   name: string;
-  /** 包裹模板内容的根元素（如 div、span 等） */
-  element: string;
+  /** 包裹模板内容的根元素（如 div、span 等）；空名根为 null */
+  element: string | null;
   /** 直接透传的原始字面量属性 */
   literalAttrs: string[];
   /** 模板声明的占位符键名列表 */

@@ -72,7 +72,7 @@ export function elementEvents(tokens: Token[]): ElementEvent[] {
     if (t.type === 'BLOCK_OPEN') {
       let depth = 1;
       let j = i + 1;
-      let name = null;
+      let name: string | null = null;
       while (j < tokens.length && depth > 0) {
         const u = tokens[j];
         if (u.type === 'BLOCK_OPEN') depth++;
@@ -95,7 +95,7 @@ export function elementEvents(tokens: Token[]): ElementEvent[] {
 
     if (t.type === 'BLOCK_END_OPEN') {
       let j = i + 1;
-      let name = null;
+      let name: string | null = null;
       while (j < tokens.length && tokens[j].type !== 'BLOCK_CLOSE') {
         if (name === null && tokens[j].type === 'IDENTIFIER') name = tokens[j].value;
         j++;
@@ -200,7 +200,7 @@ export function enforceInlineScope(
     for (let p = crossing.length - 1; p >= 0; p--) {
       const f = crossing[p];
       if (f.inline) queueClose(f, ev.start);
-      else noteUnclosed(f, `在 [[/${matched.name}]] 之前仍未闭合`);
+      else noteUnclosed(f, `在 [[/${matched!.name}]] 之前仍未闭合`);
     }
   }
 

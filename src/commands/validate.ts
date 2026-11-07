@@ -67,11 +67,11 @@ export function collectProblems(
   }
 
   // 尝试展开，捕获缺参/未闭合/循环等错误
-  let expanded = null;
+  let expanded: string | null = null;
   try {
     expanded = expand(src, templates, { baseDir });
   } catch (e) {
-    errors.push(`展开失败: ${e.message}`);
+    errors.push(`展开失败: ${(e as Error).message}`);
   }
 
   // 展开后残留

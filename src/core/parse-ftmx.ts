@@ -15,7 +15,7 @@ import { FtmlError } from './errors.js';
 
 /** 把元素名从标签内 token 中提取出来，返回 @link{TemplateHeader} */
 function splitTagTokens(inner:string):TemplateHeader {
-  const tokens = [];
+  const tokens: string[] = [];
   // 按空格切分，尊重单/双引号
   const re = /"[^"]*"|'[^']*'|\S+/g;
   let m:RegExpExecArray|null;

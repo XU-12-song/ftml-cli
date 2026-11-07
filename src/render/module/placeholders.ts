@@ -8,7 +8,7 @@
  * 由 module/data.ts 统一按模式挑选。
  */
 
-import { DEFAULT_MODULE_PLACEHOLDERS } from '../../domain/settings.js';
+import { DEFAULT_MODULE_PLACEHOLDERS } from "../../domain/settings.js";
 import type {
   ListPagesDataRequirement,
   ListPagesExternalData,
@@ -19,31 +19,32 @@ import type {
   TagCloudDataRequirement,
   TagCloudExternalData,
   UserInfo,
-} from '@wdprlib/parser';
-import type { RatingRef, RatingState, RatingVote } from '@wdprlib/ast';
+} from "@wdprlib/parser";
+import type { RatingRef, RatingState, RatingVote } from "@wdprlib/ast";
 import type {
   PlaceholderContext,
   PlaceholderFetcherOptions,
   PlaceholderFetchers,
-} from '../../types/render/module.ts';
+} from "../../types/render/module.ts";
+import { isFinite } from "../../shared/guards.ts";
 
 /** 模板里的 {n} 替换为行号（从 1 开始） */
 function withIndex(template: string, n: number): string {
-  return String(template ?? '').replaceAll('{n}', String(n));
+  return String(template ?? "").replaceAll("{n}", String(n));
 }
 
 /** 标签串 → 数组（逗号 / 空白都算分隔） */
 function splitTags(raw: string): string[] {
-  return String(raw ?? '')
+  return String(raw ?? "")
     .split(/[,，\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-function placeholderSite(page: PlaceholderContext['page']) {
-  const name = page?.site || 'preview';
+function placeholderSite(page: PlaceholderContext["page"]) {
+  const name = page?.site || "preview";
   return {
-    title: name === 'preview' ? '预览站点' : name,
+    title: name === "preview" ? "预览站点" : name,
     name,
     domain: `${name}.wikidot.com`,
   };
@@ -51,15 +52,26 @@ function placeholderSite(page: PlaceholderContext['page']) {
 
 function placeholderUser(n: number, titles = false): UserInfo {
   return titles
-    ? { id: 1000 + n, name: withIndex('示例用户 {n}', n), unixName: `example-user-${n}` }
-    : { id: 1000 + n, name: `example-user-${n}`, unixName: `example-user-${n}` };
+    ? {
+        id: 1000 + n,
+        name: withIndex("示例用户 {n}", n),
+        unixName: `example-user-${n}`,
+      }
+    : {
+        id: 1000 + n,
+        name: `example-user-${n}`,
+        unixName: `example-user-${n}`,
+      };
 }
 
 /** 生成 ListPages 占位数据 */
-function buildListPages(query: NormalizedListPagesQuery, opts: PlaceholderContext): ListPagesExternalData {
+function buildListPages(
+  query: NormalizedListPagesQuery,
+  opts: PlaceholderContext,
+): ListPagesExternalData {
   const cfg = opts.placeholders.listPages;
-  const cap = opts.caps?.listPagesMaxRows ?? Infinity;
-  const limit = Number.isFinite(query?.limit) ? query.limit : cap;
+  const cap = opts.caps?.listPagesMaxRows ?? 10;
+  const limit = isFinite(query?.limit) ? query.limit : cap;
   const count = Math.max(0, Math.min(cfg.count, limit, cap));
   const site = placeholderSite(opts.page);
   const date = new Date(cfg.date);
@@ -70,10 +82,13 @@ function buildListPages(query: NormalizedListPagesQuery, opts: PlaceholderContex
     const name = `placeholder-${i}`;
     // ±1 评分口径：percent = (points + votes) / (2 * votes) * 100
     const votes = Math.max(5, Math.abs(cfg.rating) + 2);
-    const percent = Math.min(100, Math.max(0, Math.round(((cfg.rating + votes) / (2 * votes)) * 100)));
+    const percent = Math.min(
+      100,
+      Math.max(0, Math.round(((cfg.rating + votes) / (2 * votes)) * 100)),
+    );
     pages.push({
       name,
-      category: '_default',
+      category: "_default",
       fullname: name,
       title: withIndex(cfg.title, i),
       createdAt: date,
@@ -112,7 +127,10 @@ function buildListPages(query: NormalizedListPagesQuery, opts: PlaceholderContex
   };
 }
 
-function buildListUsers(requirement: ListUsersDataRequirement, opts: PlaceholderContext): ListUsersExternalData {
+function buildListUsers(
+  requirement: ListUsersDataRequirement,
+  opts: PlaceholderContext,
+): ListUsersExternalData {
   const cfg = opts.placeholders.listUsers;
   const n = (Number(requirement?.id) || 0) + 1;
   return {
@@ -126,20 +144,23 @@ function buildListUsers(requirement: ListUsersDataRequirement, opts: Placeholder
 
 /** Wikidot 的 category 归一化：小写、空白/下划线转连字符 */
 export function toUnixCategory(value: unknown): string {
-  return String(value ?? '')
+  return String(value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[\s_]+/g, '-');
+    .replace(/[\s_]+/g, "-");
 }
 
-function buildTagCloud(requirement: TagCloudDataRequirement, opts: PlaceholderContext): TagCloudExternalData {
+function buildTagCloud(
+  requirement: TagCloudDataRequirement,
+  opts: PlaceholderContext,
+): TagCloudExternalData {
   const cfg = opts.placeholders.tagCloud;
   const limit = Math.min(
     Number.isFinite(requirement?.limit) ? requirement.limit : cfg.count,
-    opts.caps?.tagCloudMaxTags ?? Infinity
+    opts.caps?.tagCloudMaxTags ?? Infinity,
   );
   const count = Math.max(0, Math.min(cfg.count, limit));
-  if (count === 0) return { status: 'ok', tags: [], category: null };
+  if (count === 0) return { status: "ok", tags: [], category: null };
 
   let names = splitTags(cfg.tags);
   if (names.length === 0) {
@@ -148,25 +169,40 @@ function buildTagCloud(requirement: TagCloudDataRequirement, opts: PlaceholderCo
   const span = cfg.maxWeight - cfg.minWeight;
   const tags = names.slice(0, count).map((tag, i) => ({
     tag,
-    weight: count <= 1 ? cfg.maxWeight : Math.round(cfg.maxWeight - (span * i) / (count - 1)),
+    weight:
+      count <= 1
+        ? cfg.maxWeight
+        : Math.round(cfg.maxWeight - (span * i) / (count - 1)),
   }));
 
   return {
-    status: 'ok',
+    status: "ok",
     tags,
-    category: requirement?.category ? toUnixCategory(requirement.category) : null,
+    category: requirement?.category
+      ? toUnixCategory(requirement.category)
+      : null,
   };
 }
 
-function buildRatings(refs: readonly RatingRef[], opts: PlaceholderContext): RatingState[] {
+function buildRatings(
+  refs: readonly RatingRef[],
+  opts: PlaceholderContext,
+): RatingState[] {
   const cfg = opts.placeholders.rate;
-  const percent = cfg.votes > 0
-    ? Math.min(100, Math.max(0, Math.round(((cfg.score + cfg.votes) / (2 * cfg.votes)) * 100)))
-    : 0;
+  const percent =
+    cfg.votes > 0
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            Math.round(((cfg.score + cfg.votes) / (2 * cfg.votes)) * 100),
+          ),
+        )
+      : 0;
   const allowedVotes: RatingVote[] = [1, -1];
   return refs.map((ref) => ({
     ref,
-    label: ref.kind === 'custom' ? ref.axisKey : '评分',
+    label: ref.kind === "custom" ? ref.axisKey : "评分",
     allowedVotes,
     canVote: false,
     canCancel: false,
@@ -176,9 +212,15 @@ function buildRatings(refs: readonly RatingRef[], opts: PlaceholderContext): Rat
 }
 
 /** 构造占位 dataProvider */
-export function buildPlaceholderFetchers(opts: PlaceholderFetcherOptions = {}): PlaceholderFetchers {
+export function buildPlaceholderFetchers(
+  opts: PlaceholderFetcherOptions = {},
+): PlaceholderFetchers {
   const placeholders = opts.placeholders ?? DEFAULT_MODULE_PLACEHOLDERS;
-  const ctx: PlaceholderContext = { placeholders, page: opts.page, caps: opts.caps };
+  const ctx: PlaceholderContext = {
+    placeholders,
+    page: opts.page,
+    caps: opts.caps,
+  };
   return {
     fetchListPages: async (query) => buildListPages(query, ctx),
     fetchListUsers: async (requirement) => buildListUsers(requirement, ctx),
@@ -192,7 +234,10 @@ export function buildPlaceholderFetchers(opts: PlaceholderFetcherOptions = {}): 
  * 把模块块复制 N 份（仅预览、仅当 count > 1）。
  */
 export function applyListUsersRepeat(source: string, count?: number): string {
-  if (!Number.isFinite(count) || count <= 1) return source;
-  const re = /\[\[\s*module\s+listusers\b[^\]]*\]\][\s\S]*?\[\[\s*\/\s*module\s*\]\]/gi;
-  return String(source).replace(re, (block) => Array.from({ length: count }, () => block).join('\n'));
+  if (!isFinite(count) || count <= 1) return source;
+  const re =
+    /\[\[\s*module\s+listusers\b[^\]]*\]\][\s\S]*?\[\[\s*\/\s*module\s*\]\]/gi;
+  return String(source).replace(re, (block) =>
+    Array.from({ length: count }, () => block).join("\n"),
+  );
 }

@@ -45,6 +45,7 @@ import type {
 import { getSite, getPage } from '../../infra/wikidot.js';
 import { dirtToIdeal } from '../../compat/index.js';
 import type { ModuleCaps, RealFetchOptions, ModuleWarning } from '../../types/render/module.ts';
+import { isFinite } from '../../shared/guards.ts';
 
 type RenderCtx = ProcessWikitextCallbackContext<WikitextPageContext>;
 
@@ -152,7 +153,7 @@ export function toSearchPagesParams(
 ): SearchPagesQueryParams {
   const limit = Math.max(
     0,
-    Math.min(Number.isFinite(query?.limit) ? query.limit : caps.listPagesMaxRows, caps.listPagesMaxRows)
+    Math.min(isFinite(query?.limit) ? query.limit : caps.listPagesMaxRows, caps.listPagesMaxRows)
   );
   const perPage = Math.max(1, Math.min(query?.perPage ?? limit ?? 20, 250));
   const params: Record<string, unknown> = {
@@ -169,7 +170,7 @@ export function toSearchPagesParams(
     name: query?.name,
     fullname: query?.fullname,
     range: query?.range === '.' ? page?.fullName : query?.range,
-    offset: Number.isFinite(query?.offset) ? Math.max(0, query.offset) : 0,
+    offset: isFinite(query?.offset) ? Math.max(0, query.offset) : 0,
     limit,
     perPage,
   };
@@ -509,7 +510,7 @@ export async function fetchRealRatings(
       ref,
       label: '评分',
       allowedVotes,
-      canVote: Boolean(opts.client.me),
+      canVote: Boolean(opts.client?.me),
       canCancel: currentVote !== null,
       currentVote,
       aggregate: { points, votes, percent },

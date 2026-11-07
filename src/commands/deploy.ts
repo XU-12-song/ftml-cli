@@ -115,7 +115,7 @@ export async function deploy(options: DeployOptions): Promise<DeployResult> {
     console.log(`· 为兼容 Wikidot 自动补全 ${compat.changes.length} 处行内闭合`);
   }
   writeMajorSnapshot(config.root, majorVersion, entrySource);
-  addMajor(config.root, { commit: hash, message, tag, wikidotVersion: revisionsCount });
+  addMajor(config.root, { commit: hash ?? '', message, tag, wikidotVersion: revisionsCount });
   appendHistory(config.root, {
     commit_hash: hash,
     comment: message,

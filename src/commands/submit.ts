@@ -29,7 +29,7 @@ import type {
 /** 追加一条提交历史（history.json 为 JSON 数组，幂等读-改-写） */
 export function appendHistory(root: string, entry: HistoryEntry): void {
   const p = historyPath(root);
-  let arr = [];
+  let arr: HistoryEntry[] = [];
   try {
     arr = JSON.parse(fs.readFileSync(p, 'utf8'));
   } catch {
@@ -72,7 +72,7 @@ export async function submit(options: SubmitOptions): Promise<SubmitResult> {
 
   const { version } = nextMinorVersion(config.root);
   const { hash, skipped } = await commitAll(git, message);
-  const entry = addMinor(config.root, { commit: hash, message });
+  const entry = addMinor(config.root, { commit: hash ?? '', message });
   appendHistory(config.root, {
     commit_hash: hash,
     comment: message,

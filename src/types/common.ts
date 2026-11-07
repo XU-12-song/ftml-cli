@@ -7,3 +7,5 @@ export type SourceText = string;
 
 /** @description 绝对路径 */
 export type AbsolutePath = string;
+
+export type currentSite = string|null;

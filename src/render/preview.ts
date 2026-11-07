@@ -195,7 +195,7 @@ async function fetchRemoteInclude(
     warnings.push({
       severity: 'warning',
       code: 'remote-include-failed',
-      message: `远程拉取 [[include ${label}]] 失败: ${e.message}`,
+      message: `远程拉取 [[include ${label}]] 失败: ${(e as Error).message}`,
       position: {
         start: { line: 1, column: 1, offset: 0 },
         end: { line: 1, column: 1, offset: 0 },

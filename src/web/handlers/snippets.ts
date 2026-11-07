@@ -40,7 +40,7 @@ export function deleteSnippet(name: string): RemoveSnippetResult {
   try {
     return removeSnippet(decodeURIComponent(name));
   } catch (e) {
-    throw new HttpError(404, e.message);
+    throw new HttpError(404, (e as Error).message);
   }
 }
 
