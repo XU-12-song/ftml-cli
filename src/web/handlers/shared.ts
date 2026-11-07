@@ -9,16 +9,24 @@
 import path from 'node:path';
 
 import { loadProjects } from '../projects.js';
+import type { ProjectEntry } from '../../types/web/projects.ts';
+import type {
+  CapturedLog,
+  CapturedRun,
+  LatestOnlyTask,
+} from '../../types/web/handlers/shared.ts';
 
 export class HttpError extends Error {
-  constructor(status, message) {
+  status: number;
+
+  constructor(status: number, message: string) {
     super(message);
     this.status = status;
   }
 }
 
 /** 项目根内的路径解析（防目录穿越） */
-export function resolveInProject(root, relPath) {
+export function resolveInProject(root: string, relPath: string): string {
   const base = path.resolve(root);
   const abs = path.resolve(base, relPath);
   if (abs !== base && !abs.startsWith(base + path.sep)) {
@@ -28,9 +36,9 @@ export function resolveInProject(root, relPath) {
 }
 
 /** 运行 fn 时捕获 console 输出（CLI 命令的进度/诊断反馈给前端） */
-export async function captureLogs(fn) {
-  const logs = [];
-  const push = (kind) => (msg) => {
+export async function captureLogs<T>(fn: () => T | Promise<T>): Promise<CapturedRun<T>> {
+  const logs: CapturedLog[] = [];
+  const push = (kind: CapturedLog['kind']) => (msg: unknown): void => {
     logs.push({ kind, msg: typeof msg === 'string' ? msg : String(msg) });
   };
   const orig = { log: console.log, warn: console.warn, error: console.error };
@@ -46,7 +54,7 @@ export async function captureLogs(fn) {
   }
 }
 
-export function findProject(id) {
+export function findProject(id: string): ProjectEntry {
   const list = loadProjects();
   const p = list.find((x) => x.id === id);
   if (!p) throw new HttpError(404, `项目未注册: ${id}`);
@@ -55,6 +63,8 @@ export function findProject(id) {
 
 /** 被更新的同类请求取代（`superseded` 标记供 server.js 映射为 409，客户端静默忽略） */
 export class SupersededError extends Error {
+  declare superseded: boolean;
+
   constructor() {
     super('已被更新的请求取代');
     this.name = 'SupersededError';
@@ -62,8 +72,14 @@ export class SupersededError extends Error {
   }
 }
 
-// key → { gen, tail }：每个 key 一条“最新者胜”串行链
-const gates = new Map();
+/** 每个 key 一条“最新者胜”串行链 */
+interface Gate {
+  gen: number;
+  tail: Promise<unknown>;
+}
+
+// key → { gen, tail }
+const gates = new Map<string, Gate>();
 
 /**
  * 同一 key 上的异步任务“最新者胜”串行门。
@@ -76,10 +92,10 @@ const gates = new Map();
  * 注意：正在跑的 CPU 段无法被抢占，只能靠调用方在昂贵步骤前调用 checkpoint()
  * 主动检查。跳过点只在 await 边界有效（同步段内新请求根本进不来）。
  *
- * @param {string} key 通常为 `${projectId}::${relPath}`
- * @param {(checkpoint: () => void) => Promise<any>} task
+ * @param key 通常为 `${projectId}::${relPath}`
+ * @param task 昂贵任务；在 await 边界调用 checkpoint() 检查是否被取代
  */
-export function latestOnly(key, task) {
+export function latestOnly<T>(key: string, task: LatestOnlyTask<T>): Promise<T> {
   const gate = gates.get(key) ?? { gen: 0, tail: Promise.resolve() };
   gates.set(key, gate);
   const myGen = ++gate.gen;

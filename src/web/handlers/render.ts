@@ -24,9 +24,23 @@ import { collectProblems } from '../../commands/validate.js';
 import { createClient } from '../../infra/wikidot.js';
 import { loadSettings } from '../../domain/settings.js';
 import { HttpError, resolveInProject, findProject, latestOnly } from './shared.js';
+import type { Settings } from '../../types/domain/settings.ts';
+import type { CollectedProblems } from '../../types/commands/validate.ts';
+import type { HandlerEnv } from '../../types/web/handlers/shared.ts';
+import type {
+  RenderBody,
+  RenderResult,
+  ValidateBody,
+} from '../../types/web/handlers/render.ts';
 
 /** 渲染失败时的统一返回：不抛 500，把异常转成 problems 让前端定位 */
-function failedRender(source, relPath, err, settings, projectRoot) {
+function failedRender(
+  source: string,
+  relPath: string,
+  err: Error,
+  settings: Settings,
+  projectRoot: string,
+): RenderResult {
   return {
     html: null,
     fragment: null, // 与「成功但只回片段」区分：前端据此判定渲染失败
@@ -40,7 +54,11 @@ function failedRender(source, relPath, err, settings, projectRoot) {
 }
 
 /** 保存 + 渲染：读文件 → 展开模板 → @wdprlib 渲染 → 完整文档（不写 dist） */
-export async function renderProjectFile(id, body, env = {}) {
+export async function renderProjectFile(
+  id: string,
+  body: RenderBody,
+  env: HandlerEnv = {},
+): Promise<RenderResult> {
   const p = findProject(id);
   const relPath = body?.path;
   if (!relPath) throw new HttpError(400, '缺少 path');
@@ -101,7 +119,7 @@ export async function renderProjectFile(id, body, env = {}) {
       checkpoint(); // 联网建客户端期间若已有更新的请求，放弃本次
       const { html, styles, htmlBlocks, diagnostics, includes, moduleResolution } = await renderPreview(expanded, {
         page,
-        styleMode: body?.styleMode ?? settings.renderStyleMode,
+        styleMode: (body?.styleMode ?? settings.renderStyleMode) as 'inline' | 'separate',
         includeBaseDir: path.dirname(config.sourceAbs),
         includeTemplates: templates,
         client,
@@ -146,7 +164,7 @@ export async function renderProjectFile(id, body, env = {}) {
   });
 }
 
-export async function validateProjectFile(id, body) {
+export async function validateProjectFile(id: string, body: ValidateBody): Promise<CollectedProblems> {
   const p = findProject(id);
   const relPath = body?.path;
   if (!relPath) throw new HttpError(400, '缺少 path');

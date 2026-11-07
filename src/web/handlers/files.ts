@@ -11,10 +11,19 @@ import { loadConfig, saveProjectMeta } from '../../infra/config.js';
 import { parseFtmx } from '../../core/parse-ftmx.js';
 import { projectGit, isRepo, isClean } from '../../infra/git.js';
 import { HttpError, resolveInProject, findProject } from './shared.js';
+import type {
+  ReadFileResult,
+  SaveFileBody,
+  SaveFileResult,
+  SaveTargetBody,
+  SaveTargetResult,
+  Sidebar,
+  SidebarTemplate,
+} from '../../types/web/handlers/files.ts';
 
 /** 递归收集项目内 .ftml 源文件（跳过构建/模板/组件/隐藏目录） */
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'templates', 'components', '.ftml']);
-function scanFtmLFiles(dir, out = []) {
+function scanFtmLFiles(dir: string, out: string[] = []): string[] {
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -31,7 +40,7 @@ function scanFtmLFiles(dir, out = []) {
 }
 
 /** 侧边栏：模板/组件/源文件 + git 状态（自动补全数据源） */
-export async function getSidebar(id) {
+export async function getSidebar(id: string): Promise<Sidebar> {
   const p = findProject(id);
   const { root } = p;
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
@@ -39,13 +48,13 @@ export async function getSidebar(id) {
   }
   const config = loadConfig({ root });
 
-  const templates = [];
+  const templates: SidebarTemplate[] = [];
   const tplDir = config.templatesDirAbs;
   if (fs.existsSync(tplDir)) {
     for (const f of fs.readdirSync(tplDir)) {
       if (!f.endsWith('.ftmx')) continue;
       const name = f.slice(0, -'.ftmx'.length);
-      let keys = [];
+      let keys: string[] = [];
       try {
         keys = parseFtmx(fs.readFileSync(path.join(tplDir, f), 'utf8'), name).keys;
       } catch {
@@ -77,7 +86,7 @@ export async function getSidebar(id) {
   };
 }
 
-export function readProjectFile(id, relPath) {
+export function readProjectFile(id: string, relPath: string): ReadFileResult {
   const p = findProject(id);
   if (!relPath) throw new HttpError(400, '缺少 path');
   const abs = resolveInProject(p.root, relPath);
@@ -87,7 +96,7 @@ export function readProjectFile(id, relPath) {
   return { path: relPath, source: fs.readFileSync(abs, 'utf8') };
 }
 
-export function saveProjectFile(id, body) {
+export function saveProjectFile(id: string, body: SaveFileBody): SaveFileResult {
   const p = findProject(id);
   const relPath = body?.path;
   if (!relPath) throw new HttpError(400, '缺少 path');
@@ -99,12 +108,12 @@ export function saveProjectFile(id, body) {
 }
 
 /** 保存 site/page 到 .ftml/<源文件名>.json 元数据（前端目标页面设置） */
-export function saveTargetPage(id, body) {
+export function saveTargetPage(id: string, body: SaveTargetBody): SaveTargetResult {
   const p = findProject(id);
   const relPath = body?.path || 'index.ftml';
   const abs = resolveInProject(p.root, relPath);
   if (!fs.existsSync(abs)) throw new HttpError(404, `文件不存在: ${relPath}`);
-  const fields = {};
+  const fields: SaveTargetBody = {};
   if (body.site) fields.site = body.site;
   if (body.page) fields.page = body.page;
   if (body.lastRev !== undefined) fields.lastRev = body.lastRev;

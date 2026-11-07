@@ -14,17 +14,29 @@ import {
 } from '../../domain/snippets.js';
 import { listPageCache, clearPageCache } from '../../infra/cache.js';
 import { HttpError } from './shared.js';
+import type {
+  MergeSnippetsResult,
+  RemoveSnippetResult,
+  SnippetInput,
+} from '../../types/domain/snippets.ts';
+import type {
+  ExportSnippetsResult,
+  ImportSnippetsBody,
+  IncludeCacheClearResult,
+  IncludeCacheListResult,
+  ListSnippetsResult,
+} from '../../types/web/handlers/snippets.ts';
 
-export function listSnippets() {
+export function listSnippets(): ListSnippetsResult {
   return { snippets: loadSnippets() };
 }
 
-export function saveSnippet(body) {
+export function saveSnippet(body: SnippetInput): MergeSnippetsResult {
   if (!body?.name) throw new HttpError(400, '缺少片段名称');
   return upsertSnippet(body);
 }
 
-export function deleteSnippet(name) {
+export function deleteSnippet(name: string): RemoveSnippetResult {
   try {
     return removeSnippet(decodeURIComponent(name));
   } catch (e) {
@@ -33,7 +45,7 @@ export function deleteSnippet(name) {
 }
 
 /** 导入 Ace .snippets：body.text 直接给内容，或 body.file 给磁盘路径 */
-export function importSnippets(body) {
+export function importSnippets(body: ImportSnippetsBody): MergeSnippetsResult {
   if (typeof body?.text === 'string' && body.text.trim()) {
     return importSnippetsText(body.text, body.source || 'web-import');
   }
@@ -46,18 +58,18 @@ export function importSnippets(body) {
 }
 
 /** 导出全部片段为 Ace .snippets 文本 */
-export function exportSnippets() {
+export function exportSnippets(): ExportSnippetsResult {
   return { text: exportSnippetsText() };
 }
 
 // ---------------- include 缓存 ----------------
 
 /** 列出远程 include 的磁盘缓存条目 */
-export function listIncludeCache() {
+export function listIncludeCache(): IncludeCacheListResult {
   return { entries: listPageCache() };
 }
 
 /** 清空远程 include 缓存 */
-export function clearIncludeCache() {
+export function clearIncludeCache(): IncludeCacheClearResult {
   return { removed: clearPageCache() };
 }

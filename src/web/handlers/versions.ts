@@ -13,14 +13,20 @@ import { revert } from '../../commands/revert.js';
 import { init } from '../../commands/init.js';
 import { listVersions } from '../../domain/versions.js';
 import { captureLogs, findProject } from './shared.js';
+import type { HandlerEnv } from '../../types/web/handlers/shared.ts';
+import type {
+  ProjectVersionsResult,
+  VersionActionBody,
+  VersionActionResult,
+} from '../../types/web/handlers/versions.ts';
 
-export function listProjectVersions(id) {
+export function listProjectVersions(id: string): ProjectVersionsResult {
   const p = findProject(id);
   return { versions: listVersions(p.root) };
 }
 
 /** 提交小版本：本地 git commit + 小版本号递增，不联网、不发布（发布走 deploy） */
-export async function submitProject(id, body) {
+export async function submitProject(id: string, body: VersionActionBody): Promise<VersionActionResult> {
   const p = findProject(id);
   const rel = body?.source || body?.path;
   const source = rel ? path.resolve(p.root, rel) : undefined;
@@ -37,7 +43,11 @@ export async function submitProject(id, body) {
   return { ok: true, logs };
 }
 
-export async function deployProject(id, body, env = {}) {
+export async function deployProject(
+  id: string,
+  body: VersionActionBody,
+  env: HandlerEnv = {},
+): Promise<VersionActionResult> {
   const p = findProject(id);
   const rel = body?.source || body?.path;
   const source = rel ? path.resolve(p.root, rel) : undefined;
@@ -49,13 +59,17 @@ export async function deployProject(id, body, env = {}) {
       page: body?.page,
       message: body?.message,
       noValidate: body?.noValidate,
-      clientFactory: env.injectClient ? () => env.injectClient : undefined,
+      clientFactory: env.injectClient ? () => env.injectClient! : undefined,
     })
   );
   return { ok: true, logs };
 }
 
-export async function revertProject(id, body, env = {}) {
+export async function revertProject(
+  id: string,
+  body: VersionActionBody,
+  env: HandlerEnv = {},
+): Promise<VersionActionResult> {
   const p = findProject(id);
   const rel = body?.source || body?.path;
   const source = rel ? path.resolve(p.root, rel) : undefined;
@@ -69,13 +83,13 @@ export async function revertProject(id, body, env = {}) {
       noWikidot: !!body?.noWikidot,
       autoCommit: true, // web 自动保存导致工作区常脏
       rebuild: true,    // dist/ 被 gitignore，git revert 后重建产物再回推
-      clientFactory: env.injectClient ? () => env.injectClient : undefined,
+      clientFactory: env.injectClient ? () => env.injectClient! : undefined,
     })
   );
   return { ok: true, logs };
 }
 
-export async function initProject(id) {
+export async function initProject(id: string): Promise<VersionActionResult> {
   const p = findProject(id);
   const { logs } = await captureLogs(() => init({ cwd: p.root }));
   return { ok: true, logs };

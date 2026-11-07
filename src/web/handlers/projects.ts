@@ -10,10 +10,17 @@ import { projectsBaseDir } from '../../infra/paths.js';
 import { init } from '../../commands/init.js';
 import { projectGit, isRepo, isClean } from '../../infra/git.js';
 import { HttpError, captureLogs, findProject } from './shared.js';
+import type { ProjectEntry } from '../../types/web/projects.ts';
+import type {
+  CreateFtmlProjectBody,
+  CreateFtmlProjectResult,
+  CreateProjectBody,
+  ProjectListItem,
+} from '../../types/web/handlers/projects.ts';
 
 // ---------------- 注册表 ----------------
 
-export async function listProjects() {
+export async function listProjects(): Promise<ProjectListItem[]> {
   const list = loadProjects();
   const results = await Promise.all(list.map(async (p) => {
     // 目录已不存在（被删/移动）：跳过 git 探测（simple-git 对不存在目录直接抛错）
@@ -29,12 +36,12 @@ export async function listProjects() {
   return results.filter(Boolean);
 }
 
-export async function createProject(body) {
+export async function createProject(body: CreateProjectBody): Promise<ProjectEntry[]> {
   if (!body || !body.root) throw new HttpError(400, '缺少 root');
   return addProject(body.root);
 }
 
-export async function deleteProject(id) {
+export async function deleteProject(id: string): Promise<ProjectEntry[]> {
   findProject(id);
   return removeProject(id);
 }
@@ -56,7 +63,7 @@ const STARTER_FTML = `[[div class="content"]]
  *
  * 目标根目录 = <parent>/<name>；已存在且非空时报错，避免覆盖用户内容。
  */
-export async function createFtmlProject(body) {
+export async function createFtmlProject(body: CreateFtmlProjectBody): Promise<CreateFtmlProjectResult> {
   const name = String(body?.name ?? '').trim();
   if (!name) throw new HttpError(400, '缺少仓库名');
   if (!REPO_NAME_RE.test(name) || name === '.' || name === '..') {

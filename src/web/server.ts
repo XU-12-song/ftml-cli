@@ -12,9 +12,12 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
 import * as handlers from './handlers/index.js';
 import { mapStack } from '../render/stack.js';
+import type { HandlerEnv } from '../types/web/handlers/shared.ts';
+import type { CreateServerOptions, SecurityOptions } from '../types/web/server.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -34,8 +37,8 @@ const CSP = [
   "form-action 'self'",
 ].join('; ');
 
-function parseCookies(header) {
-  const out = {};
+function parseCookies(header: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
   for (const part of String(header ?? '').split(';')) {
     const eq = part.indexOf('=');
     if (eq < 0) continue;
@@ -50,21 +53,21 @@ function parseCookies(header) {
   return out;
 }
 
-function safeEqual(a, b) {
+function safeEqual(a: unknown, b: unknown): boolean {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   const ba = Buffer.from(a);
   const bb = Buffer.from(b);
   return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
 
-function allowedHost(hostHeader, port) {
+function allowedHost(hostHeader: string | undefined, port: number): boolean {
   const host = String(hostHeader ?? '').toLowerCase();
   return host === `127.0.0.1:${port}`
     || host === `localhost:${port}`
     || host === `[::1]:${port}`;
 }
 
-function allowedOrigin(origin, port) {
+function allowedOrigin(origin: unknown, port: number): boolean {
   if (typeof origin !== 'string') return false;
   try {
     const u = new URL(origin);
@@ -86,8 +89,8 @@ function allowedOrigin(origin, port) {
  *   - CSP / nosniff
  * 浏览器模式（security=null）完全不启用，保持原有行为。
  */
-function securityMiddleware(security) {
-  return (req, res, next) => {
+function securityMiddleware(security: SecurityOptions): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', CSP);
 
@@ -131,14 +134,14 @@ function securityMiddleware(security) {
 }
 
 /** 把 async handler 包成 express 中间件，异常统一交给错误中间件 */
-function wrap(fn) {
-  return (req, res, next) => {
+function wrap(fn: (req: Request, res: Response, next: NextFunction) => unknown): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
 
 /** 构造 API 路由（挂到 /api 下） */
-function apiRouter(env) {
+function apiRouter(env: HandlerEnv): express.Router {
   const router = express.Router();
 
   // ---------------- auth ----------------
@@ -204,18 +207,18 @@ function apiRouter(env) {
   }));
 
   // 项目作用域操作：/projects/:id/:action
-  const actions = {
-    sidebar: (req) => handlers.getSidebar(req.params.id),
-    file: (req) => handlers.readProjectFile(req.params.id, req.query.path),
-    save: (req) => handlers.saveProjectFile(req.params.id, req.body),
-    render: (req) => handlers.renderProjectFile(req.params.id, req.body, env),
-    validate: (req) => handlers.validateProjectFile(req.params.id, req.body),
-    target: (req) => handlers.saveTargetPage(req.params.id, req.body),
-    versions: (req) => handlers.listProjectVersions(req.params.id),
-    submit: (req) => handlers.submitProject(req.params.id, req.body),
-    deploy: (req) => handlers.deployProject(req.params.id, req.body, env),
-    revert: (req) => handlers.revertProject(req.params.id, req.body, env),
-    init: (req) => handlers.initProject(req.params.id),
+  const actions: Record<string, (req: Request) => unknown> = {
+    sidebar: (req: Request) => handlers.getSidebar(req.params.id),
+    file: (req: Request) => handlers.readProjectFile(req.params.id, req.query.path as string),
+    save: (req: Request) => handlers.saveProjectFile(req.params.id, req.body),
+    render: (req: Request) => handlers.renderProjectFile(req.params.id, req.body, env),
+    validate: (req: Request) => handlers.validateProjectFile(req.params.id, req.body),
+    target: (req: Request) => handlers.saveTargetPage(req.params.id, req.body),
+    versions: (req: Request) => handlers.listProjectVersions(req.params.id),
+    submit: (req: Request) => handlers.submitProject(req.params.id, req.body),
+    deploy: (req: Request) => handlers.deployProject(req.params.id, req.body, env),
+    revert: (req: Request) => handlers.revertProject(req.params.id, req.body, env),
+    init: (req: Request) => handlers.initProject(req.params.id),
   };
 
   router.all('/projects/:id/:action', wrap(async (req, res) => {
@@ -233,7 +236,7 @@ function apiRouter(env) {
 }
 
 /** 统一错误响应：HttpError 用其状态码，其余 500 */
-function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-vars
+function errorHandler(err: any, req: Request, res: Response, next: NextFunction): void { // eslint-disable-line no-unused-vars
   if (err instanceof handlers.HttpError) {
     res.status(err.status).json({ error: err.message });
     return;
@@ -248,7 +251,7 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
     return;
   }
   // express.json 解析失败 → SyntaxError（带 status 400）
-  if (err instanceof SyntaxError && /** @type {any} */ (err).status === 400) {
+  if (err instanceof SyntaxError && (err as any).status === 400) {
     res.status(400).json({ error: '请求体不是合法 JSON' });
     return;
   }
@@ -265,7 +268,10 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
   });
 }
 
-export function createServer(env = {}, { publicDir = PUBLIC_DIR, security = null } = {}) {
+export function createServer(
+  env: HandlerEnv = {},
+  { publicDir = PUBLIC_DIR, security = null }: CreateServerOptions = {},
+): http.Server {
   const app = express();
   app.disable('x-powered-by');
   if (security) app.use(securityMiddleware(security));

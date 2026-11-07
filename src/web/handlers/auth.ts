@@ -8,8 +8,14 @@ import { Client } from '@ukwhatn/wikidot';
 import { getCredentials, saveCredentials } from '../../infra/credentials.js';
 import { credentialsPath } from '../../infra/paths.js';
 import { HttpError } from './shared.js';
+import type {
+  AuthLoginBody,
+  AuthLoginResult,
+  AuthLogoutResult,
+  AuthStatusResult,
+} from '../../types/web/handlers/auth.ts';
 
-export function authStatus() {
+export function authStatus(): AuthStatusResult {
   const creds = getCredentials();
   return {
     loggedIn: !!creds,
@@ -18,7 +24,7 @@ export function authStatus() {
   };
 }
 
-export async function authLogin(body) {
+export async function authLogin(body: AuthLoginBody): Promise<AuthLoginResult> {
   if (!body?.username || !body?.password) {
     throw new HttpError(400, '缺少用户名或密码');
   }
@@ -31,7 +37,7 @@ export async function authLogin(body) {
   return { ok: true, username: body.username };
 }
 
-export async function authLogout() {
+export async function authLogout(): Promise<AuthLogoutResult> {
   try {
     fs.rmSync(credentialsPath(), { force: true });
   } catch {

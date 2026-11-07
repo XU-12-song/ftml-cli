@@ -11,13 +11,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { homeFtmlCliDir } from '../infra/paths.js';
+import type { ProjectEntry } from '../types/web/projects.ts';
 
-function registryPath() {
+function registryPath(): string {
   return path.join(homeFtmlCliDir(), 'projects.json');
 }
 
 /** 读取注册表；文件缺失/损坏返回 [] */
-export function loadProjects() {
+export function loadProjects(): ProjectEntry[] {
   try {
     const arr = JSON.parse(fs.readFileSync(registryPath(), 'utf8'));
     return Array.isArray(arr) ? arr : [];
@@ -26,13 +27,13 @@ export function loadProjects() {
   }
 }
 
-function saveProjects(list) {
+function saveProjects(list: ProjectEntry[]): void {
   fs.mkdirSync(path.dirname(registryPath()), { recursive: true });
   fs.writeFileSync(registryPath(), JSON.stringify(list, null, 2) + '\n', 'utf8');
 }
 
 /** 添加项目（必须存在且是目录；已存在则返回原列表） */
-export function addProject(root) {
+export function addProject(root: string): ProjectEntry[] {
   const abs = path.resolve(root);
   if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
     throw new Error(`目录不存在或不是文件夹: ${abs}`);
@@ -46,7 +47,7 @@ export function addProject(root) {
 }
 
 /** 移除项目注册（不删除任何文件） */
-export function removeProject(id) {
+export function removeProject(id: string): ProjectEntry[] {
   const list = loadProjects().filter((p) => p.id !== id);
   saveProjects(list);
   return list;
