@@ -9,12 +9,13 @@
 
 import { loadProjects } from '../web/projects.js';
 import { startWebServer } from '../web/start.js';
+import type { WebOptions } from '../types/commands/web.ts';
 
-export async function web(options) {
+export async function web(options: WebOptions): Promise<never> {
   // startWebServer 负责 root 校验、addProject、主题预热、监听与真实端口
   const { url } = await startWebServer({
     root: options.root,
-    port: options.port,
+    port: options.port as number,
     host: options.host,
   });
 
@@ -31,7 +32,7 @@ export async function web(options) {
 }
 
 /** 用系统默认浏览器打开地址（跨平台） */
-async function openInBrowser(url) {
+async function openInBrowser(url: string): Promise<void> {
   const { exec } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execAsync = promisify(exec);

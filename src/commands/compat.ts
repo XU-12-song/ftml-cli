@@ -14,8 +14,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { dirtToIdeal, idealToDirt, describeTable } from '../compat/index.js';
 import { formatDiagnostics } from '../render/diagnostics.js';
+import type {
+  CompatCommandOptions,
+  CompatCommandResult,
+} from '../types/commands/compat.ts';
 
-export function compat(options) {
+export function compat(options: CompatCommandOptions): CompatCommandResult {
   if (options.list) {
     console.log(describeTable());
     return 0;

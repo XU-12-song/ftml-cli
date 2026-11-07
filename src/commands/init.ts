@@ -19,13 +19,14 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { projectFtmlDir, historyPath } from '../infra/paths.js';
 import { projectGit, isRepo } from '../infra/git.js';
+import type { InitOptions, InitResult } from '../types/commands/init.ts';
 
 /**
  * Windows 上给目录设置隐藏属性。
  * 不用 hidefile/winattr/fswin（原生模块在 Electron 里需要按 ABI 重建），
  * 直接调用系统自带 attrib；失败只告警，不影响项目初始化。
  */
-function hideDirOnWindows(dir) {
+function hideDirOnWindows(dir: string): void {
   if (process.platform !== 'win32') return;
   const attrib = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'attrib.exe');
   const r = spawnSync(attrib, [ '+H', dir ], { windowsHide: true, stdio: 'ignore' });
@@ -34,7 +35,7 @@ function hideDirOnWindows(dir) {
   }
 }
 
-export async function init(options = {}) {
+export async function init(options: InitOptions = {}): Promise<InitResult> {
   const root = path.resolve(options.cwd || process.cwd());
   const ftmlDir = projectFtmlDir(root);
 

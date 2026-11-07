@@ -12,8 +12,9 @@ import { stdin, stdout } from 'node:process';
 import { Client } from '@ukwhatn/wikidot';
 import { envCredentials, saveCredentials } from '../infra/credentials.js';
 import { credentialsPath } from '../infra/paths.js';
+import type { LoginOptions } from '../types/commands/login.ts';
 
-async function promptHidden(query) {
+async function promptHidden(query: string): Promise<string> {
   // readline 不支持不回显，退化为普通输入（本地使用）
   const rl = createInterface({ input: stdin, output: stdout });
   const answer = await rl.question(query);
@@ -21,9 +22,9 @@ async function promptHidden(query) {
   return answer;
 }
 
-export async function login(options) {
-  let username;
-  let password;
+export async function login(options: LoginOptions): Promise<void> {
+  let username: string;
+  let password: string;
 
   const env = envCredentials();
   if (options.env && env) {

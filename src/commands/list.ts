@@ -6,8 +6,9 @@
 
 import { loadTemplates } from '../core/expand.js';
 import { loadConfig } from '../infra/config.js';
+import type { ListOptions } from '../types/commands/list.ts';
 
-export async function list(options) {
+export async function list(options: ListOptions): Promise<void> {
   const config = loadConfig(options);
   const templates = await loadTemplates(config.templatesDirAbs);
   const names = [...templates.keys()].sort();

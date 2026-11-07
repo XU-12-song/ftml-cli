@@ -216,11 +216,11 @@ program
   });
 
 /** 统一错误处理与退出码 */
-async function run(fn) {
+async function run<T>(fn: () => T | Promise<T>): Promise<T | undefined> {
   try {
     return await fn();
   } catch (e) {
-    console.error(`错误: ${e.message}`);
+    console.error(`错误: ${(e as Error).message}`);
     process.exitCode = 1;
   }
 }

@@ -27,8 +27,10 @@ import { addMajor, nextMajorVersion, writeMajorSnapshot } from '../domain/versio
 import { isNegated } from '../infra/flags.js';
 import { pushPageSource, upsertPageSource, withClient, getSite } from '../infra/wikidot.js';
 import { buildPublishPlan, rewriteDepSource, describeConflicts } from '../domain/publish.js';
+import type { PublishPlan } from '../types/domain/publish.ts';
+import type { DeployOptions, DeployResult } from '../types/commands/deploy.ts';
 
-export async function deploy(options) {
+export async function deploy(options: DeployOptions): Promise<DeployResult> {
   const config = loadConfig(options);
   const message = requireMessage(options, 'deploy');
 
@@ -71,7 +73,7 @@ export async function deploy(options) {
 
   // 依赖闭包：入口 [[include]] 到的本地镜像页一并发布，并把引用名归一到线上全名。
   // 冲突（同文件两名 / 两名两文件 / 依赖撞入口名）说明本地镜像不自洽，宁可中止。
-  let plan = null;
+  let plan: PublishPlan | null = null;
   let entrySource = source;
   const noDeps = isNegated(options, 'deps');
   if (!noDeps) {

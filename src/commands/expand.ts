@@ -10,6 +10,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expand, loadTemplates } from '../core/expand.js';
+import type {
+  ExpandCommandOptions,
+  ExpandCommandResult,
+} from '../types/commands/expand.ts';
 
 const BUILTIN = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18,7 +22,9 @@ const BUILTIN = path.join(
   'templates'
 );
 
-export async function expandCommand(options) {
+export async function expandCommand(
+  options: ExpandCommandOptions
+): Promise<ExpandCommandResult> {
   const input = options.source;
   if (!input) {
     throw new Error('缺少输入文件。用法: ftml expand <input.ftml> [-o output]');
@@ -26,7 +32,7 @@ export async function expandCommand(options) {
   const inputAbs = path.resolve(input);
   const src = fs.readFileSync(inputAbs, 'utf8');
 
-  let templatesDir;
+  let templatesDir: string;
   const cliTpl = options.templates ?? options.templatesDir;
   if (cliTpl) {
     templatesDir = path.resolve(cliTpl);

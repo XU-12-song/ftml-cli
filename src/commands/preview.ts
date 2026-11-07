@@ -20,8 +20,14 @@ import { buildPageContext } from '../render/context.js';
 import { formatDiagnostics } from '../render/diagnostics.js';
 import { createClient } from '../infra/wikidot.js';
 import { loadSettings } from '../domain/settings.js';
+import type {
+  PreviewCommandOptions,
+  PreviewCommandResult,
+} from '../types/commands/preview.ts';
 
-export async function preview(options) {
+export async function preview(
+  options: PreviewCommandOptions
+): Promise<PreviewCommandResult> {
   const config = loadConfig(options);
 
   // 1. 展开模板（复用 build，产物写配置的 output）
@@ -99,7 +105,7 @@ export async function preview(options) {
 }
 
 /** 用系统默认浏览器打开文件（跨平台） */
-async function openInBrowser(fileAbs) {
+async function openInBrowser(fileAbs: string): Promise<void> {
   const { exec } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execAsync = promisify(exec);

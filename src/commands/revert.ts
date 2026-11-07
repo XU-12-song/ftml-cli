@@ -31,9 +31,13 @@ import {
   readMajorSnapshot,
 } from '../domain/versions.js';
 import { isNegated } from '../infra/flags.js';
+import type { SimpleGit } from 'simple-git';
+import type { ProjectConfig } from '../types/infra/config.ts';
+import type { VersionRow, VersionTarget } from '../types/domain/versions.ts';
+import type { RevertOptions, RevertResult } from '../types/commands/revert.ts';
 
 /** 打印版本列表（revert --list） */
-export function printVersions(root) {
+export function printVersions(root: string): VersionRow[] {
   const rows = listVersions(root);
   if (rows.length === 0) {
     console.log('（暂无版本记录。deploy 创建大版本，submit 创建小版本）');
@@ -52,7 +56,11 @@ export function printVersions(root) {
  * 求「线上应回到的内容」。
  * 优先读大版本快照；快照缺失时从 git 历史取回该版本源文件重新展开。
  */
-async function remoteSourceForVersion(config, target, git) {
+async function remoteSourceForVersion(
+  config: ProjectConfig,
+  target: VersionTarget,
+  git: SimpleGit
+): Promise<{ source: string; from: string } | null> {
   const snap = readMajorSnapshot(config.root, target.remoteVersion);
   if (snap != null) return { source: snap, from: `大版本 ${target.remoteVersion} 快照` };
   try {
@@ -66,7 +74,7 @@ async function remoteSourceForVersion(config, target, git) {
   }
 }
 
-export async function revert(options) {
+export async function revert(options: RevertOptions): Promise<RevertResult> {
   const config = loadConfig(options);
   const siteName = options.site || config.site;
   const pageName = options.page || config.page;
@@ -100,7 +108,7 @@ export async function revert(options) {
   // 内容。只反向 target 那一笔是错的：那等于「撤销这一版做过的事」——若该版本是
   // 新增了某文件，回退反而会把它删掉（dist/index.ftml 被上层改动时即 modify/delete
   // 冲突）。按 git 修订回退（--to <hash>）保持单笔语义，即撤销该提交。
-  let hash;
+  let hash: string | null;
   if (target && target.commit === head) {
     hash = head;
     console.log(`· 当前已是版本 ${to}，跳过本地 git revert`);

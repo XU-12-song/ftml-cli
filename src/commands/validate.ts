@@ -16,8 +16,14 @@ import path from 'node:path';
 import { expand, loadTemplates, findUnresolved } from '../core/expand.js';
 import { loadConfig } from '../infra/config.js';
 import { detectEmbedStructuralEscape } from '../compat/index.js';
+import type { TemplatesMap } from '../types/core/template.ts';
+import type {
+  CollectedProblems,
+  ValidateOptions,
+  ValidateResult,
+} from '../types/commands/validate.ts';
 
-function count(str, re) {
+function count(str: string, re: RegExp): number {
   return (str.match(re) ?? []).length;
 }
 
@@ -25,9 +31,13 @@ function count(str, re) {
  * 校验 FTML 源码，返回错误与警告。
  * 与 validate 命令共用同一套检查逻辑；web 编辑器用它做实时诊断。
  */
-export function collectProblems(src, templates, baseDir) {
-  const errors = [];
-  const warnings = [];
+export function collectProblems(
+  src: string,
+  templates: TemplatesMap,
+  baseDir: string
+): CollectedProblems {
+  const errors: string[] = [];
+  const warnings: string[] = [];
 
   // div 平衡（组件本身可能刻意不平衡，≤10 记为警告，超出才报错）
   const divOpen = count(src, /\[\[div(?=\s|\]|$)/g);
@@ -82,7 +92,7 @@ export function collectProblems(src, templates, baseDir) {
   return { errors, warnings };
 }
 
-export async function validate(options) {
+export async function validate(options: ValidateOptions): Promise<ValidateResult> {
   const config = loadConfig(options);
   const inputAbs = options.source
     ? path.resolve(options.source)

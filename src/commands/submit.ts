@@ -20,9 +20,14 @@ import { assertGitReady } from '../infra/gitenv.js';
 import { addMinor, nextMinorVersion } from '../domain/versions.js';
 import { isNegated } from '../infra/flags.js';
 import { historyPath } from '../infra/paths.js';
+import type {
+  HistoryEntry,
+  SubmitOptions,
+  SubmitResult,
+} from '../types/commands/submit.ts';
 
 /** 追加一条提交历史（history.json 为 JSON 数组，幂等读-改-写） */
-export function appendHistory(root, entry) {
+export function appendHistory(root: string, entry: HistoryEntry): void {
   const p = historyPath(root);
   let arr = [];
   try {
@@ -36,7 +41,10 @@ export function appendHistory(root, entry) {
 }
 
 /** 取提交说明：缺失时抛错（submit/deploy 都要求填写） */
-export function requireMessage(options, command) {
+export function requireMessage(
+  options: { message?: unknown },
+  command: string
+): string {
   const message = String(options.message ?? '').trim();
   if (!message) {
     throw new Error(`${command} 需要填写提交说明。请用 -m "说明" 指定`);
@@ -44,7 +52,7 @@ export function requireMessage(options, command) {
   return message;
 }
 
-export async function submit(options) {
+export async function submit(options: SubmitOptions): Promise<SubmitResult> {
   const config = loadConfig(options);
   const message = requireMessage(options, 'submit');
 

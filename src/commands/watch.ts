@@ -11,8 +11,9 @@ import path from 'node:path';
 import chokidar from 'chokidar';
 import { build } from './build.js';
 import { loadConfig } from '../infra/config.js';
+import type { WatchOptions } from '../types/commands/watch.ts';
 
-export async function watch(options) {
+export async function watch(options: WatchOptions): Promise<void> {
   const config = loadConfig(options);
   const debounce = options.debounce ?? 300;
 
@@ -30,7 +31,7 @@ export async function watch(options) {
   let building = false;
   let pending = false;
 
-  async function runBuild() {
+  async function runBuild(): Promise<void> {
     if (building) {
       pending = true;
       return;

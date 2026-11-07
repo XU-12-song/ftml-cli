@@ -11,8 +11,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expand, loadTemplates } from '../core/expand.js';
 import { loadConfig } from '../infra/config.js';
+import type { BuildOptions, BuildResult } from '../types/commands/build.ts';
 
-export async function build(options = {}) {
+export async function build(options: BuildOptions = {}): Promise<BuildResult> {
   const config = loadConfig(options);
 
   const inputAbs = options.source
