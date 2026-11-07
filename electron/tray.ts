@@ -6,9 +6,10 @@
  */
 
 import { Tray, Menu, nativeImage } from 'electron';
+import type { CreateTrayOptions, TrayHandlers } from '../src/types/electron/tray.ts';
 
-let tray = null;
-let handlers = {};
+let tray: Tray | null = null;
+let handlers: TrayHandlers = {};
 
 function buildMenu() {
   const recent = (handlers.recentProjects ?? []).slice(0, 5);
@@ -30,7 +31,7 @@ function buildMenu() {
 }
 
 /** 首次创建托盘；iconPath 不存在时用空图占位（开发期未生成资产） */
-export function createTray({ iconPath, tooltip = 'ftml', ...rest }) {
+export function createTray({ iconPath, tooltip = 'ftml', ...rest }: CreateTrayOptions): Tray {
   handlers = { ...handlers, ...rest };
   let image = nativeImage.createFromPath(iconPath);
   if (image.isEmpty()) image = nativeImage.createEmpty();
@@ -43,13 +44,13 @@ export function createTray({ iconPath, tooltip = 'ftml', ...rest }) {
 }
 
 /** 最近项目变化后重建菜单 */
-export function updateTrayMenu(opts = {}) {
+export function updateTrayMenu(opts: TrayHandlers = {}): void {
   if (!tray) return;
   handlers = { ...handlers, ...opts };
   tray.setContextMenu(buildMenu());
 }
 
-export function destroyTray() {
+export function destroyTray(): void {
   if (!tray) return;
   tray.destroy();
   tray = null;

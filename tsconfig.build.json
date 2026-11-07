@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "build",
+    "rootDir": ".",
+    "allowJs": false,
+    "checkJs": false,
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": [
+    "electron/**/*.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "release",
+    "src/web/public"
+  ]
+}

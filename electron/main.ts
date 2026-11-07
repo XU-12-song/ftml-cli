@@ -1,5 +1,5 @@
 /**
- * main.js — Electron 主进程
+ * main.ts — Electron 主进程
  *
  * 复用现有 Express 编辑器：本地随机端口 + 一次性 token，窗口加载本地 URL。
  * 桌面集成：单实例、.ftml 文件关联、托盘、原生目录选择、窗口状态。
@@ -8,6 +8,7 @@
  */
 
 import { app, BrowserWindow, ipcMain, dialog, shell, screen, nativeTheme } from 'electron';
+import type { IpcMainEvent, IpcMainInvokeEvent, MessageBoxOptions, OpenDialogOptions, Tray } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,18 +22,20 @@ import { findFtmlFileArg, resolveOpenTarget } from './file-open.js';
 import { loadWindowState, trackWindowState } from './window-state.js';
 import { createTray, updateTrayMenu, destroyTray } from './tray.js';
 import { buildAppMenu } from './menu.js';
+import type { OpenTarget, ResolvedOpenTarget } from '../src/types/electron/file-open.ts';
+import type { WebServerController } from '../src/types/web/start.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ID = 'com.ftml.cli';
 const IS_E2E = process.env.FTML_E2E === '1';
 const IS_DEV = !app.isPackaged;
 
-let mainWindow = null;
-let serverCtl = null;
-let tray = null;
+let mainWindow: BrowserWindow | null = null;
+let serverCtl: WebServerController | null = null;
+let tray: Tray | null = null;
 let isQuitting = false;
 let quitCleanupStarted = false;
-let pendingTarget = null;
+let pendingTarget: OpenTarget | null = null;
 let rendererReady = false;
 let trayHintShown = false;
 
@@ -51,25 +54,26 @@ if (!gotLock) {
   app.whenReady().then(boot).catch(fatal);
 }
 
-function fatal(err) {
+function fatal(err: unknown): void {
+  const detail = err as { stack?: string; message?: string } | null | undefined;
   try {
-    dialog.showErrorBox('ftml 启动失败', err?.stack || err?.message || String(err));
+    dialog.showErrorBox('ftml 启动失败', detail?.stack || detail?.message || String(err));
   } finally {
     app.quit();
   }
 }
 
-function statePath() {
+function statePath(): string {
   return path.join(homeFtmlCliDir(), 'window-state.json');
 }
 
-function assetPath(rel) {
+function assetPath(rel: string): string {
   const inApp = path.join(app.getAppPath(), rel);
   if (fs.existsSync(inApp)) return inApp;
   return path.join(process.resourcesPath, rel);
 }
 
-function loadingUrl() {
+function loadingUrl(): string {
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>ftml</title>
 <style>
 html,body{height:100%;margin:0;background:#14181f;color:#dbe1ea;font:14px system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
@@ -81,7 +85,7 @@ body{display:grid;place-items:center}
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-function createWindow() {
+function createWindow(): BrowserWindow {
   const bounds = loadWindowState(statePath(), screen.getAllDisplays());
   const win = new BrowserWindow({
     x: bounds.x,
@@ -115,9 +119,9 @@ function createWindow() {
     if (IS_E2E) console.log('[ftml] window close');
     isQuitting = true;
   });
-  win.on('minimize', (event) => {
+  win.on('minimize', (event?: { preventDefault?: () => void }) => {
     if (IS_E2E || isQuitting) return;
-    event.preventDefault?.();
+    event?.preventDefault?.();
     win.hide();
     showTrayHint();
   });
@@ -142,7 +146,7 @@ function createWindow() {
   return win;
 }
 
-function isAllowedUrl(url) {
+function isAllowedUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   if (url.startsWith('data:') || url.startsWith('blob:') || url === 'about:blank') return true;
   if (!serverCtl) return false;
@@ -153,7 +157,7 @@ function isAllowedUrl(url) {
   }
 }
 
-function loadAppUrl(target) {
+function loadAppUrl(target: OpenTarget | null): void {
   if (!mainWindow || mainWindow.isDestroyed() || !serverCtl) return;
   const params = new URLSearchParams({ ftml_token: serverCtl.token ?? '' });
   if (target?.project) {
@@ -163,14 +167,14 @@ function loadAppUrl(target) {
   mainWindow.loadURL(`${serverCtl.url}/?${params.toString()}`);
 }
 
-function showWindow() {
+function showWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
 }
 
-function showTrayHint() {
+function showTrayHint(): void {
   if (IS_E2E || trayHintShown || !tray) return;
   trayHintShown = true;
   try {
@@ -184,7 +188,7 @@ function showTrayHint() {
   }
 }
 
-function refreshTray() {
+function refreshTray(): void {
   if (!tray) return;
   updateTrayMenu({
     recentProjects: loadProjects(),
@@ -195,7 +199,7 @@ function refreshTray() {
   });
 }
 
-function setupTray() {
+function setupTray(): void {
   if (IS_E2E) return;
   tray = createTray({
     iconPath: assetPath(path.join('assets', 'icons', 'tray', 'tray.ico')),
@@ -208,7 +212,7 @@ function setupTray() {
   });
 }
 
-function setupMenu() {
+function setupMenu(): void {
   buildAppMenu({
     isDev: IS_DEV,
     onOpenProject: chooseProjectFolder,
@@ -222,9 +226,8 @@ function setupMenu() {
   });
 }
 
-function showAbout() {
-  /** @type {import('electron').MessageBoxOptions} */
-  const opts = {
+function showAbout(): void {
+  const opts: MessageBoxOptions = {
     type: 'info',
     title: '关于 ftml',
     message: `ftml ${app.getVersion()}`,
@@ -236,16 +239,15 @@ function showAbout() {
   else dialog.showMessageBox(opts);
 }
 
-function quitApp() {
+function quitApp(): void {
   isQuitting = true;
   app.quit();
 }
 
-function registerIpc() {
-  ipcMain.handle('ftml:pick-directory', async (event, opts = {}) => {
+function registerIpc(): void {
+  ipcMain.handle('ftml:pick-directory', async (event, opts: { title?: string; defaultPath?: string } = {}) => {
     if (!isTrustedSender(event)) return null;
-    /** @type {import('electron').OpenDialogOptions} */
-    const dialogOpts = {
+    const dialogOpts: OpenDialogOptions = {
       title: opts.title || '选择目录',
       defaultPath: opts.defaultPath || undefined,
       properties: [ 'openDirectory' ],
@@ -276,7 +278,7 @@ function registerIpc() {
 }
 
 /** 读取保存的主题偏好；auto 跟随系统。用于让原生标题栏/菜单先于网页同步。 */
-function initialThemeSource() {
+function initialThemeSource(): 'light' | 'dark' {
   try {
     const { theme } = loadSettings();
     if (theme === 'light' || theme === 'dark') return theme;
@@ -286,18 +288,17 @@ function initialThemeSource() {
   return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
 }
 
-function isRegisteredProject(root) {
+function isRegisteredProject(root: string): boolean {
   const target = path.resolve(root).toLowerCase();
   return loadProjects().some((p) => path.resolve(p.root).toLowerCase() === target);
 }
 
 /** 松散 .ftml（目录不像项目）注册前询问，避免双击一次就多一个工作区 */
-async function confirmLooseProject(target) {
+async function confirmLooseProject(target: ResolvedOpenTarget): Promise<boolean> {
   if (target.isProject || isRegisteredProject(target.project)) return true;
   // 托盘/最小化状态下双击文件时，先让窗口可见，提示框才有明确归属
   if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
-  /** @type {import('electron').MessageBoxOptions} */
-  const opts = {
+  const opts: MessageBoxOptions = {
     type: 'question',
     title: '添加工作区',
     message: '该目录不是 ftml 项目',
@@ -313,7 +314,7 @@ async function confirmLooseProject(target) {
   return result.response === 0;
 }
 
-function isTrustedSender(event) {
+function isTrustedSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
   if (!serverCtl) return false;
   try {
     const url = event.senderFrame?.url || event.sender.getURL();
@@ -323,14 +324,14 @@ function isTrustedSender(event) {
   }
 }
 
-async function chooseProjectFolder() {
+async function chooseProjectFolder(): Promise<void> {
   const result = mainWindow
     ? await dialog.showOpenDialog(mainWindow, { title: '打开 ftml 项目', properties: [ 'openDirectory' ] })
     : await dialog.showOpenDialog({ title: '打开 ftml 项目', properties: [ 'openDirectory' ] });
   if (!result.canceled && result.filePaths[0]) openProjectFolder(result.filePaths[0]);
 }
 
-async function chooseFtmlFile() {
+async function chooseFtmlFile(): Promise<void> {
   const result = mainWindow
     ? await dialog.showOpenDialog(mainWindow, {
       title: '打开 .ftml 文件',
@@ -347,7 +348,7 @@ async function chooseFtmlFile() {
   }
 }
 
-function deliverTarget(target) {
+function deliverTarget(target: OpenTarget): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     pendingTarget = target;
     return;
@@ -359,7 +360,7 @@ function deliverTarget(target) {
   }
 }
 
-async function openFtmlFile(filePath) {
+async function openFtmlFile(filePath: string): Promise<void> {
   const target = resolveOpenTarget(filePath);
   if (!target) {
     showWindow();
@@ -380,7 +381,7 @@ async function openFtmlFile(filePath) {
   deliverTarget(target);
 }
 
-function openProjectFolder(root) {
+function openProjectFolder(root: string): void {
   const abs = path.resolve(root);
   try {
     addProject(abs);
@@ -393,7 +394,7 @@ function openProjectFolder(root) {
   deliverTarget({ project: abs, file: null });
 }
 
-async function boot() {
+async function boot(): Promise<void> {
   // 先同步原生标题栏/菜单主题，避免深色界面配浅色系统标题栏
   nativeTheme.themeSource = initialThemeSource();
   createWindow();

@@ -7,7 +7,7 @@
   "bin": {
     "ftml": "./src/cli.ts"
   },
-  "main": "./electron/main.js",
+  "main": "./build/electron/main.js",
   "scripts": {
 	  
     "test": "node --import tsx --test",
@@ -16,9 +16,10 @@
     "build:cm6": "node scripts/build-cm6.mjs",
     "build:web": "node scripts/build-web.mjs",
     "build:web:watch": "node scripts/build-web.mjs --watch",
-    "electron:dev": "npm run build:web && electron .",
-    "dist:win": "npm run build:web && electron-builder --win --x64 --publish never",
-    "test:electron": "node --test tests/electron/smoke.mjs",
+    "build:electron": "node scripts/build-electron.mjs",
+    "electron:dev": "npm run build:web && npm run build:electron && electron .",
+    "dist:win": "npm run build:web && npm run build:electron && electron-builder --win --x64 --publish never",
+    "test:electron": "npm run build:web && npm run build:electron && node --test tests/electron/smoke.mjs",
     "assets:build": "node scripts/build-assets.mjs"
   },
   "engines": {

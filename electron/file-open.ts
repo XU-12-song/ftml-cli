@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { findConfigDir } from '../src/infra/paths.js';
+import type { FtmlProjectRoot, ResolvedOpenTarget } from '../src/types/electron/file-open.ts';
 
 /**
  * 判断目录是否像一个 ftml 项目：
@@ -17,7 +18,7 @@ import { findConfigDir } from '../src/infra/paths.js';
 const CONFIG_MARKERS = [ '.ftmlrc.json', 'ftml.config.json', '.ftmlrc', '.ftml' ];
 const PROJECT_DIRS = [ 'templates', 'components' ];
 
-export function looksLikeFtmlProject(dir) {
+export function looksLikeFtmlProject(dir: string): boolean {
   if (CONFIG_MARKERS.some((name) => fs.existsSync(path.join(dir, name)))) return true;
   return PROJECT_DIRS.every((name) => fs.existsSync(path.join(dir, name)));
 }
@@ -26,7 +27,7 @@ export function looksLikeFtmlProject(dir) {
  * 从文件所在目录向上寻找项目根（最多 4 层）。
  * 命中配置/项目标记返回该目录；否则回退文件父目录并标记为非项目。
  */
-export function findFtmlProjectRoot(start) {
+export function findFtmlProjectRoot(start: string): FtmlProjectRoot {
   const config = findConfigDir(start);
   if (config) return { root: config, isProject: true };
 
@@ -41,7 +42,7 @@ export function findFtmlProjectRoot(start) {
 }
 
 /** 从 Electron/命令行 argv 中找出第一个存在的 .ftml 文件（绝对路径） */
-export function findFtmlFileArg(argv = []) {
+export function findFtmlFileArg(argv: readonly string[] = []): string | null {
   for (const arg of argv) {
     if (typeof arg !== 'string' || !arg || arg.startsWith('-')) continue;
     if (!/\.ftml$/i.test(arg)) continue;
@@ -61,7 +62,7 @@ export function findFtmlFileArg(argv = []) {
  * isProject=false 表示只是松散文件，Electron 会在注册前询问用户。
  * 越界（理论上不会）或文件不可读时返回 null。
  */
-export function resolveOpenTarget(filePath) {
+export function resolveOpenTarget(filePath: string | null | undefined): ResolvedOpenTarget | null {
   if (!filePath) return null;
   let abs;
   try {

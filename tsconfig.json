@@ -8,7 +8,7 @@
 "verbatimModuleSyntax": true,
   "erasableSyntaxOnly": true,
     "allowJs": true,
-    "checkJs": true,
+    "checkJs": false,
     "noEmit": true,
     "noFallthroughCasesInSwitch": true,
     "strict": false,
@@ -22,15 +22,18 @@
     "rewriteRelativeImportExtensions": true
   },
   "include": [
-    "src/**/*.js",
-    "src/**/*.cjs",
+    "src/**/*.ts",
+    "src/web/public/**/*.js",
     "electron/**/*.js",
+    "electron/**/*.ts",
     "electron/**/*.cjs",
     "scripts/**/*.mjs"
-, "src/**/*.ts"  ],
+  ],
   "exclude": [
     "node_modules",
+    "build",
     "release",
-    "src/web/public/**"
+    "src/web/public/dist/**",
+    "src/web/public/vendor/**"
   ]
 }

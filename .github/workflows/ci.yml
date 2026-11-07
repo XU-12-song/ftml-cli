@@ -26,10 +26,13 @@ jobs:
 
       - run: npm ci
 
-      # JSDoc 类型检查（无构建步骤，见 tsconfig.json）
+      # 源码已是 TS，类型检查不产出文件（见 tsconfig.json）
       - run: npm run typecheck
 
       - run: npm test
 
       # 确保前端打包脚本可用（产物 dist/ 不入库）
       - run: npm run build:web
+
+      # 确保 TS 能编译成可打包的 JS（发布流程依赖这一步）
+      - run: npm run build:electron

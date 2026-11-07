@@ -7,6 +7,7 @@ THIRD-PARTY-LICENSE-REVIEW.md
 
 # 构建产物
 dist/
+build/
 
 # electron-builder 产物 / 测试截图
 release/

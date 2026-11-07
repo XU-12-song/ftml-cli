@@ -1,5 +1,5 @@
 /**
- * window-state.js — 窗口位置/大小持久化（不依赖 Electron，可单测）
+ * window-state.ts — 窗口位置/大小持久化（不依赖 Electron，可单测）
  *
  * 文件存放在 ~/.ftml-cli/window-state.json。读取时做可见性校验：
  * 保存的位置如果完全落在所有显示器之外（拔掉外接屏等），回退为居中默认尺寸。
@@ -7,31 +7,29 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import type {
+  DisplayLike,
+  Rectangle,
+  TrackableWindow,
+  TrackWindowStateOptions,
+  WindowState,
+} from '../src/types/electron/window-state.ts';
 
-export const DEFAULT_BOUNDS = { width: 1280, height: 860 };
+export const DEFAULT_BOUNDS: { width: number; height: number } = { width: 1280, height: 860 };
 
-function intersects(a, b) {
+function intersects(a: { x?: number; y?: number; width: number; height: number }, b: Rectangle): boolean {
   return a.x < b.x + b.width
     && a.x + a.width > b.x
     && a.y < b.y + b.height
     && a.y + a.height > b.y;
 }
 
-function visibleOnDisplays(bounds, displays) {
+function visibleOnDisplays(bounds: WindowState, displays: DisplayLike[]): boolean {
   if (!Array.isArray(displays) || displays.length === 0) return true;
   return displays.some((d) => intersects(bounds, d.workArea ?? d.bounds));
 }
 
-/**
- * @typedef {{ x?: number, y?: number, width: number, height: number, maximized?: boolean }} WindowState
- */
-
-/**
- * @param {string} filePath
- * @param {Array} [displays]
- * @returns {WindowState}
- */
-export function loadWindowState(filePath, displays = []) {
+export function loadWindowState(filePath: string, displays: DisplayLike[] = []): WindowState {
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     const width = Number(raw.width);
@@ -51,8 +49,12 @@ export function loadWindowState(filePath, displays = []) {
 }
 
 /** 监听窗口移动/缩放并防抖写盘；关闭时同步写一次 */
-export function trackWindowState(win, filePath, { debounceMs = 300 } = {}) {
-  let timer = null;
+export function trackWindowState(
+  win: TrackableWindow,
+  filePath: string,
+  { debounceMs = 300 }: TrackWindowStateOptions = {},
+): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
 
   const save = () => {
     try {
@@ -67,7 +69,7 @@ export function trackWindowState(win, filePath, { debounceMs = 300 } = {}) {
   };
 
   const debounced = () => {
-    clearTimeout(timer);
+    if (timer !== null) clearTimeout(timer);
     timer = setTimeout(save, debounceMs);
   };
 

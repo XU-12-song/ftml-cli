@@ -10,8 +10,7 @@ files:
   - package.json
   - LICENSE.md
   - THIRD-PARTY-LICENSE.md
-  - electron/**/*
-  - src/**/*
+  - build/**/*
   - templates/**/*
   - assets/icons/**/*
   - "!**/*.swp"
