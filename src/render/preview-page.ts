@@ -19,12 +19,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { THEME_SOURCES } from './theme.js';
+import type { PreviewDocumentOptions } from '../types/render/preview.ts';
 
 
-let runtimeSourceCache = null;
+let runtimeSourceCache: string | null = null;
 
 /** @wdprlib/runtime 的源码（node_modules 里读一次，模块级缓存） */
-function runtimeSource() {
+function runtimeSource(): string {
   if (runtimeSourceCache == null) {
     const url = import.meta.resolve('@wdprlib/runtime');
     runtimeSourceCache = readFileSync(fileURLToPath(url), 'utf8');
@@ -51,7 +52,13 @@ function runtimeSource() {
 /**
  * 构建预览文档 – 使用 Wikidot 沙盒站模板
  */
-export function buildPreviewDocument({ html,htmlBlocks=[], styles = [], title = 'ftml preview', themeCss = '' }) {
+export function buildPreviewDocument({
+  html,
+  htmlBlocks = [],
+  styles = [],
+  title = 'ftml preview',
+  themeCss = '',
+}: PreviewDocumentOptions): string {
   const styleCss = styles.join('\n');
   // 主题：优先内联本地缓存（同步、离线可用），拿不到才退回远程 @import。
   // 内联的 CSS 里若有 </style 会提前闭合标签，按脚本内联同样手法打散。

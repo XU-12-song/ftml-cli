@@ -1,29 +1,46 @@
 /**
- * module-placeholders.js — 快速预览用的合成 module 数据
+ * placeholders.ts — 快速预览用的合成 module 数据
  *
  * 预览追求快：不联网、不读盘，直接用设置里的样本值生成 ListPages /
  * ListUsers / TagCloud / Rate 的占位数据，让排版接近线上。
  *
  * 这里返回的函数与 @wdprlib/parser 的 dataProvider hook 签名一致，
- * 由 module-data.js 统一按模式挑选。
+ * 由 module/data.ts 统一按模式挑选。
  */
 
-import { DEFAULT_MODULE_PLACEHOLDERS } from '../domain/settings.js';
+import { DEFAULT_MODULE_PLACEHOLDERS } from '../../domain/settings.js';
+import type {
+  ListPagesDataRequirement,
+  ListPagesExternalData,
+  ListUsersDataRequirement,
+  ListUsersExternalData,
+  NormalizedListPagesQuery,
+  PageData,
+  TagCloudDataRequirement,
+  TagCloudExternalData,
+  UserInfo,
+} from '@wdprlib/parser';
+import type { RatingRef, RatingState, RatingVote } from '@wdprlib/ast';
+import type {
+  PlaceholderContext,
+  PlaceholderFetcherOptions,
+  PlaceholderFetchers,
+} from '../../types/render/module.ts';
 
 /** 模板里的 {n} 替换为行号（从 1 开始） */
-function withIndex(template, n) {
+function withIndex(template: string, n: number): string {
   return String(template ?? '').replaceAll('{n}', String(n));
 }
 
 /** 标签串 → 数组（逗号 / 空白都算分隔） */
-function splitTags(raw) {
+function splitTags(raw: string): string[] {
   return String(raw ?? '')
     .split(/[,，\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-function placeholderSite(page) {
+function placeholderSite(page: PlaceholderContext['page']) {
   const name = page?.site || 'preview';
   return {
     title: name === 'preview' ? '预览站点' : name,
@@ -32,26 +49,22 @@ function placeholderSite(page) {
   };
 }
 
-function placeholderUser(n, titles = false) {
+function placeholderUser(n: number, titles = false): UserInfo {
   return titles
     ? { id: 1000 + n, name: withIndex('示例用户 {n}', n), unixName: `example-user-${n}` }
     : { id: 1000 + n, name: `example-user-${n}`, unixName: `example-user-${n}` };
 }
 
-/**
- * 生成 ListPages 占位数据。
- * @param {object} query NormalizedListPagesQuery
- * @param {object} opts
- */
-function buildListPages(query, opts) {
+/** 生成 ListPages 占位数据 */
+function buildListPages(query: NormalizedListPagesQuery, opts: PlaceholderContext): ListPagesExternalData {
   const cfg = opts.placeholders.listPages;
-  const cap = opts.caps.listPagesMaxRows;
+  const cap = opts.caps?.listPagesMaxRows ?? Infinity;
   const limit = Number.isFinite(query?.limit) ? query.limit : cap;
   const count = Math.max(0, Math.min(cfg.count, limit, cap));
   const site = placeholderSite(opts.page);
   const date = new Date(cfg.date);
 
-  const pages = [];
+  const pages: PageData[] = [];
   for (let i = 1; i <= count; i++) {
     const text = cfg.text;
     const name = `placeholder-${i}`;
@@ -99,7 +112,7 @@ function buildListPages(query, opts) {
   };
 }
 
-function buildListUsers(requirement, opts) {
+function buildListUsers(requirement: ListUsersDataRequirement, opts: PlaceholderContext): ListUsersExternalData {
   const cfg = opts.placeholders.listUsers;
   const n = (Number(requirement?.id) || 0) + 1;
   return {
@@ -112,18 +125,18 @@ function buildListUsers(requirement, opts) {
 }
 
 /** Wikidot 的 category 归一化：小写、空白/下划线转连字符 */
-export function toUnixCategory(value) {
+export function toUnixCategory(value: unknown): string {
   return String(value ?? '')
     .trim()
     .toLowerCase()
     .replace(/[\s_]+/g, '-');
 }
 
-function buildTagCloud(requirement, opts) {
+function buildTagCloud(requirement: TagCloudDataRequirement, opts: PlaceholderContext): TagCloudExternalData {
   const cfg = opts.placeholders.tagCloud;
   const limit = Math.min(
     Number.isFinite(requirement?.limit) ? requirement.limit : cfg.count,
-    opts.caps.tagCloudMaxTags
+    opts.caps?.tagCloudMaxTags ?? Infinity
   );
   const count = Math.max(0, Math.min(cfg.count, limit));
   if (count === 0) return { status: 'ok', tags: [], category: null };
@@ -145,15 +158,16 @@ function buildTagCloud(requirement, opts) {
   };
 }
 
-function buildRatings(refs, opts) {
+function buildRatings(refs: readonly RatingRef[], opts: PlaceholderContext): RatingState[] {
   const cfg = opts.placeholders.rate;
   const percent = cfg.votes > 0
     ? Math.min(100, Math.max(0, Math.round(((cfg.score + cfg.votes) / (2 * cfg.votes)) * 100)))
     : 0;
+  const allowedVotes: RatingVote[] = [1, -1];
   return refs.map((ref) => ({
     ref,
     label: ref.kind === 'custom' ? ref.axisKey : '评分',
-    allowedVotes: [1, -1],
+    allowedVotes,
     canVote: false,
     canCancel: false,
     currentVote: null,
@@ -161,13 +175,10 @@ function buildRatings(refs, opts) {
   }));
 }
 
-/**
- * 构造占位 dataProvider。
- * @param {{ placeholders?: object, page?: object, caps?: object }} opts
- */
-export function buildPlaceholderFetchers(opts = {}) {
+/** 构造占位 dataProvider */
+export function buildPlaceholderFetchers(opts: PlaceholderFetcherOptions = {}): PlaceholderFetchers {
   const placeholders = opts.placeholders ?? DEFAULT_MODULE_PLACEHOLDERS;
-  const ctx = { placeholders, page: opts.page, caps: opts.caps };
+  const ctx: PlaceholderContext = { placeholders, page: opts.page, caps: opts.caps };
   return {
     fetchListPages: async (query) => buildListPages(query, ctx),
     fetchListUsers: async (requirement) => buildListUsers(requirement, ctx),
@@ -180,7 +191,7 @@ export function buildPlaceholderFetchers(opts = {}) {
  * ListUsers 在 Wikidot 里只返回当前登录用户一行；占位模式想看多行布局时，
  * 把模块块复制 N 份（仅预览、仅当 count > 1）。
  */
-export function applyListUsersRepeat(source, count) {
+export function applyListUsersRepeat(source: string, count?: number): string {
   if (!Number.isFinite(count) || count <= 1) return source;
   const re = /\[\[\s*module\s+listusers\b[^\]]*\]\][\s\S]*?\[\[\s*\/\s*module\s*\]\]/gi;
   return String(source).replace(re, (block) => Array.from({ length: count }, () => block).join('\n'));

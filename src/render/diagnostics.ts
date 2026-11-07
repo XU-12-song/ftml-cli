@@ -12,7 +12,10 @@
  * 若 wdpr 给出了 relatedPosition（如未闭合块的开标签位置），一并标出。
  */
 
-const SEVERITY = {
+import type { Position } from '@wdprlib/parser';
+import type { DiagnosticFormatOptions, RenderDiagnostic } from '../types/render/diagnostics.ts';
+
+const SEVERITY: Record<string, { label: string; mark: string }> = {
   error: { label: '错误', mark: '✖' },
   warning: { label: '警告', mark: '⚠' },
   info: { label: '提示', mark: 'ℹ' },
@@ -21,29 +24,33 @@ const SEVERITY = {
 /** 单行显示长度上限，超出右侧截断，避免超长行淹没终端 */
 const MAX_LINE = 200;
 
-function splitLines(source) {
+function splitLines(source: string): string[] {
   return String(source ?? '').split(/\r\n|\r|\n/);
 }
 
-function severityOf(d) {
-  return SEVERITY[d?.severity] ?? SEVERITY.warning;
+function severityOf(d: RenderDiagnostic | null | undefined): { label: string; mark: string } {
+  return (d && SEVERITY[d.severity]) || SEVERITY.warning;
 }
 
-function locLabel(file, point) {
+function locLabel(file: string, point: Position['start'] | null | undefined): string {
   if (!point || !Number.isFinite(point.line)) return file || '(未知位置)';
   const prefix = file ? `${file}:` : '';
   return `${prefix}${point.line}:${point.column ?? 1}`;
 }
 
 /** 渲染一段源码片段 + 插入符下划线；pos 缺失返回 null */
-function excerpt(srcLines, pos, gutterWidth) {
+function excerpt(
+  srcLines: string[],
+  pos: Position | null | undefined,
+  gutterWidth: number
+): string | null {
   const start = pos?.start;
   if (!start || !Number.isFinite(start.line)) return null;
   const raw = srcLines[start.line - 1] ?? '';
   const startCol = Math.max(1, start.column ?? 1);
 
-  let underline;
-  const end = pos.end;
+  let underline: number;
+  const end = pos?.end;
   if (end && end.line === start.line) {
     underline = Math.max(1, (end.column ?? startCol + 1) - startCol);
   } else if (end && Number.isFinite(end.line)) {
@@ -65,12 +72,15 @@ function excerpt(srcLines, pos, gutterWidth) {
 /**
  * 格式化单条 wdpr 诊断。
  *
- * @param {object} d `@wdprlib` Diagnostic
- * @param {string} source 诊断位置所指的源码（与 position 同一坐标系）
- * @param {{ file?: string }} [opts] 位置前缀显示的文件名
- * @returns {string}
+ * @param d `@wdprlib` Diagnostic
+ * @param source 诊断位置所指的源码（与 position 同一坐标系）
+ * @param opts 位置前缀显示的文件名
  */
-export function formatDiagnostic(d, source, { file = '' } = {}) {
+export function formatDiagnostic(
+  d: RenderDiagnostic,
+  source: string,
+  { file = '' }: DiagnosticFormatOptions = {}
+): string {
   const srcLines = splitLines(source);
   const sev = severityOf(d);
   const header = `${sev.mark} ${sev.label} ${locLabel(file, d.position?.start)} (${d.code})`;
@@ -94,12 +104,16 @@ export function formatDiagnostic(d, source, { file = '' } = {}) {
 /**
  * 格式化一组 wdpr 诊断，供 CLI 输出。
  *
- * @param {Array<object>} diagnostics `@wdprlib` Diagnostic[]
- * @param {string} source 源码（与诊断位置同一坐标系）
- * @param {{ file?: string }} [opts]
- * @returns {string} 无诊断时返回空串
+ * @param diagnostics `@wdprlib` Diagnostic[]
+ * @param source 源码（与诊断位置同一坐标系）
+ * @param opts
+ * @returns 无诊断时返回空串
  */
-export function formatDiagnostics(diagnostics, source, opts = {}) {
+export function formatDiagnostics(
+  diagnostics: readonly RenderDiagnostic[] | null | undefined,
+  source: string,
+  opts: DiagnosticFormatOptions = {}
+): string {
   if (!diagnostics || diagnostics.length === 0) return '';
   return diagnostics.map((d) => formatDiagnostic(d, source, opts)).join('\n\n');
 }

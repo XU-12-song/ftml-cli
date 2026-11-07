@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_MODULE_CAPS } from '../src/render/module-caps.js';
+import { DEFAULT_MODULE_CAPS } from '../src/render/module/caps.js';
 import {
   buildPlaceholderFetchers,
   applyListUsersRepeat,
-} from '../src/render/module-placeholders.js';
-import { createModuleDataProvider } from '../src/render/module-data.js';
-import { toSearchPagesParams, parseTagAnchors } from '../src/render/module-resolve.js';
+} from '../src/render/module/placeholders.js';
+import { createModuleDataProvider } from '../src/render/module/data.js';
+import { toSearchPagesParams, parseTagAnchors } from '../src/render/module/resolve.js';
 import { DEFAULT_MODULE_PLACEHOLDERS } from '../src/domain/settings.js';
 
 const page = { fullName: 'scp-173', unixName: 'scp-173', site: 'scp-wiki' };

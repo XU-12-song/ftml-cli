@@ -15,6 +15,7 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { FormattedFrame, StackMapOptions, StackMapResult } from '../types/render/stack.ts';
 
 /** `    at fn (path:line:col)` / `    at path:line:col` */
 const FRAME_RE = /^\s*at\s+(?:(.+?)\s+\()?(.*?):(\d+):(\d+)\)?\s*$/;
@@ -25,13 +26,24 @@ const BUNDLED_RE = /^(.*?[\\/])?@wdprlib[\\/]([^\\/]+)[\\/]dist[\\/]([^\\/]+\.js
 /** section 标记行：`// packages/<pkg>/src/....ts` */
 const MARKER_RE = /^\/\/\s+(packages\/(.+?)\.(?:ts|js|mts|cts))\s*$/;
 
-/** dist 路径 → 已排序的 section 表 [{line, src}]，进程内缓存 */
-const markerCache = new Map();
+interface Section {
+  line: number;
+  src: string;
+}
+
+interface LocatedSection {
+  src: string;
+  offset: number;
+  sectionStart: number;
+}
+
+/** dist 路径 → 已排序的 section 表，进程内缓存 */
+const markerCache = new Map<string, Section[]>();
 
 /** 读取 dist 文件建立 section 表；文件读不到返回空数组（降级为不映射） */
-function markersFor(distPath) {
-  if (markerCache.has(distPath)) return markerCache.get(distPath);
-  let table = [];
+function markersFor(distPath: string): Section[] {
+  if (markerCache.has(distPath)) return markerCache.get(distPath)!;
+  let table: Section[] = [];
   try {
     const lines = readFileSync(distPath, 'utf8').split('\n');
     for (let i = 0; i < lines.length; i++) {
@@ -46,7 +58,7 @@ function markersFor(distPath) {
 }
 
 /** 找最后一个 line <= target 的 section；没有则返回 null */
-function sectionFor(distPath, line) {
+function sectionFor(distPath: string, line: number): LocatedSection | null {
   const table = markersFor(distPath);
   if (table.length === 0) return null;
   let lo = 0;
@@ -62,21 +74,19 @@ function sectionFor(distPath, line) {
 }
 
 /** `packages/parser/src/x.ts` → `@wdprlib/parser/src/x.ts` */
-function displaySrc(src) {
+function displaySrc(src: string): string {
   return src.startsWith('packages/') ? '@wdprlib/' + src.slice('packages/'.length) : src;
 }
 
 /**
  * 美化一行堆栈帧。返回 { text, bundled }；不是帧则返回 null。
- * @param {string} line
- * @param {{ cwd?: string }} opts
  */
-function formatFrame(line, { cwd = process.cwd() } = {}) {
+function formatFrame(line: string, { cwd = process.cwd() }: StackMapOptions = {}): FormattedFrame | null {
   const m = FRAME_RE.exec(line);
   if (!m) return null;
   const [, fn, loc, lineNo, colNo] = m;
 
-  // node: 内部帧（eval/proc 等）——压缩成单行，不参与映射
+  // wdpr 打包产物帧——映射回源文件
   const bundled = BUNDLED_RE.exec(loc);
   if (bundled) {
     const distPath = loc;
@@ -99,13 +109,13 @@ function formatFrame(line, { cwd = process.cwd() } = {}) {
 
 /**
  * 美化整段堆栈。
- * @param {string} stack Error#stack
- * @param {{ cwd?: string, maxFrames?: number }} [opts]
- * @returns {{ text: string, hasBundled: boolean }}
  */
-export function mapStack(stack, { cwd = process.cwd(), maxFrames = 40 } = {}) {
+export function mapStack(
+  stack: string,
+  { cwd = process.cwd(), maxFrames = 40 }: StackMapOptions = {}
+): StackMapResult {
   const raw = String(stack ?? '').split('\n');
-  const out = [];
+  const out: string[] = [];
   let hasBundled = false;
   let frames = 0;
   for (const line of raw) {
@@ -125,6 +135,6 @@ export function mapStack(stack, { cwd = process.cwd(), maxFrames = 40 } = {}) {
 }
 
 /** 测试 / 诊断用：清空 dist section 缓存 */
-export function clearStackCache() {
+export function clearStackCache(): void {
   markerCache.clear();
 }

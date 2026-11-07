@@ -5,8 +5,10 @@
  * 使解析器在没有真实页面信息时也能渲染。
  */
 
-/** @param {{ site?: string, page?: string }} opts */
-export function buildPageContext({ site, page }) {
+import type { WikitextPageContext } from '@wdprlib/ast';
+import type { PageContextOptions } from '../types/render/context.ts';
+
+export function buildPageContext({ site, page }: PageContextOptions = {}): WikitextPageContext {
   const fullName = page || 'preview';
   const unixName = fullName.includes(':') ? fullName.slice(fullName.lastIndexOf(':') + 1) : fullName;
   return {

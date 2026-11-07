@@ -22,9 +22,19 @@ import { getSite, getPage, fetchPageSource } from '../infra/wikidot.js';
 import { readPageCache, writePageCache } from '../infra/cache.js';
 import { memoByFile } from '../infra/mtime-cache.js';
 import { resolveIncludeFile } from '../domain/include-resolve.js';
-import { DEFAULT_MODULE_CAPS } from './module-caps.js';
-import { applyListUsersRepeat } from './module-placeholders.js';
-import { createModuleDataProvider } from './module-data.js';
+import { DEFAULT_MODULE_CAPS } from './module/caps.js';
+import { applyListUsersRepeat } from './module/placeholders.js';
+import { createModuleDataProvider } from './module/data.js';
+import type { PageRef } from '@wdprlib/parser';
+import type {
+  FetchRemoteIncludeOptions,
+  IncludeResolutionEntry,
+  RemoteIncludeResult,
+  RenderPreviewOptions,
+  RenderPreviewResult,
+} from '../types/render/preview.ts';
+import type { RenderDiagnostic } from '../types/render/diagnostics.ts';
+import type { ModuleDataProvider } from '../types/render/module.ts';
 
 // 解析逻辑在 domain（发布路径也要用同一套规则），这里转出保持既有 import 路径可用。
 export { resolveIncludeFile };
@@ -33,7 +43,7 @@ export { resolveIncludeFile };
  * 页面名归一化（与 @wdprlib/render 的 normalizePageName 同口径）。
  * renderer 传给 resolvePageExistence 的目标已归一化，已知页面也要归一化后再比较。
  */
-function normalizePageName(page) {
+function normalizePageName(page: unknown): string {
   let name = Array.from(String(page ?? '').trim().replace(/^\//, '').normalize('NFKC'), (c) =>
     c.toLowerCase()
   ).join('').replace(/[^\p{L}\p{N}:_-]/gu, '-');
@@ -51,7 +61,10 @@ function normalizePageName(page) {
 }
 
 /** 只报一次的远程不可用警告（同一类原因不随 include 数量刷屏） */
-function pushWarningOnce(warnings, warning) {
+function pushWarningOnce(
+  warnings: RenderDiagnostic[],
+  warning: RenderDiagnostic
+): void {
   if (!warnings.some((w) => w.code === warning.code)) warnings.push(warning);
 }
 
@@ -64,9 +77,18 @@ const INDENTED_INCLUDE_RE = /^[ \t]+\[\[\s*include(?=\s|\]|$)/i;
  * 解析器根本不会调用 dataProvider——表现为「没报错、也没拉取」。这里显式告警，
  * 避免用户误以为是网络或缓存问题。跳过 [[code]] 块与 [!-- --] 注释。
  */
-export function findIndentedIncludes(source) {
-  const out = [];
+export function findIndentedIncludes(source: string): RenderDiagnostic[] {
+  const out: RenderDiagnostic[] = [];
   const lines = String(source ?? '').split(/\r\n|\r|\n/);
+  // 各行的绝对起始偏移（Position 需要 offset，前端据此跳转）
+  const starts: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    starts.push(cursor);
+    cursor += line.length;
+    if (source.startsWith('\r\n', cursor)) cursor += 2;
+    else if (source[cursor] === '\r' || source[cursor] === '\n') cursor += 1;
+  }
   let inCode = false;
   let inComment = false;
   for (let i = 0; i < lines.length; i++) {
@@ -84,13 +106,14 @@ export function findIndentedIncludes(source) {
     const m = visible.match(INDENTED_INCLUDE_RE);
     if (!m) continue;
     const column = m[0].indexOf('[[') + 1;
+    const startOffset = starts[i] + column - 1;
     out.push({
       severity: 'warning',
       code: 'include-indented',
       message: '[[include]] 必须从行首开始；前导空白会让 Wikidot 直接忽略该行',
       position: {
-        start: { line: i + 1, column },
-        end: { line: i + 1, column: column + 2 },
+        start: { line: i + 1, column, offset: startOffset },
+        end: { line: i + 1, column: column + 2, offset: startOffset + 2 },
       },
     });
   }
@@ -115,13 +138,16 @@ export function findIndentedIncludes(source) {
  * @param {Error|null} [opts.clientError] 客户端创建失败的原因（联网但未登录时用于诊断）
  * @returns {Promise<{ source: string|null, from: 'cache'|'remote'|'miss' }>}
  */
-async function fetchRemoteInclude(pageRef, {
-  page,
-  client,
-  warnings,
-  allowNetwork = true,
-  clientError = null,
-}) {
+async function fetchRemoteInclude(
+  pageRef: PageRef,
+  {
+    page,
+    client,
+    warnings,
+    allowNetwork = true,
+    clientError = null,
+  }: FetchRemoteIncludeOptions
+): Promise<RemoteIncludeResult> {
   const siteName = pageRef.site ?? page?.site;
   const label = pageRef.site ? `${pageRef.site}:${pageRef.page}` : pageRef.page;
   if (!siteName) {
@@ -170,7 +196,10 @@ async function fetchRemoteInclude(pageRef, {
       severity: 'warning',
       code: 'remote-include-failed',
       message: `远程拉取 [[include ${label}]] 失败: ${e.message}`,
-      position: { start: { line: 1, column: 1 }, end: { line: 1, column: 1 } },
+      position: {
+        start: { line: 1, column: 1, offset: 0 },
+        end: { line: 1, column: 1, offset: 0 },
+      },
     });
     return { source: null, from: 'miss' };
   }
@@ -195,7 +224,7 @@ async function fetchRemoteInclude(pageRef, {
  *   includes: 本次渲染解析的 [[include]] 列表 [{ site, page, from }]（from: local/cache/remote/miss）
  */
 export async function renderPreview(
-  ftml,
+  ftml: string,
   {
     page,
     styleMode = 'inline',
@@ -207,19 +236,19 @@ export async function renderPreview(
     moduleMode = 'placeholder',
     modulePlaceholders,
     moduleCaps = DEFAULT_MODULE_CAPS,
-  } = {}
-) {
+  }: RenderPreviewOptions = {}
+): Promise<RenderPreviewResult> {
   const settings = { ...createSettings('page'), allowStyleElements: true };
-  const remoteWarnings = [];
+  const remoteWarnings: RenderDiagnostic[] = [];
   const sourceWarnings = findIndentedIncludes(ftml);
-  const includes = [];
+  const includes: IncludeResolutionEntry[] = [];
 
   // ListUsers 在 Wikidot 里只有当前用户一行；占位模式允许复制块来观察多行布局。
   const source = moduleMode === 'placeholder'
     ? applyListUsersRepeat(ftml, modulePlaceholders?.listUsers?.count)
     : ftml;
 
-  const moduleData = createModuleDataProvider({
+  const moduleData: ModuleDataProvider = createModuleDataProvider({
     mode: moduleMode,
     placeholders: modulePlaceholders,
     page,
@@ -229,7 +258,7 @@ export async function renderPreview(
   });
 
   const includeFetcher = includeBaseDir || client
-    ? async (pageRef) => {
+    ? async (pageRef: PageRef) => {
         const label = { site: pageRef.site ?? page?.site ?? null, page: pageRef.page };
         // 1. 本地文件（基准目录内 .ftml）
         if (includeBaseDir) {

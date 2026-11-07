@@ -13,16 +13,28 @@
  */
 
 import path from 'node:path';
+import type { Position } from '@wdprlib/parser';
 import { FtmlError, positionRange } from '../core/errors.js';
 import { mapStack } from './stack.js';
+import type {
+  DiagnosticToProblemOptions,
+  ErrorToProblemOptions,
+  Problem,
+  ProblemCounts,
+  ProblemSeverity,
+} from '../types/render/problems.ts';
+import type { RenderDiagnostic } from '../types/render/diagnostics.ts';
 
 /** 归一 wdpr 的 severity：error 保持，其余一律 warning；info 保留为 info */
-function normSeverity(s) {
+function normSeverity(s: string | null | undefined): ProblemSeverity {
   return s === 'error' || s === 'info' ? s : 'warning';
 }
 
 /** 缺 offset 时用 line/column 在 source 上补一个，便于前端按偏移跳转 */
-function withOffset(pos, source) {
+function withOffset(
+  pos: Position | null | undefined,
+  source: string
+): Position | null {
   if (!pos?.start) return null;
   const start = { ...pos.start };
   if (!Number.isFinite(start.offset)) {
@@ -36,7 +48,7 @@ function withOffset(pos, source) {
 }
 
 /** line/column（1 起算）→ 绝对偏移；source 缺失或行号非法时回退 0 */
-function lineColumnToOffset(source, line, column) {
+function lineColumnToOffset(source: string, line: number, column: number): number {
   if (!source) return 0;
   let off = 0;
   for (let l = 1; l < (line ?? 1); l++) {
@@ -49,11 +61,14 @@ function lineColumnToOffset(source, line, column) {
 
 /**
  * @wdprlib Diagnostic → problem。
- * @param {object} d
- * @param {string} source 诊断坐标所属源码（此处为展开后的文本）
- * @param {{ file?: string|null }} [opts]
+ * @param d
+ * @param source 诊断坐标所属源码（此处为展开后的文本）
  */
-export function diagnosticToProblem(d, source, { file = null } = {}) {
+export function diagnosticToProblem(
+  d: RenderDiagnostic | null | undefined,
+  source: string,
+  { file = null }: DiagnosticToProblemOptions = {}
+): Problem | null {
   if (!d) return null;
   const position = withOffset(d.position, source);
   return {
@@ -71,11 +86,11 @@ export function diagnosticToProblem(d, source, { file = null } = {}) {
 /**
  * 异常 → problem。FtmlError 的 offset 只在「错误就发生在当前源文件」时才换算位置，
  * 组件文件的偏移与调用方源码坐标系不同，只报文件名不报偏移（避免跳错）。
- *
- * @param {Error} err
- * @param {{ source?: string, file?: string|null, cwd?: string }} [opts]
  */
-export function errorToProblem(err, { source = '', file = null, cwd = process.cwd() } = {}) {
+export function errorToProblem(
+  err: Error,
+  { source = '', file = null, cwd = process.cwd() }: ErrorToProblemOptions = {}
+): Problem {
   const fe = err instanceof FtmlError ? err : null;
   let loc = fe?.file ?? file;
   if (loc && path.isAbsolute(loc)) {
@@ -84,9 +99,9 @@ export function errorToProblem(err, { source = '', file = null, cwd = process.cw
   }
 
   const sameFile = !fe?.file || fe.file === file || (loc != null && loc === file);
-  let position = null;
+  let position: Position | null = null;
   if (sameFile && Number.isFinite(fe?.offset) && source) {
-    position = positionRange(source, fe.offset, fe.offset + 2);
+    position = positionRange(source, fe!.offset!, fe!.offset! + 2);
   }
 
   const { text, hasBundled } = mapStack(err?.stack ?? String(err), { cwd });
@@ -103,16 +118,17 @@ export function errorToProblem(err, { source = '', file = null, cwd = process.cw
 
 /**
  * 合并 + 排序（有位置的按 offset 升序，无位置的排后面）。
- * @param {Array} problems
  */
-export function sortProblems(problems) {
+export function sortProblems(
+  problems: ReadonlyArray<Problem | null | undefined>
+): Problem[] {
   return problems
-    .filter(Boolean)
+    .filter((p): p is Problem => Boolean(p))
     .slice()
     .sort((a, b) => {
       const ao = a.position?.start?.offset;
       const bo = b.position?.start?.offset;
-      if (Number.isFinite(ao) && Number.isFinite(bo)) return ao - bo;
+      if (Number.isFinite(ao) && Number.isFinite(bo)) return ao! - bo!;
       if (Number.isFinite(ao)) return -1;
       if (Number.isFinite(bo)) return 1;
       return 0;
@@ -120,8 +136,8 @@ export function sortProblems(problems) {
 }
 
 /** 统计各严重度数量 */
-export function countProblems(problems) {
-  const counts = { error: 0, warning: 0, info: 0 };
+export function countProblems(problems: ReadonlyArray<Problem>): ProblemCounts {
+  const counts: ProblemCounts = { error: 0, warning: 0, info: 0 };
   for (const p of problems) counts[normSeverity(p.severity)] += 1;
   return counts;
 }

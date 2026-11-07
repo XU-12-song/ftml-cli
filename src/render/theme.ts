@@ -25,6 +25,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { homeCacheDir } from '../infra/paths.js';
+import type {
+  FetchLike,
+  ThemeCssOptions,
+  ThemeCssResult,
+  ThemeRefreshOptions,
+  ThemeRefreshResult,
+} from '../types/render/theme.ts';
 
 /** 预览文档依赖的两份主题样式表（base 主题 + 沙盒主题） */
 export const THEME_SOURCES = [
@@ -37,13 +44,19 @@ const TTL_MS = 24 * 60 * 60 * 1000;
 /** 单次抓取超时：刷新失败就沿用旧缓存，不能让启动/预览卡住 */
 const FETCH_TIMEOUT_MS = 8000;
 
+interface ThemeCacheEntry {
+  url?: string;
+  fetchedAt: number;
+  css: string;
+}
+
 /** 主题缓存目录：~/.ftml-cli/cache/theme */
-export function themeCacheDir() {
+export function themeCacheDir(): string {
   return path.join(homeCacheDir(), 'theme');
 }
 
 /** URL → 缓存文件（内容 JSON: { url, fetchedAt, css }） */
-function cachePathFor(url) {
+function cachePathFor(url: string): string {
   const hash = crypto.createHash('sha1').update(url).digest('hex').slice(0, 16);
   return path.join(themeCacheDir(), `${hash}.json`);
 }
@@ -52,7 +65,7 @@ function cachePathFor(url) {
 const ABSOLUTE_REF = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 
 /** 把相对 url(...) 重写为绝对地址（内联后基准会变成预览文档） */
-export function absolutizeUrls(css, baseUrl) {
+export function absolutizeUrls(css: string, baseUrl: string): string {
   return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (whole, _q, ref) => {
     if (ABSOLUTE_REF.test(ref)) return whole;
     try {
@@ -64,7 +77,7 @@ export function absolutizeUrls(css, baseUrl) {
 }
 
 /** 读缓存条目；不存在/损坏返回 null */
-function readEntry(url) {
+function readEntry(url: string): ThemeCacheEntry | null {
   try {
     const raw = JSON.parse(fs.readFileSync(cachePathFor(url), 'utf8'));
     return raw && typeof raw.css === 'string' ? raw : null;
@@ -74,33 +87,34 @@ function readEntry(url) {
 }
 
 /** 写缓存条目（失败不影响本次使用） */
-function writeEntry(url, css) {
+function writeEntry(url: string, css: string): void {
   const p = cachePathFor(url);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify({ url, fetchedAt: Date.now(), css }), 'utf8');
 }
 
 /** 是否仍在 TTL 内 */
-function isFresh(entry, now = Date.now()) {
-  return Boolean(entry) && now - entry.fetchedAt < TTL_MS;
+function isFresh(entry: ThemeCacheEntry | null, now = Date.now()): boolean {
+  return Boolean(entry) && now - entry!.fetchedAt < TTL_MS;
 }
 
 /**
  * 同步读取主题 CSS，只走磁盘缓存（新鲜优先，过期也用），**不联网**。
  * 供渲染热路径使用：拿到什么就渲染什么，不引入等待。
  *
- * @param {object} [opts]
- * @param {string[]} [opts.sources]
- * @param {boolean} [opts.requireFresh] true 时过期缓存视为未命中
- * @returns {{ css: string, missing: string[] }} css 为空串表示缓存不全，调用方应退回 `@import`
+ * @param opts
+ * @returns css 为空串表示缓存不全，调用方应退回 `@import`
  */
-export function readThemeCss({ sources = THEME_SOURCES, requireFresh = false } = {}) {
-  const parts = [];
-  const missing = [];
+export function readThemeCss({
+  sources = THEME_SOURCES,
+  requireFresh = false,
+}: ThemeCssOptions = {}): ThemeCssResult {
+  const parts: string[] = [];
+  const missing: string[] = [];
   for (const url of sources) {
     const entry = readEntry(url);
     const usable = requireFresh ? isFresh(entry) : Boolean(entry);
-    if (!usable) {
+    if (!usable || !entry) {
       missing.push(url);
       continue;
     }
@@ -116,6 +130,12 @@ const IMPORT_RE = /@import\s+(?:url\(\s*(['"]?)([^'")]+)\1\s*\)|(['"])([^'"]+)\3
 /** `@import` 递归展开的最大深度：既防环，也防病态嵌套 */
 const MAX_IMPORT_DEPTH = 4;
 
+interface ImportTask {
+  index: number;
+  ref: string;
+  media: string;
+}
+
 /**
  * 把样式表里的 `@import` 递归取回并**就地展开**为实际规则。
  *
@@ -127,13 +147,19 @@ const MAX_IMPORT_DEPTH = 4;
  * 单条取回失败不拖垮整份主题：该条置空（等价于原本就加载不到），其余照常内联。
  * 已出现过的地址会被跳过（去重 + 防循环引用）。
  */
-async function resolveImports(css, baseUrl, fetchImpl, seen, depth = 0) {
+async function resolveImports(
+  css: string,
+  baseUrl: string,
+  fetchImpl: FetchLike,
+  seen: Set<string>,
+  depth = 0
+): Promise<string> {
   if (depth >= MAX_IMPORT_DEPTH) return css;
-  const parts = [];
-  const tasks = [];
+  const parts: string[] = [];
+  const tasks: ImportTask[] = [];
   let last = 0;
   IMPORT_RE.lastIndex = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = IMPORT_RE.exec(css)) !== null) {
     parts.push(css.slice(last, m.index));
     last = m.index + m[0].length;
@@ -145,7 +171,7 @@ async function resolveImports(css, baseUrl, fetchImpl, seen, depth = 0) {
 
   await Promise.all(
     tasks.map(async (t) => {
-      let abs = null;
+      let abs: string | null = null;
       try {
         abs = ABSOLUTE_REF.test(t.ref) ? t.ref : new URL(t.ref, baseUrl).href;
       } catch {
@@ -170,7 +196,11 @@ async function resolveImports(css, baseUrl, fetchImpl, seen, depth = 0) {
 }
 
 /** 抓一份样式表并展开其中的 `@import`；成功写缓存（存的是展开后的 CSS）并返回 */
-async function fetchOne(url, fetchImpl, seen = new Set()) {
+async function fetchOne(
+  url: string,
+  fetchImpl: FetchLike,
+  seen: Set<string> = new Set()
+): Promise<string> {
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const raw = await res.text();
@@ -184,15 +214,13 @@ async function fetchOne(url, fetchImpl, seen = new Set()) {
 /**
  * 联网刷新主题缓存（并发抓取），随后按 readThemeCss 的规则返回可用 CSS。
  * 单份失败只记入 errors，不影响另一份；拿不到就用过期缓存/退回 `@import`。
- *
- * @param {object} [opts]
- * @param {string[]} [opts.sources]
- * @param {Function} [opts.fetchImpl] 便于测试注入
- * @returns {Promise<{ css: string, fetched: string[], errors: Array<{url,message}> }>}
  */
-export async function refreshThemeCss({ sources = THEME_SOURCES, fetchImpl = globalThis.fetch } = {}) {
-  const fetched = [];
-  const errors = [];
+export async function refreshThemeCss({
+  sources = THEME_SOURCES,
+  fetchImpl = globalThis.fetch,
+}: ThemeRefreshOptions = {}): Promise<ThemeRefreshResult> {
+  const fetched: string[] = [];
+  const errors: ThemeRefreshResult['errors'] = [];
   // 两份主题 + 各自的 @import 共用一个 seen：同一地址只取一次，也防顶部样式表被嵌套重复拉取
   const seen = new Set(sources);
   await Promise.all(
@@ -201,7 +229,7 @@ export async function refreshThemeCss({ sources = THEME_SOURCES, fetchImpl = glo
         await fetchOne(url, fetchImpl, seen);
         fetched.push(url);
       } catch (e) {
-        errors.push({ url, message: e?.message ?? String(e) });
+        errors.push({ url, message: (e as Error)?.message ?? String(e) });
       }
     })
   );

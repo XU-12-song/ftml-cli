@@ -1,40 +1,79 @@
 /**
- * module-resolve.js — 一次性真实解析 module（联网）
+ * resolve.ts — 一次性真实解析 module（联网）
  *
  * 只在用户从命令面板显式触发时使用。每个 fetcher 都按 @wdprlib/parser 的
- * dataProvider 签名返回数据；失败由 module-data.js 捕获并回退占位。
+ * dataProvider 签名返回数据；失败由 module/data.ts 捕获并回退占位。
  *
  * 覆盖 wdpr 暴露 hook 的模块：ListPages / ListUsers / TagCloud / Rate。
  * Backlinks / Categories / PageTree 没有 hook，不在这里处理。
  */
 
-import {
-  SearchPagesQuery,
-  PageCollection,
+import { SearchPagesQuery, PageCollection } from '@ukwhatn/wikidot';
+import type {
+  AbstractUser,
+  Page,
+  SearchPagesQueryParams,
+  Site,
+  WikidotResult,
 } from '@ukwhatn/wikidot';
 import { parse } from '@wdprlib/parser';
+import type {
+  ListPagesDataRequirement,
+  ListPagesExternalData,
+  ListUsersDataRequirement,
+  ListUsersExternalData,
+  NormalizedCategory,
+  NormalizedDateSelector,
+  NormalizedListPagesQuery,
+  NormalizedNumericSelector,
+  NormalizedParent,
+  NormalizedTags,
+  PageData,
+  TagCloudDataRequirement,
+  TagCloudExternalData,
+  TagCloudTagData,
+  ProcessWikitextCallbackContext,
+  UserInfo,
+} from '@wdprlib/parser';
 import { extractReadableText, extractFirstParagraph, countCharacters } from '@wdprlib/ast';
-import { getSite, getPage } from '../infra/wikidot.js';
-import { dirtToIdeal } from '../compat/index.js';
+import type {
+  RatingRef,
+  RatingState,
+  RatingVote,
+  WikitextPageContext,
+} from '@wdprlib/ast';
+import { getSite, getPage } from '../../infra/wikidot.js';
+import { dirtToIdeal } from '../../compat/index.js';
+import type { ModuleCaps, RealFetchOptions, ModuleWarning } from '../../types/render/module.ts';
+
+type RenderCtx = ProcessWikitextCallbackContext<WikitextPageContext>;
+
+/** 真实解析过程中在 Page 上挂的正文缓存字段 */
+type PreviewablePage = Page & {
+  _previewText?: string;
+  _readableText?: string;
+  _firstParagraph?: string;
+  _charCount?: number;
+};
 
 /** WikidotResult → 值；失败抛错（由 module-data 捕获） */
-function unwrap(result, what) {
+function unwrap<T>(result: WikidotResult<T>, what: string): T {
   if (!result.isOk()) throw new Error(`${what}失败: ${result.error}`);
   return result.value;
 }
 
-function userInfo(user) {
+function userInfo(user: AbstractUser | null | undefined): UserInfo | undefined {
   if (!user) return undefined;
   return { id: user.id ?? 0, name: user.name ?? '', unixName: user.unixName ?? user.name ?? '' };
 }
 
-function currentCategory(page) {
+function currentCategory(page: WikitextPageContext | undefined): string {
   const full = String(page?.fullName ?? '');
   const i = full.lastIndexOf(':');
   return i === -1 ? '_default' : full.slice(0, i);
 }
 
-function dateSelector(v) {
+function dateSelector(v: NormalizedDateSelector | undefined): string | undefined {
   if (!v) return undefined;
   switch (v.type) {
     case 'year':
@@ -50,14 +89,17 @@ function dateSelector(v) {
   }
 }
 
-function numericSelector(v) {
+function numericSelector(v: NormalizedNumericSelector | undefined): string | undefined {
   if (!v) return undefined;
   return v.op === '=' ? String(v.value) : `${v.op}${v.value}`;
 }
 
-function categorySelector(cat, page) {
+function categorySelector(
+  cat: NormalizedCategory | undefined,
+  page: WikitextPageContext | undefined
+): string | undefined {
   if (!cat) return undefined;
-  const parts = [];
+  const parts: string[] = [];
   if (cat.all) {
     parts.push('*');
   } else {
@@ -68,9 +110,9 @@ function categorySelector(cat, page) {
   return parts.length ? parts.join(' ') : undefined;
 }
 
-function tagsSelector(tags) {
+function tagsSelector(tags: NormalizedTags | undefined): string | undefined {
   if (!tags) return undefined;
-  const parts = [];
+  const parts: string[] = [];
   if (tags.special === 'same-visible') parts.push('=');
   else if (tags.special === 'same-all') parts.push('==');
   else if (tags.special === 'none') parts.push('-');
@@ -80,7 +122,7 @@ function tagsSelector(tags) {
   return parts.length ? parts.join(' ') : undefined;
 }
 
-function parentSelector(parent) {
+function parentSelector(parent: NormalizedParent | undefined): string | undefined {
   if (!parent) return undefined;
   switch (parent.type) {
     case 'none':
@@ -102,13 +144,18 @@ function parentSelector(parent) {
  * NormalizedListPagesQuery → @ukwhatn/wikidot 的 SearchPagesQueryParams。
  * 导出供单测；不抛错，不支持的特性通过 warnings 记录。
  */
-export function toSearchPagesParams(query, page, caps, warnings = []) {
+export function toSearchPagesParams(
+  query: NormalizedListPagesQuery,
+  page: WikitextPageContext | undefined,
+  caps: ModuleCaps,
+  warnings: ModuleWarning[] = []
+): SearchPagesQueryParams {
   const limit = Math.max(
     0,
     Math.min(Number.isFinite(query?.limit) ? query.limit : caps.listPagesMaxRows, caps.listPagesMaxRows)
   );
   const perPage = Math.max(1, Math.min(query?.perPage ?? limit ?? 20, 250));
-  const params = {
+  const params: Record<string, unknown> = {
     pagetype: query?.pagetype === '*' ? undefined : query?.pagetype,
     category: categorySelector(query?.category, page),
     tags: tagsSelector(query?.tags),
@@ -137,12 +184,14 @@ export function toSearchPagesParams(query, page, caps, warnings = []) {
   }
 
   if (query?.order) {
-    let { field, direction } = query.order;
-    if (field === 'metadata') {
+    const order = query.order;
+    let field = order.field === 'metadata' ? 'title' : order.field;
+    let direction = order.direction;
+    if (order.field === 'metadata') {
       warnings.push({
         severity: 'warning',
         code: 'module-real-listpages-order-metadata',
-        message: `ListPages 按 metadata ${query.order.key} 排序暂不支持，已改用 title asc`,
+        message: `ListPages 按 metadata ${order.key} 排序暂不支持，已改用 title asc`,
         position: null,
       });
       field = 'title';
@@ -155,14 +204,14 @@ export function toSearchPagesParams(query, page, caps, warnings = []) {
   for (const key of Object.keys(params)) {
     if (params[key] === undefined) delete params[key];
   }
-  return params;
+  return params as SearchPagesQueryParams;
 }
 
 const CONTENT_VARS = new Set([
   'content', 'content_n', 'preview', 'preview_n', 'excerpt', 'summary', 'first_paragraph',
 ]);
 
-function needsContent(requirement) {
+function needsContent(requirement: ListPagesDataRequirement | undefined): boolean {
   return Boolean(
     requirement?.needsReadableText ||
     (requirement?.contentSectionIndices?.length ?? 0) > 0 ||
@@ -171,12 +220,12 @@ function needsContent(requirement) {
   );
 }
 
-function estimatePercent(points, votes) {
+function estimatePercent(points: number, votes: number): number {
   if (!votes) return 0;
   return Math.min(100, Math.max(0, Math.round(((points + votes) / (2 * votes)) * 100)));
 }
 
-function pageToPageData(p) {
+function pageToPageData(p: Page): PageData {
   const parentFullname = p.parentFullname ?? undefined;
   const sep = parentFullname ? parentFullname.indexOf(':') : -1;
   return {
@@ -212,7 +261,12 @@ function pageToPageData(p) {
   };
 }
 
-async function enrichSources(site, pages, max, warnings) {
+async function enrichSources(
+  site: Site,
+  pages: PreviewablePage[],
+  max: number,
+  warnings: ModuleWarning[]
+): Promise<void> {
   const targets = pages.slice(0, max);
   if (targets.length === 0) return;
   if (pages.length > max) {
@@ -247,19 +301,24 @@ async function enrichSources(site, pages, max, warnings) {
     warnings.push({
       severity: 'warning',
       code: 'module-real-listpages-source-failed',
-      message: `ListPages 读取正文失败，正文相关变量将为空: ${e.message}`,
+      message: `ListPages 读取正文失败，正文相关变量将为空: ${(e as Error).message}`,
       position: null,
     });
   }
 }
 
 /** ListPages 真实数据 */
-export async function fetchRealListPages(query, requirement, ctx, opts) {
+export async function fetchRealListPages(
+  query: NormalizedListPagesQuery,
+  requirement: ListPagesDataRequirement,
+  ctx: RenderCtx,
+  opts: RealFetchOptions
+): Promise<ListPagesExternalData> {
   if (!opts.client) throw new Error('未登录 Wikidot，无法真实解析 ListPages');
   const site = await getSite(opts.client, ctx.page?.site);
   const params = toSearchPagesParams(query, ctx.page, opts.caps, opts.warnings);
   const collection = unwrap(await site.pages.search(params), '查询 ListPages');
-  const pages = Array.from(collection).slice(0, params.limit ?? opts.caps.listPagesMaxRows);
+  const pages = Array.from(collection).slice(0, params.limit ?? opts.caps.listPagesMaxRows) as PreviewablePage[];
 
   let totalCount = pages.length;
   try {
@@ -275,7 +334,7 @@ export async function fetchRealListPages(query, requirement, ctx, opts) {
     opts.warnings.push({
       severity: 'warning',
       code: 'module-real-listpages-total-failed',
-      message: `ListPages 总数统计失败，使用当前行数: ${e.message}`,
+      message: `ListPages 总数统计失败，使用当前行数: ${(e as Error).message}`,
       position: null,
     });
   }
@@ -312,7 +371,11 @@ export async function fetchRealListPages(query, requirement, ctx, opts) {
 }
 
 /** ListUsers 真实数据（Wikidot 本身只支持当前登录用户） */
-export async function fetchRealListUsers(_requirement, _ctx, opts) {
+export async function fetchRealListUsers(
+  _requirement: ListUsersDataRequirement,
+  _ctx: RenderCtx,
+  opts: RealFetchOptions
+): Promise<ListUsersExternalData> {
   const me = opts?.client?.me ?? null;
   if (!me) throw new Error('未登录 Wikidot，无法真实解析 ListUsers');
   return {
@@ -324,11 +387,11 @@ export async function fetchRealListUsers(_requirement, _ctx, opts) {
   };
 }
 
-function stripTags(html) {
+function stripTags(html: string): string {
   return String(html ?? '').replace(/<[^>]*>/g, '');
 }
 
-function decodeEntities(s) {
+function decodeEntities(s: string): string {
   return String(s)
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -338,10 +401,10 @@ function decodeEntities(s) {
 }
 
 /** 从 Wikidot TagCloud HTML 解析标签与权重（font-size 百分比作为相对权重） */
-export function parseTagAnchors(html, limit) {
-  const out = [];
+export function parseTagAnchors(html: string, limit: number): TagCloudTagData[] {
+  const out: TagCloudTagData[] = [];
   const anchorRe = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = anchorRe.exec(String(html ?? ''))) !== null && out.length < limit) {
     const attrs = m[1];
     if (!/\bclass="[^"]*\btag\b[^"]*"/i.test(attrs)) continue;
@@ -355,7 +418,11 @@ export function parseTagAnchors(html, limit) {
 }
 
 /** TagCloud 真实数据：让 Wikidot 自己渲染模块，再解析标签与相对字号 */
-export async function fetchRealTagCloud(requirement, _ctx, opts) {
+export async function fetchRealTagCloud(
+  requirement: TagCloudDataRequirement,
+  _ctx: RenderCtx,
+  opts: RealFetchOptions
+): Promise<TagCloudExternalData> {
   if (!opts.client) throw new Error('未登录 Wikidot，无法真实解析 TagCloud');
   const site = await getSite(opts.client, opts.page?.site);
   const limit = Math.max(0, Math.min(requirement?.limit ?? opts.caps.tagCloudMaxTags, opts.caps.tagCloudMaxTags));
@@ -363,7 +430,7 @@ export async function fetchRealTagCloud(requirement, _ctx, opts) {
 
   const rawCategory = String(requirement?.category ?? '').replace(/["\]\[]/g, '');
   const source = `[[module TagCloud limit="${limit}"${rawCategory ? ` category="${rawCategory}"` : ''}]]`;
-  const page = opts.page ?? {};
+  const page = opts.page ?? ({} as WikitextPageContext);
   const res = unwrap(await site.amcRequestSingle({
     moduleName: 'edit/PagePreviewModule',
     mode: 'page',
@@ -385,7 +452,11 @@ export async function fetchRealTagCloud(requirement, _ctx, opts) {
 }
 
 /** Rate / CustomRate 真实数据 */
-export async function fetchRealRatings(refs, ctx, opts) {
+export async function fetchRealRatings(
+  refs: readonly RatingRef[],
+  ctx: RenderCtx,
+  opts: RealFetchOptions
+): Promise<RatingState[]> {
   if (!opts.client) throw new Error('未登录 Wikidot，无法真实解析 Rate');
   const site = await getSite(opts.client, ctx.page?.site);
   const fullName = ctx.page?.fullName;
@@ -395,16 +466,18 @@ export async function fetchRealRatings(refs, ctx, opts) {
   const page = await getPage(site, fullName);
   if (!page) throw new Error(`页面不存在或无权访问: ${fullName}`);
 
-  let currentVote = null;
+  let currentVote: RatingVote | null = null;
   try {
     const votes = unwrap(await page.getVotes(), '读取投票');
-    const vote = opts.client.me ? votes.findByUser(opts.client.me) : undefined;
-    if (vote && [-1, 0, 1].includes(Number(vote.value))) currentVote = Number(vote.value);
+    const me = opts.client.me;
+    const vote = me ? votes.findByUser(me) : undefined;
+    const value = Number(vote?.value);
+    if (vote && [-1, 0, 1].includes(value)) currentVote = value as RatingVote;
   } catch (e) {
     opts.warnings.push({
       severity: 'warning',
       code: 'module-real-rate-votes-failed',
-      message: `读取当前用户投票失败: ${e.message}`,
+      message: `读取当前用户投票失败: ${(e as Error).message}`,
       position: null,
     });
   }
@@ -412,6 +485,7 @@ export async function fetchRealRatings(refs, ctx, opts) {
   const points = page.rating ?? 0;
   const votes = page.votesCount ?? 0;
   const percent = page.ratingPercent ?? estimatePercent(points, votes);
+  const allowedVotes: RatingVote[] = [1, -1];
 
   return refs.map((ref) => {
     if (ref.kind === 'custom') {
@@ -424,7 +498,7 @@ export async function fetchRealRatings(refs, ctx, opts) {
       return {
         ref,
         label: ref.axisKey,
-        allowedVotes: [1, -1],
+        allowedVotes,
         canVote: false,
         canCancel: false,
         currentVote: null,
@@ -434,7 +508,7 @@ export async function fetchRealRatings(refs, ctx, opts) {
     return {
       ref,
       label: '评分',
-      allowedVotes: [1, -1],
+      allowedVotes,
       canVote: Boolean(opts.client.me),
       canCancel: currentVote !== null,
       currentVote,
