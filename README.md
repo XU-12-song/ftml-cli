@@ -5,35 +5,34 @@
 
 # ftml-cli
 
-FTML（Wikidot 语法）工作流工具：**模板展开、实时预览、版本管理、一键发布**。
-一套引擎，两个入口：**Windows 桌面版** 与 **CLI**，项目、设置与登录凭证完全共用。
+FTML（Wikidot 语法）工作流工具。
+提供：**Windows 桌面版** 与 **CLI**，项目、设置与登录凭证共用。
 
 ![编辑器界面：编辑、实时预览与命令面板](docs/images/editor-demo.gif)
 
 ## 下载桌面版
 
-**➡ [前往 GitHub Releases 下载最新版](https://github.com/XU-12-song/ftml-cli/releases/latest)**
+**➡ [前往 GitHub Releases 下载](https://github.com/XU-12-song/ftml-cli/releases/latest)**
 
 | 文件 | 说明 |
 | --- | --- |
 | **`Ftml Editor-<版本>-setup-x64.exe`** | 安装版，注册 `.ftml` 文件关联 |
 | `Ftml Editor-<版本>-portable-x64.exe` | 便携版，免安装，不注册关联 |
 
-第一次使用？看 **[5 分钟上手](docs/getting-started.md)**。
+如果你是第一次使用， **[可以看这个](docs/getting-started.md)**。
 
-> 当前构建未签名，Windows SmartScreen 可能提示。核对下载来源后选择「仍要运行」。
+> 当前构建未签名，Windows SmartScreen 可能提示。核对下载来源后选择 仍要运行 。
 
 ## 它能做什么
 
-- **模板 / 组件复用**：`.ftmx` 模板带参数，`components/` 整段内联，构建时展开为纯 FTML。
-- **实时预览**：编辑器右侧即 Wikidot 沙盒站外观，tabview、折叠块、TOC、脚注等可直接交互。
-- **本地校验**：div / style / code 配对、模板调用、展开残留；监听改动自动重建。
+- **模板 / 组件语法宏复用**：`.ftmx` 模板带参数，`components/` 整段内联，构建时展开为纯 FTML。
+- **本地校验**：div / style / code 高亮配对、模板调用、展开残留。
 - **版本管理**：提交出小版本（本地），部署开大版本（上线），任意版本回退本地 + 线上。
-- **一键发布**：自动收集 `[[include]]` 依赖页、叶子在前发布、引用名归一到线上全名。
+- **一键发布**：自动收集 `[[include]]` 依赖页、依赖在前发布、引用名归一到线上全名。
 - **离线优先**：远程 include 拉取后写入磁盘缓存；联网刷新由你主动触发。
 - **桌面版**：托盘、`.ftml` 文件关联、原生目录选择、窗口状态记忆、随机端口 + 会话 token。
 
-## 5 分钟上手（桌面版）
+## 快速开始（Desktop）
 
 1. 打开 Ftml Editor，命令面板（`Ctrl+K`）→ **新建 ftml 仓库**。
 2. 在 `index.ftml` 里写 FTML，右侧实时预览。
@@ -41,9 +40,7 @@ FTML（Wikidot 语法）工作流工具：**模板展开、实时预览、版本
 4. **登录 Wikidot**。
 5. 点 **部署**。预检摘要确认后，内容发布到线上。
 
-完整步骤：[docs/getting-started.md](docs/getting-started.md)
-
-## 5 分钟上手（CLI）
+## 快速开始（CLI）
 
 ```bash
 git clone https://github.com/XU-12-song/ftml-cli
@@ -59,13 +56,13 @@ ftml login
 ftml deploy -m "首次发布" --site scpsandboxcn --page my-first-page
 ```
 
-要求 Node.js >= 20（全 ESM）。`git` 用于提交 / 部署 / 回退，用 `ftml doctor` 体检。
+要求 Node.js >= 20 。`git` 用于提交 / 部署 / 回退，用 `ftml doctor` 体检。
 
 ## 文档
 
 | 文档 | 内容 |
 | --- | --- |
-| [5 分钟上手](docs/getting-started.md) | 从安装到发布第一篇页面 |
+| [快速开始](docs/getting-started.md) | 从安装到发布第一篇页面 |
 | [桌面版](docs/desktop.md) | 安装、托盘、文件关联、数据目录、快捷键 |
 | [CLI 命令参考](docs/cli.md) | 全部命令、配置、环境变量、退出码 |
 | [版本管理](docs/versions.md) | 提交 / 部署 / 回退的语义与快照 |
@@ -74,7 +71,7 @@ ftml deploy -m "首次发布" --site scpsandboxcn --page my-first-page
 | [常见问题](docs/troubleshooting.md) | 安装、git、登录、发布报错 |
 | [开发与构建](docs/development.md) | 脚本、代码结构、测试、打包 |
 
-## 版本模型（一句话）
+## 版本模型
 
 ```text
 submit  本地 git commit + 小版本 x.y    不联网
