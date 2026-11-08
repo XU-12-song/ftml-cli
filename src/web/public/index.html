@@ -91,21 +91,21 @@
           <span>模板</span>
           <button id="new-template-btn" class="sb-add" title="新建模板" aria-label="新建模板">＋</button>
         </div>
-        <ul id="template-list" class="sb-list"></ul>
+        <ul id="template-list" class="sb-list" data-empty="还没有模板，点右上角 ＋ 新建"></ul>
       </section>
       <section class="sb-group">
         <div class="sb-head">
           <span>组件</span>
           <button id="new-component-btn" class="sb-add" title="新建组件" aria-label="新建组件">＋</button>
         </div>
-        <ul id="component-list" class="sb-list"></ul>
+        <ul id="component-list" class="sb-list" data-empty="还没有组件，点右上角 ＋ 新建"></ul>
       </section>
       <section class="sb-group">
         <div class="sb-head">
           <span>源文件</span>
           <button id="new-source-btn" class="sb-add" title="新建页面" aria-label="新建页面">＋</button>
         </div>
-        <ul id="source-list" class="sb-list"></ul>
+        <ul id="source-list" class="sb-list" data-empty="还没有源文件，点右上角 ＋ 新建"></ul>
       </section>
       <section class="sb-group">
         <div class="sb-head">
@@ -116,7 +116,7 @@
             <button id="add-snippet-btn" class="sb-add" title="新建自定义片段" aria-label="新建代码片段">＋</button>
           </span>
         </div>
-        <ul id="snippet-list" class="sb-list"></ul>
+        <ul id="snippet-list" class="sb-list" data-empty="还没有代码片段，点 ＋ 新建或 ⭳ 导入"></ul>
         <input id="snippet-file" type="file" accept=".snippets,.txt" class="hidden">
       </section>
     </aside>
@@ -331,6 +331,35 @@
     <div class="dialog-btns">
       <button type="button" data-cancel class="btn">取消</button>
       <button id="target-save-btn" type="button" class="btn btn-primary">保存</button>
+    </div>
+  </dialog>
+
+  <dialog id="welcome-dialog">
+    <h3>欢迎使用 ftml</h3>
+    <p class="dlg-hint">还没有项目。项目就是一个包含 <code>index.ftml</code> 的普通目录，文件都在你自己的磁盘上。</p>
+    <div class="welcome-actions">
+      <button id="welcome-new-repo" type="button" class="btn btn-primary">
+        <span class="welcome-item">
+          <strong>新建 ftml 仓库</strong>
+          <span>从零开始，自动生成起始 index.ftml</span>
+        </span>
+      </button>
+      <button id="welcome-add-project" type="button" class="btn">
+        <span class="welcome-item">
+          <strong>添加已有项目</strong>
+          <span>打开一个已有的 FTML 目录</span>
+        </span>
+      </button>
+      <button id="welcome-login" type="button" class="btn">
+        <span class="welcome-item">
+          <strong>登录 Wikidot</strong>
+          <span>部署或联网拉取 include 前需要</span>
+        </span>
+      </button>
+    </div>
+    <p class="dlg-hint">熟悉命令？按 <kbd>Ctrl+K</kbd> 打开命令面板。命令行用法见 GitHub 上的 docs/getting-started.md。</p>
+    <div class="dialog-btns">
+      <button id="welcome-close" type="button" class="btn">稍后</button>
     </div>
   </dialog>
 

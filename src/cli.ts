@@ -17,6 +17,8 @@
  */
 
 import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { login } from './commands/login.js';
 import { build } from './commands/build.js';
 import { expandCommand } from './commands/expand.js';
@@ -34,10 +36,28 @@ import { detectGitEnv } from './infra/gitenv.js';
 
 const program = new Command();
 
+// 版本号以 package.json 为准，避免 CLI 与包版本漂移
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')
+) as { version?: string };
+
 program
   .name('ftml')
   .description('FTML 工作流 CLI：模板展开、构建、校验、监听、Wikidot 提交/部署/回退')
-  .version('0.1.0');
+  .version(pkg.version ?? '0.0.0')
+  .addHelpText(
+    'after',
+    `
+快速开始（第一次使用看这里）:
+  ftml init                 初始化当前目录（含起始 index.ftml）
+  ftml preview --open       本地预览
+  ftml web --open           打开图形编辑器
+  ftml login                登录 Wikidot（发布前需要）
+  ftml deploy -m "说明" --site <站点> --page <页面>
+
+文档: https://github.com/XU-12-song/ftml-cli/blob/master/docs/getting-started.md
+终端打不开图形界面？直接运行 \`ftml\` 查看本帮助。`
+  );
 
 // ---- login ----
 program

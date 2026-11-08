@@ -18,7 +18,8 @@
  */
 import { el, state } from './dom.js';
 import { api, setError } from './api.js';
-import { initProjects, loadProjects, openAddProject, removeCurrentProject } from './projects.js';
+import { initProjects, loadProjects, removeCurrentProject } from './projects.js';
+import { initOnboarding, showWelcome } from './onboarding.js';
 import { initEditor, refreshSidebar, openFile } from './editor.js';
 import { initSnippets, loadSnippets } from './snippets.js';
 import { initSettings, loadSettings } from './settings.js';
@@ -104,7 +105,7 @@ async function boot() {
   const opened = initialTarget ? await applyOpenTarget(initialTarget) : false;
   if (!opened) {
     if (state.projects.length === 0) {
-      await openAddProject(); // 无项目时引导添加
+      showWelcome(); // 无项目时展示欢迎面板（新建 / 添加 / 登录）
     }
     if (state.projectId) {
       await refreshSidebar();
@@ -122,6 +123,7 @@ initSelectMenus({ onRemoveProject: removeCurrentProject });
 initLayout();
 initTarget();
 initProjects();
+initOnboarding();
 initEditor();
 initSnippets();
 initSettings();

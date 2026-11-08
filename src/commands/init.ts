@@ -19,6 +19,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { projectFtmlDir, historyPath } from '../infra/paths.js';
 import { projectGit, isRepo } from '../infra/git.js';
+import { STARTER_FTML } from '../core/starter.js';
 import type { InitOptions, InitResult } from '../types/commands/init.ts';
 
 /**
@@ -67,6 +68,25 @@ export async function init(options: InitOptions = {}): Promise<InitResult> {
   const git = projectGit(root);
   if (!(await isRepo(git))) await git.init();
 
+  // 7. 起始源文件：目录里还没有任何 .ftml 时补一个 index.ftml，
+  // 这样 init 之后可以直接 preview / web，而不是先撞上 ENOENT。
+  const starter = path.join(root, 'index.ftml');
+  let createdSource = false;
+  const hasSource = fs.existsSync(starter)
+    || fs.readdirSync(root).some((f) => f.endsWith('.ftml') && fs.statSync(path.join(root, f)).isFile());
+  if (!hasSource) {
+    fs.writeFileSync(starter, STARTER_FTML, 'utf8');
+    createdSource = true;
+  }
+
   console.log(`✓ 已初始化 ftml 项目: ${root}`);
+  if (createdSource) console.log(`  已创建起始源文件: ${path.relative(root, starter)}`);
+  console.log('');
+  console.log('下一步：');
+  console.log('  ftml preview --open     本地预览');
+  console.log('  ftml web --open         图形编辑器');
+  console.log('  ftml login              登录 Wikidot（发布前需要）');
+  console.log('  ftml deploy -m "首次发布" --site <站点> --page <页面>');
+  console.log('文档: https://github.com/XU-12-song/ftml-cli/blob/master/docs/getting-started.md');
   return { root, ftmlDir };
 }
