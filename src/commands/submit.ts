@@ -52,6 +52,16 @@ export function requireMessage(
   return message;
 }
 
+/**
+ * 自动生成的提交说明（CLI 未传 -m 时使用）。
+ * 带本地时间，便于在版本列表里区分不同提交。
+ */
+export function defaultMessage(kind: 'submit' | 'deploy', now = new Date()): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+  return `${kind === 'deploy' ? '部署' : '提交'} ${stamp}`;
+}
+
 export async function submit(options: SubmitOptions): Promise<SubmitResult> {
   const config = loadConfig(options);
   const message = requireMessage(options, 'submit');

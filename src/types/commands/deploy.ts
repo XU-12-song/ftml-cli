@@ -20,6 +20,8 @@ export interface DeployOptions extends ConfigCliOptions {
   deps?: boolean;
   /** isNegated 兼容写法 */
   noDeps?: boolean;
+  /** 跳过交互式确认（脚本 / CI） */
+  yes?: boolean;
   clientFactory?: ClientFactory;
 }
 

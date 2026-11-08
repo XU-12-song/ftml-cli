@@ -15,6 +15,13 @@ export const STARTER_SOURCE = `[[div class="page-block"]]
 [[/div]]
 `;
 
+/** 与 CLI 一致的默认提交说明（本地时间） */
+function defaultCommitMessage(kind) {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${kind} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export async function refreshSidebar() {
   if (!state.projectId) return;
   const data = await api('GET', `/api/projects/${encodeURIComponent(state.projectId)}/sidebar`);
@@ -177,7 +184,8 @@ export async function submitCurrent() {
   }
   const message = await openPromptDialog({
     title: '提交小版本',
-    label: '提交说明（必填，写入 git commit 与版本记录）',
+    label: '提交说明（可修改，写入 git commit 与版本记录）',
+    value: defaultCommitMessage('提交'),
     placeholder: '如：调整 box 组件内侧距',
     okText: '提交',
   });
@@ -202,12 +210,22 @@ export async function deployCurrent() {
   const site = el.siteInput.value.trim();
   const page = el.pageInput.value.trim();
   if (!site || !page) {
-    setError('部署前请先设置目标页面（站点与页面）');
+    setError('部署前请先设置目标页面：命令面板（Ctrl+K）→「目标页面设置」（Ctrl+Alt+U）');
     return;
+  }
+
+  // 预检摘要：展示下一个大版本，避免用户不知道这次部署会生成什么版本
+  let nextLabel = '';
+  try {
+    const v = await api('GET', `/api/projects/${encodeURIComponent(state.projectId)}/versions`);
+    if (v.next?.major) nextLabel = `大版本 ${v.next.major}（tag v${v.next.major}）`;
+  } catch {
+    /* 版本信息只是辅助，取不到不阻塞部署 */
   }
   const message = await openPromptDialog({
     title: '部署（创建大版本）',
-    label: '提交说明（必填，写入 git commit 与版本记录）',
+    label: `${nextLabel ? `将创建${nextLabel}并` : ''}发布到 ${site}:${page}。提交说明（可修改）：`,
+    value: defaultCommitMessage('部署'),
     placeholder: '如：发布 v1 正式版',
     okText: '部署',
   });

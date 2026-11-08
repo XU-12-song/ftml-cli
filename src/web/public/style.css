@@ -991,7 +991,7 @@ dialog textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(-
 #prompt-dialog { min-width: 380px; max-width: 92vw; }
 
 /* 版本列表 / 回退 */
-#versions-dialog { min-width: 620px; max-width: 94vw; }
+#versions-dialog { min-width: 760px; max-width: 94vw; }
 #versions-table { width: 100%; margin: var(--sp-3) 0; border-collapse: collapse; font-size: var(--fs-sm); }
 #versions-table th {
   padding: var(--sp-2) var(--sp-4);
