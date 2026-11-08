@@ -31,6 +31,7 @@ import {
   readMajorSnapshot,
 } from '../domain/versions.js';
 import { isNegated } from '../infra/flags.js';
+import { isInteractive, promptLine, confirm } from '../infra/prompt.js';
 import type { SimpleGit } from 'simple-git';
 import type { ProjectConfig } from '../types/infra/config.ts';
 import type { VersionRow, VersionTarget } from '../types/domain/versions.ts';
@@ -43,13 +44,39 @@ export function printVersions(root: string): VersionRow[] {
     console.log('（暂无版本记录。deploy 创建大版本，submit 创建小版本）');
     return rows;
   }
-  console.log('版本    类型   提交      说明');
+  console.log('大版本 x：本地与线上都回到 x 的发布快照。');
+  console.log('小版本 x.y：本地回到 x.y；线上回到大版本 x 的快照（小版本不单独发布）。');
+  console.log('');
+  console.log('版本    类型    提交     时间                 线上回退                说明');
+  const majors = new Set(rows.filter((r) => r.kind === 'major').map((r) => r.version));
   for (const r of rows) {
     const kind = r.kind === 'major' ? '大版本' : '小版本';
     const commit = (r.commit ?? '-').slice(0, 7);
-    console.log(`${r.version.padEnd(6)}  ${kind}  ${commit}  ${r.message}`);
+    const when = r.createdAt
+      ? new Date(r.createdAt).toLocaleString('zh-CN', { hour12: false })
+      : '-';
+    const online = r.kind === 'major'
+      ? `大版本 ${r.version} 快照${r.wikidotVersion != null ? `（修订 ${r.wikidotVersion}）` : ''}`
+      : majors.has(r.major)
+        ? `大版本 ${r.major} 快照`
+        : `提交 ${commit} 重建（未部署过大版本）`;
+    console.log(
+      `${r.version.padEnd(6)}  ${kind}  ${commit.padEnd(8)}  ${when.padEnd(19)}  ${online.padEnd(22)}  ${r.message}`
+    );
   }
   return rows;
+}
+
+/** 线上回退目标的可读描述 */
+function describeRemoteTarget(target: VersionTarget | null, spec: string): string {
+  if (!target) return '当前重建产物';
+  if (target.kind === 'minor') {
+    if (target.remoteVersion === target.entry.version) {
+      return `提交 ${String(target.commit).slice(0, 7)} 重建（尚未部署过大版本）`;
+    }
+    return `大版本 ${target.remoteVersion} 快照（小版本 ${spec} 本身不发布到线上）`;
+  }
+  return `大版本 ${target.remoteVersion} 快照`;
 }
 
 /**
@@ -78,10 +105,24 @@ export async function revert(options: RevertOptions): Promise<RevertResult> {
   const config = loadConfig(options);
   const siteName = options.site || config.site;
   const pageName = options.page || config.page;
-  const to = options.to || 'HEAD';
 
   if (options.list) {
     return { versions: printVersions(config.root) };
+  }
+
+  // 未指定 --to：交互式终端里先列版本并让用户选择；非交互环境保留旧行为（HEAD）但明确提示
+  let to = options.to;
+  if (!to) {
+    if (isInteractive()) {
+      printVersions(config.root);
+      to = await promptLine(
+        '输入要回退的版本号（x / x.y），直接回车 = 撤销最近一次提交 HEAD: ',
+        'HEAD'
+      );
+    } else {
+      to = 'HEAD';
+      console.log('· 未指定 --to，默认撤销最近一次提交（HEAD）。用 `ftml revert --list` 查看版本。');
+    }
   }
 
   const git = projectGit(config.root);
@@ -103,6 +144,29 @@ export async function revert(options: RevertOptions): Promise<RevertResult> {
     throw new Error(`版本 ${to} 没有记录对应的 git 提交，无法回退`);
   }
   const head = await headHash(git);
+
+  // 回退计划：先讲清楚本地和线上分别会回到哪里，再动手
+  const wikidotEnabled = !isNegated(options, 'wikidot');
+  if (wikidotEnabled && (!siteName || !pageName)) {
+    throw new Error(
+      '缺少 site/page，无法回退线上。请配置或使用 --site/--page，' +
+      '只想改本地时加 --no-wikidot'
+    );
+  }
+  console.log('回退计划:');
+  console.log(
+    target
+      ? `  本地: 版本 ${to}（提交 ${String(target.commit).slice(0, 7)}）`
+      : `  本地: 按 git 修订 ${to} 撤销该提交`
+  );
+  console.log(
+    wikidotEnabled
+      ? `  线上: ${siteName}:${pageName} ← ${describeRemoteTarget(target, to)}`
+      : '  线上: 跳过（--no-wikidot）'
+  );
+  if (!options.yes && isInteractive()) {
+    if (!(await confirm('确认回退?', false))) throw new Error('已取消回退');
+  }
 
   // 版本号回退 = 把「该版本之后的所有提交」整体反向提交，使工作区回到该版本的
   // 内容。只反向 target 那一笔是错的：那等于「撤销这一版做过的事」——若该版本是
@@ -132,14 +196,13 @@ export async function revert(options: RevertOptions): Promise<RevertResult> {
     throw new Error(`构建产物不存在: ${config.outputAbs}。请先运行 ftml build 或加 --rebuild`);
   }
 
-  if (isNegated(options, 'wikidot')) {
+  if (!wikidotEnabled) {
     console.log('· 已跳过线上回退（--no-wikidot）');
     appendHistory(config.root, { commit_hash: hash, comment: `revert ${to}`, type: 'revert' });
     return { hash, versions: listVersions(config.root) };
   }
-
   if (!siteName || !pageName) {
-    throw new Error('缺少 site/page，无法回退线上。请配置或在命令行指定 --site/--page');
+    throw new Error('缺少 site/page，无法回退线上。请配置或使用 --site/--page');
   }
 
   // 线上内容：版本回退取该版本快照；普通回退用重建后的产物

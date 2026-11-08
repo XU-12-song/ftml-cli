@@ -27,12 +27,30 @@ import { addMajor, nextMajorVersion, writeMajorSnapshot } from '../domain/versio
 import { isNegated } from '../infra/flags.js';
 import { pushPageSource, upsertPageSource, withClient, getSite } from '../infra/wikidot.js';
 import { buildPublishPlan, rewriteDepSource, describeConflicts } from '../domain/publish.js';
+import { isInteractive, confirm } from '../infra/prompt.js';
 import type { PublishPlan } from '../types/domain/publish.ts';
 import type { DeployOptions, DeployResult } from '../types/commands/deploy.ts';
 
 export async function deploy(options: DeployOptions): Promise<DeployResult> {
   const config = loadConfig(options);
   const message = requireMessage(options, 'deploy');
+
+  // 目标页面先校验：缺 site/page 时在构建 / 创建版本之前就报错，避免白忙一场
+  const siteName = options.site || config.site;
+  const pageName = options.page || config.page;
+  if (!siteName || !pageName) {
+    throw new Error(
+      '缺少部署目标。请先设置 site/page：命令面板 →「目标页面设置」，' +
+      '或使用 --site <站点> --page <页面>，也可以写进配置文件'
+    );
+  }
+
+  // git 环境在构建前体检：缺 git / 身份时直接给出修复命令
+  await assertGitReady({ root: config.root });
+  const git = projectGit(config.root);
+  if (!(await isRepo(git))) {
+    throw new Error('当前项目不是 git 仓库，无法部署。请先运行 `ftml init` 初始化');
+  }
 
   // 1. 构建 + 校验
   const r = await build(options);
@@ -45,34 +63,9 @@ export async function deploy(options: DeployOptions): Promise<DeployResult> {
     }
   }
 
-  // 2. 创建大版本
-  await assertGitReady({ root: config.root });
-  const git = projectGit(config.root);
-  if (!(await isRepo(git))) {
-    throw new Error('当前项目不是 git 仓库，无法部署。请先运行 `ftml init` 初始化');
-  }
-
-  const majorVersion = nextMajorVersion(config.root);
-  const tag = `v${majorVersion}`;
-  const { hash } = await commitAll(git, message);
-  await tagCommit(git, tag);
-  console.log(`✓ 创建大版本 ${majorVersion}（${tag}）`);
-
-  // 3. 推送远端（无 origin 时跳过）
-  if (!isNegated(options, 'push')) {
-    const pushed = await pushCurrent(git);
-    console.log(pushed.pushed
-      ? `✓ 已推送远端 ${pushed.remote}/${pushed.branch ?? 'HEAD'}`
-      : `· ${pushed.reason}`);
-  }
-
-  // 4. 发布到 Wikidot，并留下大版本快照（revert 时线上要回到这一版）
-  const source = fs.readFileSync(r.output, 'utf8');
-  const siteName = options.site || config.site;
-  const pageName = options.page || config.page;
-
-  // 依赖闭包：入口 [[include]] 到的本地镜像页一并发布，并把引用名归一到线上全名。
+  // 2. 依赖闭包：入口 [[include]] 到的本地镜像页一并发布，并把引用名归一到线上全名。
   // 冲突（同文件两名 / 两名两文件 / 依赖撞入口名）说明本地镜像不自洽，宁可中止。
+  const source = fs.readFileSync(r.output, 'utf8');
   let plan: PublishPlan | null = null;
   let entrySource = source;
   const noDeps = isNegated(options, 'deps');
@@ -90,6 +83,32 @@ export async function deploy(options: DeployOptions): Promise<DeployResult> {
     entrySource = plan.entry;
   }
 
+  // 3. 预检摘要 + 确认（仅交互式终端；脚本 / web 不阻塞）
+  const majorVersion = nextMajorVersion(config.root);
+  const tag = `v${majorVersion}`;
+  console.log('部署预检:');
+  console.log(`  目标页面: ${siteName}:${pageName}`);
+  console.log(`  版本: 大版本 ${majorVersion}（tag ${tag}），随后自动提交小版本 ${majorVersion}.1`);
+  console.log(`  git 推送: ${isNegated(options, 'push') ? '关闭' : '开启（有 origin 时）'}`);
+  console.log(`  依赖页: ${noDeps ? '仅入口页（--no-deps）' : plan?.pages.length ? `${plan.pages.length} 个` : '无'}`);
+  if (!options.yes && isInteractive()) {
+    if (!(await confirm('继续部署?', true))) throw new Error('已取消部署');
+  }
+
+  // 4. 创建大版本
+  const { hash } = await commitAll(git, message);
+  await tagCommit(git, tag);
+  console.log(`✓ 创建大版本 ${majorVersion}（${tag}）`);
+
+  // 5. 推送远端（无 origin 时跳过）
+  if (!isNegated(options, 'push')) {
+    const pushed = await pushCurrent(git);
+    console.log(pushed.pushed
+      ? `✓ 已推送远端 ${pushed.remote}/${pushed.branch ?? 'HEAD'}`
+      : `· ${pushed.reason}`);
+  }
+
+  // 6. 发布到 Wikidot，并留下大版本快照（revert 时线上要回到这一版）
   const { revisionsCount, compat, depChanges } = await withClient(options.clientFactory, async (client) => {
     let depChanges = 0;
     if (plan?.pages.length) {
@@ -126,7 +145,7 @@ export async function deploy(options: DeployOptions): Promise<DeployResult> {
   saveProjectMeta(config.sourceAbs, { site: siteName, page: pageName, lastRev: revisionsCount }, config.root);
   console.log(`✓ 已发布 ${siteName}:${pageName}（修订 ${revisionsCount}）`);
 
-  // 5. 一次 submit：本地提交 + 小版本号
+  // 7. 一次 submit：本地提交 + 小版本号
   const sub = await submit({ ...options, noBuild: true, source: r.output, message });
   console.log(`✓ 部署完成：大版本 ${majorVersion} → 小版本 ${sub.version}`);
   return { majorVersion, minorVersion: sub.version, hash, revisionsCount };

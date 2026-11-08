@@ -22,9 +22,18 @@ export interface VersionActionBody {
   to?: string;
 }
 
+/** 下一个待创建的版本号 */
+export interface NextVersionInfo {
+  /** 下一个大版本号（deploy） */
+  major: string;
+  /** 下一个小版本号 x.y（submit） */
+  minor: string;
+}
+
 /** 版本清单返回值 */
 export interface ProjectVersionsResult {
   versions: VersionRow[];
+  next: NextVersionInfo;
 }
 
 /** 提交/部署/回退/初始化的返回值 */

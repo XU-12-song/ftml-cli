@@ -25,7 +25,7 @@ import { expandCommand } from './commands/expand.js';
 import { list } from './commands/list.js';
 import { validate } from './commands/validate.js';
 import { watch } from './commands/watch.js';
-import { submit } from './commands/submit.js';
+import { submit, defaultMessage } from './commands/submit.js';
 import { deploy } from './commands/deploy.js';
 import { revert } from './commands/revert.js';
 import { preview } from './commands/preview.js';
@@ -130,27 +130,28 @@ program
 program
   .command('submit')
   .description('本地提交：git commit + 创建小版本号（不发线上）')
-  .option('-m, --message <text>', '提交说明（必填）')
+  .option('-m, --message <text>', '提交说明（可选，默认自动生成）')
   .option('--site <site>', '站点名（覆盖配置）')
   .option('--page <page>', '页面名（覆盖配置）')
   .option('-s, --source <file>', '要提交的源文件（默认配置的 source）')
   .option('--no-build', '不构建，直接使用现有产物')
   .action(async (opts) => {
-    await run(() => submit(opts));
+    await run(() => submit({ ...opts, message: opts.message || defaultMessage('submit') }));
   });
 
 // ---- deploy ----
 program
   .command('deploy')
   .description('创建大版本 + 推送远端 + 发布 Wikidot + submit')
-  .option('-m, --message <text>', '部署说明（必填）')
+  .option('-m, --message <text>', '部署说明（可选，默认自动生成）')
   .option('--site <site>', '站点名（覆盖配置）')
   .option('--page <page>', '页面名（覆盖配置）')
   .option('--no-validate', '跳过校验')
   .option('--no-push', '不推送 git 远端')
   .option('--no-deps', '只发布入口页，不发布 [[include]] 依赖页、不改写引用名')
+  .option('-y, --yes', '跳过交互式确认（脚本 / CI）')
   .action(async (opts) => {
-    await run(() => deploy(opts));
+    await run(() => deploy({ ...opts, message: opts.message || defaultMessage('deploy') }));
   });
 
 // ---- preview ----
@@ -188,10 +189,11 @@ program
   .option('--list', '列出可回退的版本（含 commit message）')
   .option('--site <site>', '站点名（覆盖配置）')
   .option('--page <page>', '页面名（覆盖配置）')
-  .option('--to <version>', '版本号 x / x.y，或 git 提交（hash / HEAD~n，默认 HEAD）')
+  .option('--to <version>', '版本号 x / x.y，或 git 提交（hash / HEAD~n）；不传则交互选择')
   .option('--no-wikidot', '只做本地 git revert，不回退线上')
   .option('--auto-commit', '工作区有未提交改动时先自动提交再 revert')
   .option('--rebuild', 'git revert 后重新构建产物再回退线上（dist/ 被 gitignore 忽略）')
+  .option('-y, --yes', '跳过交互式确认（脚本 / CI）')
   .action(async (opts) => {
     await run(() => revert(opts));
   });

@@ -210,10 +210,10 @@
 
   <dialog id="versions-dialog">
     <h3>版本列表</h3>
-    <div class="dlg-hint">大版本由「部署」创建；小版本由本地提交创建。回退到 x.y 时线上回到大版本 x。</div>
+    <div class="dlg-hint">大版本由「部署」创建；小版本由本地提交创建。回退到 x.y 时，本地回到 x.y，线上回到大版本 x 的快照。</div>
     <table id="versions-table">
       <thead>
-        <tr><th>版本</th><th>类型</th><th>提交</th><th>说明</th><th></th></tr>
+        <tr><th>版本</th><th>类型</th><th>提交</th><th>时间</th><th>线上回退</th><th>说明</th><th></th></tr>
       </thead>
       <tbody id="versions-body"></tbody>
     </table>

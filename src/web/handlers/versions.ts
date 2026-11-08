@@ -11,7 +11,7 @@ import { submit } from '../../commands/submit.js';
 import { deploy } from '../../commands/deploy.js';
 import { revert } from '../../commands/revert.js';
 import { init } from '../../commands/init.js';
-import { listVersions } from '../../domain/versions.js';
+import { listVersions, nextMajorVersion, nextMinorVersion } from '../../domain/versions.js';
 import { captureLogs, findProject } from './shared.js';
 import type { HandlerEnv } from '../../types/web/handlers/shared.ts';
 import type {
@@ -22,7 +22,13 @@ import type {
 
 export function listProjectVersions(id: string): ProjectVersionsResult {
   const p = findProject(id);
-  return { versions: listVersions(p.root) };
+  return {
+    versions: listVersions(p.root),
+    next: {
+      major: nextMajorVersion(p.root),
+      minor: nextMinorVersion(p.root).version,
+    },
+  };
 }
 
 /** 提交小版本：本地 git commit + 小版本号递增，不联网、不发布（发布走 deploy） */

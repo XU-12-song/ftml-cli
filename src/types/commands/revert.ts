@@ -20,6 +20,8 @@ export interface RevertOptions extends ConfigCliOptions {
   autoCommit?: boolean;
   /** git revert 后重新构建产物 */
   rebuild?: boolean;
+  /** 跳过交互式确认（脚本 / CI） */
+  yes?: boolean;
   clientFactory?: ClientFactory;
 }
 
