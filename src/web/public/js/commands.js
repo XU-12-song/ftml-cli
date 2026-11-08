@@ -26,6 +26,7 @@ import { toggleLogin } from './auth.js';
 import { toggleLayout, toggleZen } from './layout.js';
 import { openTargetDialog } from './target.js';
 import { cycleTheme } from './theme.js';
+import { showWelcome } from './onboarding.js';
 
 const hasProject = () => !!state.projectId;
 const hasFile = () => !!state.projectId && !!state.filePath;
@@ -69,4 +70,7 @@ export const COMMANDS = [
     keywords: 'login logout account auth',
     run: toggleLogin,
   },
+
+  // ---- 帮助 ----
+  { group: '帮助', title: '首次使用指南 / 欢迎面板', keywords: 'welcome onboarding help guide start 入门 上手', run: () => showWelcome(true) },
 ];

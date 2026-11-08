@@ -6,6 +6,7 @@ import { homeFtmlCliDir, credentialsPath, homeCacheDir, projectMetaPath } from '
 import { cacheFilePath, readPageCache, writePageCache } from '../src/infra/cache.js';
 import { loadConfig, loadProjectMeta, saveProjectMeta } from '../src/infra/config.js';
 import { init } from '../src/commands/init.js';
+import { build } from '../src/commands/build.js';
 import { projectGit, commitAll, gitRevert, isClean, isRepo } from '../src/infra/git.js';
 import { makeTmpDir, cleanup } from './helpers/fixtures.js';
 
@@ -122,6 +123,50 @@ test('init 建立项目结构且可重复执行', async () => {
     await init({ cwd: root });
     const gi2 = readFileSync(path.join(root, '.gitignore'), 'utf8');
     assert.equal(gi2.split('\n').filter((l) => l.trim() === 'dist/').length, 1);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('init 为空目录创建起始 index.ftml，且不覆盖已有源文件', async () => {
+  const root = tmpdir();
+  try {
+    await init({ cwd: root });
+    const starter = path.join(root, 'index.ftml');
+    assert.ok(existsSync(starter), '空项目应生成起始源文件');
+    assert.match(readFileSync(starter, 'utf8'), /欢迎使用 ftml-cli/);
+
+    // 用户已有任意 .ftml 时不额外创建 index.ftml
+    const other = tmpdir();
+    try {
+      writeFileSync(path.join(other, 'page.ftml'), 'user content', 'utf8');
+      await init({ cwd: other });
+      assert.equal(existsSync(path.join(other, 'index.ftml')), false);
+    } finally {
+      cleanup(other);
+    }
+
+    // 已有 index.ftml 不覆盖
+    const mine = tmpdir();
+    try {
+      writeFileSync(path.join(mine, 'index.ftml'), 'my page', 'utf8');
+      await init({ cwd: mine });
+      assert.equal(readFileSync(path.join(mine, 'index.ftml'), 'utf8'), 'my page');
+    } finally {
+      cleanup(mine);
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('build 找不到源文件时提示 ftml init', async () => {
+  const root = tmpdir();
+  try {
+    await assert.rejects(
+      () => build({ root, source: path.join(root, 'missing.ftml') }),
+      /找不到源文件.*ftml init/s
+    );
   } finally {
     cleanup(root);
   }

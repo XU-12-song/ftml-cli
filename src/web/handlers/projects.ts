@@ -8,6 +8,7 @@ import path from 'node:path';
 import { loadProjects, addProject, removeProject } from '../projects.js';
 import { projectsBaseDir } from '../../infra/paths.js';
 import { init } from '../../commands/init.js';
+import { STARTER_FTML } from '../../core/starter.js';
 import { projectGit, isRepo, isClean } from '../../infra/git.js';
 import { HttpError, captureLogs, findProject } from './shared.js';
 import type { ProjectEntry } from '../../types/web/projects.ts';
@@ -49,11 +50,6 @@ export async function deleteProject(id: string): Promise<ProjectEntry[]> {
 // ---------------- 新建 ftml 仓库 ----------------
 
 const REPO_NAME_RE = /^[A-Za-z0-9._\u4e00-\u9fa5-]+$/;
-
-const STARTER_FTML = `[[div class="content"]]
-这里是新仓库的起始页面，用 FTML 编写。
-[[/div]]
-`;
 
 /**
  * 在「FTML 仓库分区」下新建并初始化一个 ftml 仓库。

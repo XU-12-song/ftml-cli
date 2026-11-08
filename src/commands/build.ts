@@ -23,7 +23,18 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult> {
     ? path.resolve(options.output)
     : config.outputAbs;
 
-  const src = fs.readFileSync(inputAbs, 'utf8');
+  let src: string;
+  try {
+    src = fs.readFileSync(inputAbs, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(
+        `找不到源文件: ${inputAbs}\n` +
+        '当前目录可能还不是 ftml 项目。运行 `ftml init` 初始化，或用 -s <文件> 指定源文件。'
+      );
+    }
+    throw e;
+  }
 
   const templates = await loadTemplates(config.templatesDirAbs);
   const result = expand(src, templates, { baseDir: path.dirname(inputAbs) });

@@ -101,6 +101,11 @@ export const el = {
   problemsSummary: $('problems-summary'),
   problemsList: $('problems-list'),
   problemsClose: $('problems-close'),
+  welcomeDialog: $('welcome-dialog'),
+  welcomeNewRepo: $('welcome-new-repo'),
+  welcomeAddProject: $('welcome-add-project'),
+  welcomeLogin: $('welcome-login'),
+  welcomeClose: $('welcome-close'),
 };
 
 export const state = {
