@@ -5,7 +5,7 @@
   "author": "ftml-cli contributors",
   "type": "module",
   "bin": {
-    "ftml": "./src/cli.ts"
+    "ftml": "./bin/ftml.mjs"
   },
   "main": "./build/electron/main.js",
   "scripts": {
