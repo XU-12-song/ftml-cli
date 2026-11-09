@@ -12,6 +12,7 @@ import type { WikitextPageContext } from '@wdprlib/ast';
 import type { RenderedHtmlBlock } from '@wdprlib/render';
 import type { TemplatesMap } from '../core/template.ts';
 import type { ReadonlyModulePlaceholders } from '../domain/settings.ts';
+import type { SiteLayout } from '../infra/layout.ts';
 import type { ModuleCaps, ModuleMode, ModuleResolutionSummary } from './module.ts';
 import type { RenderDiagnostic } from './diagnostics.ts';
 
@@ -74,6 +75,10 @@ export interface PreviewDocumentOptions {
   styles?: string[];
   title?: string;
   themeCss?: string;
+  /** 目标站点的页面结构；缺失时使用内置沙盒外壳 */
+  layout?: SiteLayout | null;
+  /** 主题回退 @import 的 URL 列表（默认 THEME_SOURCES） */
+  themeSources?: string[];
 }
 
 /** include fetcher 收到的目标 */

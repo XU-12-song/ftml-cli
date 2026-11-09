@@ -89,6 +89,20 @@ function loadFullDocument(documentHtml) {
 }
 
 /**
+ * 站点名归一化（与 src/infra/layout.ts 的 normalizeSiteName 同口径）：
+ * 用于比较「当前外壳站点」与输入框，避免 URL 写法导致每次渲染都整篇重载。
+ */
+export function layoutKey(raw) {
+  let s = String(raw || '').trim().toLowerCase();
+  if (!s) return 'scpsandboxcn';
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/.*$/, '')
+    .replace(/\.wikidot\.com$/, '');
+  return /^[a-z0-9-]+$/.test(s) ? s : 'scpsandboxcn';
+}
+
+/**
  * 渲染当前文件。
  * @param {{ remote?: boolean, forceFull?: boolean, resolveModules?: boolean }} [opts]
  *   remote=true 时允许联网解析远程 [[include]]（手动刷新路径）；默认 false：
@@ -103,8 +117,11 @@ export async function render({ remote = false, forceFull = false, resolveModules
   abortInflightRender();
   state.renderAbort = ac;
 
-  // 外壳就绪 → 只要能补丁的正文片段；否则要完整文档整篇加载
-  const wantFull = forceFull || !previewShellReady();
+  // 切换目标站点 → 外壳必须整篇重载并重新获取页面结构/主题；
+  // 其余情况保持「只补丁 #page-content」的快路径。
+  const siteKey = layoutKey(el.siteInput.value);
+  const layoutChanged = state.layoutSite != null && state.layoutSite !== siteKey;
+  const wantFull = forceFull || layoutChanged || !previewShellReady();
 
   try {
     await persistEditor(); // 落盘不加 signal：即便本次渲染被取代，最新内容也应写入磁盘
@@ -116,9 +133,11 @@ export async function render({ remote = false, forceFull = false, resolveModules
       allowNetwork: remote, // 仅手动刷新联网；自动预览走本地 + 磁盘缓存
       resolveModules,       // 一次性真实解析 module；仅本次请求有效
       full: wantFull,
+      refreshLayout: layoutChanged, // 仅切换站点时重新抓取 _template
     }, { signal: ac.signal });
 
     if (ac.signal.aborted) return; // 期间又有更新，本次结果作废
+    if (r.layoutSite) state.layoutSite = r.layoutSite;
 
     state.lastIncludes = r.includes || [];
     renderProblems(r.problems || []);

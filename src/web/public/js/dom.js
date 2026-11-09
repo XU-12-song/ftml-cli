@@ -137,6 +137,7 @@ export const state = {
   gitEnv: null,     // 最近一次 git 环境体检结果（detectGitEnv 响应）
   problems: [],     // 最近一次渲染的统一问题列表（含行号/堆栈）
   auth: { loggedIn: false, username: '' }, // Wikidot 登录状态（账号按钮 / 命令面板共用）
+  layoutSite: null, // 当前预览外壳使用的站点（切换站点时整篇重载）
 };
 
 // 取消按钮一律 type="button"（不提交 form method="dialog"），点按后手动关闭并标记 returnValue='cancel'，

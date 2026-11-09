@@ -16,7 +16,13 @@ import { loadConfig } from '../../infra/config.js';
 import { loadTemplates, expand } from '../../core/expand.js';
 import { renderPreview } from '../../render/preview.js';
 import { buildPreviewDocument } from '../../render/preview-page.js';
-import { readThemeCss } from '../../render/theme.js';
+import { readThemeCss, refreshThemeCss, THEME_SOURCES } from '../../render/theme.js';
+import {
+  getSiteLayout,
+  normalizeSiteName,
+  readSiteLayout,
+  refreshSiteLayout,
+} from '../../infra/layout.js';
 import { buildPageContext } from '../../render/context.js';
 import { formatDiagnostics } from '../../render/diagnostics.js';
 import { diagnosticToProblem, errorToProblem, sortProblems } from '../../render/problems.js';
@@ -130,11 +136,37 @@ export async function renderProjectFile(
       });
       const title = config.page || page.fullName;
       const wantFull = body?.full !== false;
-      // 主题样式表走本地缓存（同步、不联网）：整篇重载不再依赖渲染时刻的网络，
-      // 避免 @import 异步加载期间整页以无样式（纯黑白）渲染。缓存由 web 启动时预热。
-      const document = wantFull
-        ? buildPreviewDocument({ html, htmlBlocks, styles, title, themeCss: readThemeCss().css })
-        : null;
+      let document: string | null = null;
+      let layoutSite: string | undefined;
+      if (wantFull) {
+        // 站点结构/主题只在完整文档时处理：片段补丁路径保持零网络、零磁盘布局读取。
+        layoutSite = normalizeSiteName(config.site);
+        const fetchImpl = env.fetchImpl;
+        let layout = body?.refreshLayout
+          ? (await refreshSiteLayout(layoutSite, { fetchImpl })).layout
+          : readSiteLayout(layoutSite);
+        if (!layout && !body?.refreshLayout) {
+          layout = await getSiteLayout(layoutSite, { fetchImpl });
+        }
+        checkpoint(); // 联网获取布局期间若已有更新的请求，放弃本次
+
+        // 主题按站点主题 URL 取；缓存缺失或站点切换时联网刷新。
+        const themeSources = layout?.themes?.length ? layout.themes : THEME_SOURCES;
+        let theme = readThemeCss({ sources: themeSources });
+        if (body?.refreshLayout || theme.missing.length) {
+          await refreshThemeCss({ sources: themeSources, fetchImpl });
+          theme = readThemeCss({ sources: themeSources });
+        }
+        document = buildPreviewDocument({
+          html,
+          htmlBlocks,
+          styles,
+          title,
+          themeCss: theme.css,
+          layout,
+          themeSources,
+        });
+      }
       // 诊断来自 @wdprlib；附上带源码上下文的可读文本供前端展示
       const diagnosticReport = formatDiagnostics(diagnostics, expanded, { file: relPath });
       // @wdprlib 诊断 → 统一 problem（带偏移，前端可点击跳转）
@@ -153,6 +185,7 @@ export async function renderProjectFile(
         settings,
         moduleResolution,
         problems,
+        layoutSite,
       };
     } catch (e) {
       if (e instanceof SupersededError) throw e; // 被更新的请求取代：交回 409 处理，不能当成渲染问题

@@ -6,6 +6,7 @@
  */
 import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime } from './api.js';
+import { render } from './preview.js';
 
 /** 每个「项目 + 文件」各记一份目标，存 localStorage */
 export function targetKey() {
@@ -62,6 +63,8 @@ export async function saveTarget() {
     refreshTargetIndicator();
     el.targetDialog.close();
     setStatus(`目标页面已保存（${fmtTime()}）`);
+    // 站点可能变了：render 内部会判断是否需要整篇重载（切换站点）
+    await render();
   } catch (e) {
     setError(e.message);
   }

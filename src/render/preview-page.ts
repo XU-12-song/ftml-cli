@@ -19,7 +19,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { THEME_SOURCES } from './theme.js';
+import { CONTENT_MARKER, TITLE_MARKER } from '../infra/layout.js';
 import type { PreviewDocumentOptions } from '../types/render/preview.ts';
+import type { SiteLayout } from '../types/infra/layout.ts';
 
 
 let runtimeSourceCache:string|null = null;
@@ -33,75 +35,9 @@ function runtimeSource() {
   return runtimeSourceCache;
 }
 
-/**
- * 把渲染结果包装成完整预览文档。
- *
- * @param {object} opts
- * @param {string} opts.html `@wdprlib/render` 输出的正文 fragment（styleMode: 'inline'，
- *                           [[module CSS]] 已含在 html 里）
- * @param {Array<string>} [opts.styles] 收集到的 CSS 段（集中放进 <style id="ftml-styles">，
- *                                     便于热补丁整段替换）
- * @param {string} [opts.title] 文档标题（默认 "ftml preview"）
- * @param {string} [opts.themeCss] 本地化的主题样式表（src/render/theme.js）。给了就内联，
- *                                 否则退回远程 `@import` —— `@import` 是异步加载，失败/慢时
- *                                 文档会先按无样式渲染（纯黑白），且该状态随网络命中与否
- *                                 在每次整篇重载间闪烁。
- * @returns {string} 完整 HTML 文档字符串
- */
-
-/**
- * 构建预览文档 – 使用 Wikidot 沙盒站模板
- */
-export function buildPreviewDocument({ html,htmlBlocks=[], styles = [], title = 'ftml preview', themeCss = '' }: PreviewDocumentOptions): string {
-  const styleCss = styles.join('\n');
-  // 主题：优先内联本地缓存（同步、离线可用），拿不到才退回远程 @import。
-  // 内联的 CSS 里若有 </style 会提前闭合标签，按脚本内联同样手法打散。
-  const themeBlock = themeCss
-    ? themeCss.replace(/<\/style/gi, '<\\/style')
-    : [
-      '        /* theme（主题缓存不可用，退回远程 @import：异步加载，可能先以无样式渲染） */',
-      `        @import url(${THEME_SOURCES[0]});`,
-      `        @import url(${THEME_SOURCES[1]});`,
-    ].join('\n');
-  const runtimeInline = runtimeSource()
-    .replace(/<\/script/gi, '<\\/script');
-  // 内联进 <script> 的 JSON：把 < 全部转义成 \u003c，杜绝 </script / <!-- 提前闭合脚本
-  const blocksJson = JSON.stringify(htmlBlocks).replace(/</g, '\\u003c');
-
-  // 标题转义
-  const titleEscaped = title
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // 使用模板字符串直接嵌入完整页面，并插入动态内容
-  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="cn" lang="cn">
-
-<head>
-    <title>${titleEscaped}</title>
-    
-    <meta http-equiv="content-type" content="text/html;charset=UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <meta http-equiv="content-language" content="cn"/>
-
-    <style type="text/css" id="internal-style">
-
-        /* modules */
-
-
-${themeBlock}
-                    .error-block{display:none;}
-            </style>
-    
-    <style id="ftml-styles">${styleCss}</style>
-
-</head>
-<body id="html-body">
-<div id="skrollr-body">
-<a name="page-top"></a>
-
-<div id="container-wrap-wrap">
+/** 内置沙盒外壳（布局不可用时的回退） */
+function fallbackContainer(titleEscaped: string, html: string): string {
+  return `<div id="container-wrap-wrap">
     <div id="container-wrap">
         <div id="container">
             <div id="header">
@@ -132,7 +68,7 @@ ${themeBlock}
                 <div id="login-status"><a href="javascript:;" onclick="WIKIDOT.page.listeners.createAccount(event)" class="login-status-create-account btn">建立账户</a> <span>或</span> <a href="javascript:;" onclick="WIKIDOT.page.listeners.loginClick(event)" class="login-status-sign-in btn btn-primary">登入</a> </div>
                 <div id="header-extra-div-1"><span></span></div><div id="header-extra-div-2"><span></span></div><div id="header-extra-div-3"><span></span></div>
             </div>
-            
+
             <div id="content-wrap">
                 <div id="side-bar">
                     <div class="side-block">
@@ -171,7 +107,7 @@ ${themeBlock}
 <a class="close-menu" href="###"><br />
 <img src="https://scp-wiki.wdfiles.com/local--files/nav%3Aside/black.png" style="z-index=-1; opacity: 0.3;" alt="black.png" class="image" /><br /></a>
                 </div>
-                
+
                 <div id="main-content">
                     <div id="action-area-top"></div>
                     <div id="page-title">
@@ -190,19 +126,19 @@ ${html}
 <a href="javascript:;" class="btn btn-default" id="files-button">附件</a>
 <a href="javascript:;" class="btn btn-default" id="print-button">打印</a>
 <a href="javascript:;" class="btn btn-default" id="site-tools-button">网站工具</a>
-<a href="javascript:;" class="btn btn-default" id="more-options-button">+&nbsp;选项</a> 
+<a href="javascript:;" class="btn btn-default" id="more-options-button">+&nbsp;选项</a>
 </div>
 <div id="page-options-bottom-2" class="page-options-bottom form-actions" style="display:none">
     <a href="javascript:;" class="btn btn-default" id="edit-sections-button">编辑段落</a>
     <a href="javascript:;" class="btn btn-default" id="edit-append-button">附加</a>
     <a href="javascript:;" class="btn btn-default" id="edit-meta-button">编辑元信息</a>
-    <a href="javascript:;" class="btn btn-default" id="watchers-button">关注者</a> 
-    <a href="javascript:;" class="btn btn-default" id="backlinks-button">反向链接</a> 
-    <a href="javascript:;" class="btn btn-default" id="view-source-button">页面源代码</a> 
-    <a href="javascript:;" class="btn btn-default" id="parent-page-button">父页面</a> 
-    <a href="javascript:;" class="btn btn-default" id="page-block-button">锁定页面</a>    
-    <a href="javascript:;" class="btn btn-default" id="rename-move-button">重新命名</a> 
-    <a href="javascript:;" class="btn btn-default" id="delete-button">删除</a> 
+    <a href="javascript:;" class="btn btn-default" id="watchers-button">关注者</a>
+    <a href="javascript:;" class="btn btn-default" id="backlinks-button">反向链接</a>
+    <a href="javascript:;" class="btn btn-default" id="view-source-button">页面源代码</a>
+    <a href="javascript:;" class="btn btn-default" id="parent-page-button">父页面</a>
+    <a href="javascript:;" class="btn btn-default" id="page-block-button">锁定页面</a>
+    <a href="javascript:;" class="btn btn-default" id="rename-move-button">重新命名</a>
+    <a href="javascript:;" class="btn btn-default" id="delete-button">删除</a>
 </div>
 <div id="page-options-area-bottom">
 </div>
@@ -210,7 +146,7 @@ ${html}
                     <div id="action-area" style="display: none;"></div>
                 </div>
             </div>
-            
+
             <div id="footer" style="display: block; visibility: visible;">
                 <div class="options" style="display: block; visibility: visible;">
     <a href="http://www.wikidot.com/doc" id="wikidot-help-button">说明</a>
@@ -250,7 +186,104 @@ ${html}
 <div id="extra-div-1"><span></span></div><div id="extra-div-2"><span></span></div><div id="extra-div-3"><span></span></div>
 <div id="extra-div-4"><span></span></div><div id="extra-div-5"><span></span></div><div id="extra-div-6"><span></span></div>
 </div>
-</div>
+</div>`;
+}
+
+/** 目标站点布局 → container HTML；marker 缺失时回退内置外壳 */
+function layoutContainer(
+  layout: SiteLayout | null | undefined,
+  titleEscaped: string,
+  html: string,
+): string | null {
+  const structure = layout?.containerStructure ?? '';
+  if (!structure.includes(CONTENT_MARKER) || !structure.includes(TITLE_MARKER)) return null;
+  const withContent = structure
+    .replace(TITLE_MARKER, () => titleEscaped)
+    .replace(CONTENT_MARKER, () => html);
+  return `<div id="container-wrap-wrap">
+    <div id="container-wrap">
+        <div id="container">
+${withContent}
+        </div>
+    </div>
+</div>`;
+}
+
+/**
+ * 把渲染结果包装成完整预览文档。
+ *
+ * @param {object} opts
+ * @param {string} opts.html `@wdprlib/render` 输出的正文 fragment（styleMode: 'inline'，
+ *                           [[module CSS]] 已含在 html 里）
+ * @param {Array<string>} [opts.styles] 收集到的 CSS 段（集中放进 <style id="ftml-styles">，
+ *                                     便于热补丁整段替换）
+ * @param {string} [opts.title] 文档标题（默认 "ftml preview"）
+ * @param {string} [opts.themeCss] 本地化的主题样式表（src/render/theme.js）。给了就内联，
+ *                                 否则退回远程 `@import` —— `@import` 是异步加载，失败/慢时
+ *                                 文档会先按无样式渲染（纯黑白），且该状态随网络命中与否
+ *                                 在每次整篇重载间闪烁。
+ * @returns {string} 完整 HTML 文档字符串
+ */
+
+/**
+ * 构建预览文档。
+ *
+ * 传入 `layout`（目标站点 `_template` 解析结果）时使用站点真实 container；
+ * 否则退回内置的沙盒外壳（离线/抓取失败时仍可预览）。
+ */
+export function buildPreviewDocument({ html,htmlBlocks=[], styles = [], title = 'ftml preview', themeCss = '', layout = null, themeSources }: PreviewDocumentOptions): string {
+  const styleCss = styles.join('\n');
+  const themeUrls = themeSources?.length ? themeSources : THEME_SOURCES;
+  // 主题：优先内联本地缓存（同步、离线可用），拿不到才退回远程 @import。
+  // 内联的 CSS 里若有 </style 会提前闭合标签，按脚本内联同样手法打散。
+  const themeBlock = themeCss
+    ? themeCss.replace(/<\/style/gi, '<\\/style')
+    : [
+      '        /* theme（主题缓存不可用，退回远程 @import：异步加载，可能先以无样式渲染） */',
+      ...themeUrls.map((url) => `        @import url(${url});`),
+    ].join('\n');
+  const runtimeInline = runtimeSource()
+    .replace(/<\/script/gi, '<\\/script');
+  // 内联进 <script> 的 JSON：把 < 全部转义成 \u003c，杜绝 </script / <!-- 提前闭合脚本
+  const blocksJson = JSON.stringify(htmlBlocks).replace(/</g, '\\u003c');
+
+  // 标题转义
+  const titleEscaped = title
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const containerHtml = layoutContainer(layout, titleEscaped, html)
+    ?? fallbackContainer(titleEscaped, html);
+
+  // 使用模板字符串直接嵌入完整页面，并插入动态内容
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="cn" lang="cn">
+
+<head>
+    <title>${titleEscaped}</title>
+    
+    <meta http-equiv="content-type" content="text/html;charset=UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta http-equiv="content-language" content="cn"/>
+
+    <style type="text/css" id="internal-style">
+
+        /* modules */
+
+
+${themeBlock}
+                    .error-block{display:none;}
+            </style>
+    
+    <style id="ftml-styles">${styleCss}</style>
+
+</head>
+<body id="html-body">
+<div id="skrollr-body">
+<a name="page-top"></a>
+
+${containerHtml}
 <div id="dummy-ondomready-block" style="display: none;" ></div>
     <!-- Google Analytics load -->
     <script type="text/javascript">

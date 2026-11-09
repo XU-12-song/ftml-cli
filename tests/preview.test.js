@@ -11,6 +11,7 @@ import { loadTemplates } from '../src/core/expand.js';
 import { clearMtimeCache } from '../src/infra/mtime-cache.js';
 import { readPageCache } from '../src/infra/cache.js';
 import { THEME_SOURCES, absolutizeUrls, readThemeCss, refreshThemeCss } from '../src/render/theme.js';
+import { CONTENT_MARKER, TITLE_MARKER } from '../src/infra/layout.js';
 import { DEFAULT_MODULE_PLACEHOLDERS } from '../src/domain/settings.js';
 import { makeTmpDir, cleanup, useIsolatedHome } from './helpers/fixtures.js';
 import { fakeRemoteClient, fakeWorld } from './helpers/fake-wikidot.js';
@@ -371,6 +372,54 @@ test('buildPreviewDocument 有 themeCss 时内联主题、不再出现远程 @im
   // 内联内容里若含 </style 必须打散，防止提前闭合样式块
   const evil = buildPreviewDocument({ html: '<p>x</p>', themeCss: 'a{}/*</style><script>x</script>*/' });
   assert.ok(!evil.includes('</style><script>'));
+});
+
+test('buildPreviewDocument 使用布局 container：正文进 #page-content、标题进 #page-title', () => {
+  const layout = {
+    site: 'scp-cn',
+    containerStructure:
+      '<div id="header"><p>SCP-CN HEADER</p></div>'
+      + '<div id="main-content">'
+      + `<div id="page-title">${TITLE_MARKER}</div>`
+      + `<div id="page-content">${CONTENT_MARKER}</div>`
+      + '</div>',
+    themes: ['https://theme.example/site.css'],
+  };
+  const doc = buildPreviewDocument({
+    html: '<p>正文 $& $\'</p>',
+    title: '测试 <页>',
+    layout,
+    themeSources: layout.themes,
+  });
+  assert.ok(doc.includes('SCP-CN HEADER'));
+  assert.ok(doc.includes('测试 &lt;页&gt;'));
+  assert.ok(doc.includes('<p>正文 $& $\'</p>'));
+  assert.ok(!doc.includes('SCP基金會中文沙盒站'));
+  assert.ok(doc.includes('@import url(https://theme.example/site.css)'));
+  // marker 已被替换，不会泄漏到输出
+  assert.ok(!doc.includes(CONTENT_MARKER));
+  assert.ok(!doc.includes(TITLE_MARKER));
+  // runtime / 热补丁桥保持不变
+  assert.ok(doc.includes('window.__ftmlPatch = function (payload)'));
+});
+
+test('buildPreviewDocument 布局缺少 marker 时回退内置沙盒外壳', () => {
+  const doc = buildPreviewDocument({
+    html: '<p>x</p>',
+    layout: { site: 'x', containerStructure: '<div>no markers</div>', themes: [] },
+  });
+  assert.ok(doc.includes('SCP基金會中文沙盒站'));
+  assert.ok(doc.includes('<div id="page-content">\n<p>x</p>'));
+});
+
+test('buildPreviewDocument themeCss 优先于 themeSources 的远程 @import', () => {
+  const doc = buildPreviewDocument({
+    html: '<p>x</p>',
+    themeCss: 'body{color:red}',
+    themeSources: ['https://theme.example/site.css'],
+  });
+  assert.ok(doc.includes('body{color:red}'));
+  assert.ok(!doc.includes('@import url(https://theme.example/site.css)'));
 });
 
 // ---------- theme.js：主题样式表本地化 ----------

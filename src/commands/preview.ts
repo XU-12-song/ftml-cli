@@ -15,7 +15,8 @@ import { loadTemplates } from '../core/expand.js';
 import { loadConfig } from '../infra/config.js';
 import { renderPreview } from '../render/preview.js';
 import { buildPreviewDocument } from '../render/preview-page.js';
-import { refreshThemeCss } from '../render/theme.js';
+import { refreshThemeCss, THEME_SOURCES } from '../render/theme.js';
+import { normalizeSiteName, refreshSiteLayout } from '../infra/layout.js';
 import { buildPageContext } from '../render/context.js';
 import { formatDiagnostics } from '../render/diagnostics.js';
 import { createClient } from '../infra/wikidot.js';
@@ -81,9 +82,17 @@ export async function preview(
     : config.outputAbs + '.html';
   const outAbs = options.output ? path.resolve(options.output) : defaultOut;
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
+  // 目标站点结构 + 主题：CLI 是一次性输出，直接联网刷新；失败回退内置沙盒外壳。
+  const layoutSite = normalizeSiteName(options.site || config.site);
+  const { layout, error: layoutError } = await refreshSiteLayout(layoutSite);
+  if (layoutError) {
+    console.error(`警告: 站点结构获取失败（${layoutSite}: ${layoutError}），预览使用内置外壳`);
+  }
+  const themeSources = layout?.themes?.length ? layout.themes : THEME_SOURCES;
+
   // 主题就地取回内联：产出文件是 file:// 直接打开的，不能指望它每次都能联网拉
   // @import（失败即整页无样式），内联后离线打开也是正常配色。
-  const { css: themeCss, errors: themeErrors } = await refreshThemeCss();
+  const { css: themeCss, errors: themeErrors } = await refreshThemeCss({ sources: themeSources });
   for (const e of themeErrors) {
     console.error(`警告: 主题样式表获取失败（${e.url}: ${e.message}），该份退回远程 @import`);
   }
@@ -93,6 +102,8 @@ export async function preview(
     styles, // 之前漏传：styles 只进了上面的提示语，CSS 实际没写进产出文件
     title: config.page || page.fullName,
     themeCss,
+    layout,
+    themeSources,
   });
   fs.writeFileSync(outAbs, document, 'utf8');
   const size = Buffer.byteLength(document, 'utf8');

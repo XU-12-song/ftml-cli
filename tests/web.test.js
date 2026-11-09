@@ -6,7 +6,7 @@
  * 非 git 项目 deploy 报错、loadConfig({ root }) 多项目支持。
  */
 
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,6 +27,7 @@ import {
   latestOnly,
 } from '../src/web/handlers/index.js';
 import { loadConfig } from '../src/infra/config.js';
+import { clearLayoutCache } from '../src/infra/layout.js';
 import { saveSettings } from '../src/domain/settings.js';
 import { init } from '../src/commands/init.js';
 import { projectGit, commitAll } from '../src/infra/git.js';
@@ -35,6 +36,17 @@ import { fakeDeployClient as fakeClient, fakeRemoteClient, fakeMultiPageClient, 
 
 /** 供 fakeRemoteClient 使用的页面桩：getSource 返回固定源码 */
 const remotePage = (src) => ({ getSource: async () => ({ isOk: () => true, value: src }) });
+
+// 这些用例只验证 handler 逻辑：默认不允许任何外网请求（布局/主题抓取离线失败，
+// 回退内置外壳）。需要布局的用例通过 env.fetchImpl 显式注入。
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  if (!String(url).includes('127.0.0.1')) throw new Error('network disabled in tests');
+  return realFetch(url, opts);
+};
+
+// 布局 memo 是进程级的，必须在用例间清空；磁盘缓存随 withHome 隔离。
+beforeEach(() => clearLayoutCache());
 
 const tmpdir = () => makeTmpDir({}, { prefix: 'ftml-web-' });
 
@@ -262,6 +274,146 @@ test('render 端点：full=false 只回正文片段（供前端原地补丁）',
       assert.ok(Array.isArray(frag.htmlBlocks));
       // 完整模式只是把同一份片段包进外壳
       assert.ok(full.html.includes(frag.fragment));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+const LAYOUT_TEMPLATE = `<!DOCTYPE html><html><head>
+<style id="internal-style">/* modules */
+/* theme */
+@import url(https://theme.example/site.css);
+</style></head><body>
+<div id="container">
+  <div id="header"><p id="site-header">SCP-CN HEADER</p></div>
+  <div id="main-content">
+    <div id="page-title">_template</div>
+    <div id="page-content"><p>%%content%%</p></div>
+  </div>
+</div>
+</body></html>`;
+
+/** 注入 fetch：_template 返回 fixture，主题返回固定 CSS；记录调用 URL */
+function layoutFetch(calls = []) {
+  return async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('_template')) {
+      return { ok: true, status: 200, text: async () => LAYOUT_TEMPLATE };
+    }
+    return { ok: true, status: 200, text: async () => 'body{background:#123}' };
+  };
+}
+
+test('render：完整文档使用目标站点布局与主题', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      const calls = [];
+      const r = await renderProjectFile(
+        root,
+        { path: 'index.ftml', site: 'scp-cn', page: 'hello' },
+        { injectClient: client, fetchImpl: layoutFetch(calls) },
+      );
+      assert.equal(r.layoutSite, 'scp-cn');
+      assert.ok(r.html.includes('SCP-CN HEADER'));
+      assert.ok(r.html.includes('★ Hi'));
+      assert.ok(r.html.includes('<title>hello</title>') || r.html.includes('hello'));
+      assert.ok(r.html.includes('body{background:#123}')); // 主题按站点 URL 内联
+      assert.ok(!r.html.includes('SCP基金會中文沙盒站'));
+      assert.ok(calls.includes('https://scp-cn.wikidot.com/_template'));
+      assert.ok(calls.includes('https://theme.example/site.css'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：同站点完整渲染复用缓存；refreshLayout 才重新抓取', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      const calls = [];
+      const env = { injectClient: client, fetchImpl: layoutFetch(calls) };
+      const body = { path: 'index.ftml', site: 'scp-cn', page: 'hello' };
+      const templateCalls = () => calls.filter((u) => u.includes('_template')).length;
+
+      await renderProjectFile(root, body, env);
+      assert.equal(templateCalls(), 1);
+
+      await renderProjectFile(root, body, env);
+      assert.equal(templateCalls(), 1); // 命中 memo，不联网
+
+      await renderProjectFile(root, { ...body, refreshLayout: true }, env);
+      assert.equal(templateCalls(), 2); // 切换站点时强制刷新
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：full=false 片段路径不触碰站点布局（即使 refreshLayout）', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      const calls = [];
+      const r = await renderProjectFile(
+        root,
+        { path: 'index.ftml', site: 'scp-cn', page: 'hello', full: false, refreshLayout: true },
+        { injectClient: client, fetchImpl: layoutFetch(calls) },
+      );
+      assert.equal(r.html, null);
+      assert.equal(r.layoutSite, undefined);
+      assert.ok(r.fragment.includes('★ Hi'));
+      assert.equal(calls.length, 0);
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：未设置目标站点时使用沙盒站布局', async () => {
+  const root = makeFixtureProject();
+  try {
+    writeFileSync(path.join(root, '.ftmlrc.json'), JSON.stringify({ page: 'hello' }));
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      const calls = [];
+      const r = await renderProjectFile(
+        root,
+        { path: 'index.ftml', page: 'hello' },
+        { injectClient: client, fetchImpl: layoutFetch(calls) },
+      );
+      assert.equal(r.layoutSite, 'scpsandboxcn');
+      assert.ok(calls.includes('https://scpsandboxcn.wikidot.com/_template'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：布局抓取失败时回退内置外壳，仍返回完整文档', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      const fail = async () => { throw new Error('offline'); };
+      const r = await renderProjectFile(
+        root,
+        { path: 'index.ftml', site: 'scp-cn', page: 'hello' },
+        { injectClient: client, fetchImpl: fail },
+      );
+      assert.equal(r.layoutSite, 'scp-cn');
+      assert.ok(r.html.includes('SCP基金會中文沙盒站'));
+      assert.ok(r.html.includes('★ Hi'));
     });
   } finally {
     cleanup(root);

@@ -11,6 +11,8 @@ export interface HandlerEnv {
   injectClient?: Client;
   /** 测试注入的客户端工厂 */
   clientFactory?: ClientFactory;
+  /** 测试注入的 fetch（站点结构/主题抓取） */
+  fetchImpl?: typeof fetch;
 }
 
 /** captureLogs 捕获的一条控制台输出 */
