@@ -72,6 +72,25 @@ test('parseSiteLayoutHtml：提取 container、写入 marker、清洗脚本/事�
   ]);
 });
 
+test('parseSiteLayoutHtml：顶栏裸文本 li 补齐 Wikidot 运行时的 <a> 包裹', () => {
+  const html = `<div id="container">
+    <div id="top-bar"><div class="top-bar"><ul>
+      <li>菜单A<ul><li><a href="/a">子项</a></li></ul></li>
+      <li><a href="/b">已有链接</a></li>
+      <li>无子菜单</li>
+    </ul></div></div>
+    <div id="page-content"></div>
+  </div>`;
+  const layout = parseSiteLayoutHtml('x', html);
+  assert.ok(layout);
+  // 裸文本被包进 <a>（主题的 #top-bar li a 样式依赖它）
+  assert.match(layout.containerStructure, /<li><a href="#">菜单A\s*<\/a><ul>/);
+  assert.match(layout.containerStructure, /<li><a href="#">无子菜单<\/a><\/li>/);
+  // 已有锚点不重复包裹，且相对链接照常绝对化
+  assert.ok(layout.containerStructure.includes('href="https://x.wikidot.com/b"'));
+  assert.equal((layout.containerStructure.match(/<a href="#">/g) || []).length, 2);
+});
+
 test('parseSiteLayoutHtml：缺 #page-content 返回 null；缺 #page-title 时自动补', () => {
   assert.equal(parseSiteLayoutHtml('x', '<div id="container"><div>x</div></div>'), null);
 
