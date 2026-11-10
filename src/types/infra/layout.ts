@@ -14,7 +14,7 @@ export interface SiteLayout {
 
 /** 磁盘缓存条目（v 用于淘汰旧格式） */
 export interface LayoutCacheEntry extends SiteLayout {
-  v: 2;
+  v: 3;
   fetchedAt: number;
 }
 

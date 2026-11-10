@@ -34,8 +34,8 @@ export const DEFAULT_SITE = 'scpsandboxcn';
 export const CONTENT_MARKER = '<!--ftml:layout:content-->';
 export const TITLE_MARKER = '<!--ftml:layout:title-->';
 
-// v2：解析时补齐顶栏 <a> 包裹；旧缓存不含该结构，必须失效重抓
-const CACHE_VERSION = 2 as const;
+// v3：解析时补齐顶栏（含 mobile-top-bar）的 <a> 包裹；旧缓存必须失效重抓
+const CACHE_VERSION = 3 as const;
 const FETCH_TIMEOUT_MS = 8000;
 const SITE_NAME_RE = /^[a-z0-9-]+$/;
 const ABSOLUTE_REF = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
@@ -123,22 +123,17 @@ export function parseSiteLayoutHtml(site: string, html: string): SiteLayout | nu
   container.find('#page-title').first().html(TITLE_MARKER);
   content.html(CONTENT_MARKER);
 
-  // 顶栏的展开/折叠标签由 Wikidot 的前端脚本在运行时包上 <a>；预览不执行远端脚本，
-  // 这里提前补上同样的锚点，否则顶栏只有裸文本，主题里的 #top-bar li a 样式全部失效。
-  container.find('#top-bar .top-bar > ul > li').each((_, el) => {
+  // 顶栏（含 mobile-top-bar）的展开/折叠标签由 Wikidot 的 fixMenuList 在运行时包上
+  // <a>：对 #top-bar 下每个 li，若首个子节点是非空文本节点就包一层锚点。预览不执行
+  // 远端脚本，这里提前补上同样处理，否则顶栏只有裸文本，主题里的 #top-bar li a
+  // 样式全部失效。
+  container.find('#top-bar li').each((_, el) => {
     const li = $(el);
-    const leading: AnyNode[] = [];
-    let hasAnchor = false;
-    for (const node of li.contents().toArray()) {
-      if (node.type === 'tag' && node.name === 'ul') break;
-      if (node.type === 'tag' && node.name === 'a') { hasAnchor = true; break; }
-      leading.push(node);
-    }
-    if (hasAnchor) return;
-    if (!leading.some((n) => n.type === 'text' && n.data.trim())) return;
+    const first = (el as { firstChild?: AnyNode }).firstChild;
+    if (!first || first.type !== 'text' || !first.data) return;
     const anchor = $('<a href="#"></a>');
     li.prepend(anchor);
-    for (const node of leading) anchor.append(node);
+    anchor.append(first);
   });
 
   // 远端脚本与内联事件在预览里无意义且不安全
