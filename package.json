@@ -19,6 +19,7 @@
     "electron:dev": "npm run build:web && npm run build:electron && electron .",
     "dist:win": "npm run build:web && npm run build:electron && electron-builder --win --x64 --publish never",
     "test:electron": "npm run build:web && npm run build:electron && node --test tests/electron/smoke.mjs",
+    "test:packaged": "node --test tests/electron/smoke-packaged.mjs",
     "assets:build": "node scripts/build-assets.mjs"
   },
   "engines": {

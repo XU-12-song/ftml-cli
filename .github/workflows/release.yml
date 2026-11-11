@@ -3,21 +3,53 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（如 v0.5.0）'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  build-windows:
+  release-windows:
     runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+
+      - name: Verify version and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          if [ "$RELEASE_TAG" != "v$version" ]; then
+            echo "::error::tag 为 $RELEASE_TAG，但 package.json 版本是 $version"
+            exit 1
+          fi
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          if ! git merge-base --is-ancestor HEAD origin/master; then
+            echo "::error::tag 指向的提交不在 master 上"
+            exit 1
+          fi
 
       - run: npm ci
 
@@ -28,9 +60,24 @@ jobs:
       # 冒烟测试与打包都会先编译 TS（build:web / build:electron）。
       - run: npm run test:electron
 
-      - run: npm run dist:win
+      - name: Build Windows installers
+        run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # 源码冒烟通过不代表打包产物可用：再启动一次 win-unpacked 里的 exe。
+      - name: Smoke test packaged app
+        run: npm run test:packaged
+        env:
+          FTML_REQUIRE_PACKAGED: '1'
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum *-setup-x64.exe *-portable-x64.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -38,15 +85,20 @@ jobs:
           path: |
             release/*-setup-x64.exe
             release/*-portable-x64.exe
+            release/SHA256SUMS.txt
           if-no-files-found: error
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-') }}
+          make_latest: ${{ contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-') && 'false' || 'true' }}
           files: |
             release/*-setup-x64.exe
             release/*-portable-x64.exe
+            release/SHA256SUMS.txt
           body: |
-            ![ftml](https://github.com/${{ github.repository }}/raw/${{ github.ref_name }}/assets/cover/ftml-cover-1600x900.png)
+            ![ftml](https://github.com/${{ github.repository }}/raw/${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}/assets/cover/ftml-cover-1600x900.png)
 
             **Windows x64** · 安装包 / 便携版
 
@@ -54,5 +106,6 @@ jobs:
             - 最小化隐藏到托盘，关闭窗口退出应用。
             - 数据保存在 `~/.ftml-cli`，与 `ftml` CLI 共用。
             - 当前为未签名构建，首次运行可能出现 SmartScreen 提示。
+            - 下载后可用 `SHA256SUMS.txt` 校验文件完整性。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
