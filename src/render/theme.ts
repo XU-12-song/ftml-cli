@@ -14,11 +14,13 @@
  * 规则之前」被浏览器丢弃，图标与字体静默失效。字体图片文件本身仍按需远程加载，
  * 那不影响配色。
  *
- * 磁盘缓存：~/.ftml-cli/cache/theme/<sha1(url)>.json（含 fetchedAt，TTL 24h）。
+ * 磁盘缓存：~/.ftml-cli/cache/theme/<sha1(url)>.json（含 fetchedAt，TTL 30 天）。
  * 分工——
- *   readThemeCss()    同步，只读缓存（新鲜或过期都用），不联网。渲染路径用。
- *   refreshThemeCss() 异步，联网刷新缓存。web 启动与 `ftml preview` 用。
- * 拿不到缓存时退回原来的远程 `@import`（见 preview-page.js），行为与改动前一致。
+ *   readThemeCss()                  同步，只读缓存（新鲜或过期都用），不联网。渲染路径用。
+ *   refreshThemeCss()               异步，联网刷新缓存（调用方等待）。
+ *   refreshThemeCssInBackground()   异步、不等待：首次渲染先用远程 `@import` 直出，
+ *                                   抓完写盘，下次整篇重载再内联。
+ * 拿不到缓存时退回远程 `@import`（见 preview-page.js），行为与改动前一致。
  */
 
 import fs from 'node:fs';
@@ -39,8 +41,13 @@ export const THEME_SOURCES = [
   'https://sigma9.scpwikicn.com/cn/cn/sigma9_ch_sandbox.min.css',
 ];
 
-/** 缓存有效期：24h（CloudFront 的 max-age 同为 86400000 秒） */
-const TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * 缓存有效期：30 天。
+ *
+ * 主题变化很慢，预览对「主题是否最新」不敏感；过期后不阻塞当前渲染，
+ * 由调用方在后台刷新，下次整篇重载才使用新缓存（见 refreshThemeCssInBackground）。
+ */
+export const THEME_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** 单次抓取超时：刷新失败就沿用旧缓存，不能让启动/预览卡住 */
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -95,7 +102,7 @@ function writeEntry(url: string, css: string): void {
 
 /** 是否仍在 TTL 内 */
 function isFresh(entry: ThemeCacheEntry | null, now = Date.now()): boolean {
-  return Boolean(entry) && now - entry!.fetchedAt < TTL_MS;
+  return Boolean(entry) && now - entry!.fetchedAt < THEME_TTL_MS;
 }
 
 /**
@@ -111,24 +118,31 @@ export function readThemeCss({
 }: ThemeCssOptions = {}): ThemeCssResult {
   const parts: string[] = [];
   const missing: string[] = [];
+  let stale = false;
   for (const url of sources) {
     const entry = readEntry(url);
-    const usable = requireFresh ? isFresh(entry) : Boolean(entry);
-    if (!usable || !entry) {
+    if (!entry) {
+      missing.push(url);
+      stale = true;
+      continue;
+    }
+    if (!isFresh(entry)) stale = true;
+    const usable = requireFresh ? isFresh(entry) : true;
+    if (!usable) {
       missing.push(url);
       continue;
     }
     parts.push(absolutizeUrls(entry.css, url));
   }
   // 只要有一份缺失就整体作废：半套主题比明确的「退回 @import」更容易让人误判
-  if (missing.length) return { css: '', missing };
-  return { css: parts.join('\n'), missing: [] };
+  if (missing.length) return { css: '', missing, stale: true };
+  return { css: parts.join('\n'), missing: [], stale };
 }
 
 /** `@import` 规则（url(...) 与裸字符串两种写法），末尾可带媒体条件 */
 const IMPORT_RE = /@import\s+(?:url\(\s*(['"]?)([^'")]+)\1\s*\)|(['"])([^'"]+)\3)([^;]*);/gi;
 /** `@import` 递归展开的最大深度：既防环，也防病态嵌套 */
-const MAX_IMPORT_DEPTH = 4;
+const MAX_IMPORT_DEPTH = 8;
 
 interface ImportTask {
   index: number;
@@ -234,4 +248,29 @@ export async function refreshThemeCss({
     })
   );
   return { css: readThemeCss({ sources }).css, fetched, errors };
+}
+
+/** 同一组来源同时只跑一个后台刷新任务 */
+const backgroundRefreshes = new Map<string, Promise<unknown>>();
+
+/**
+ * 后台刷新主题缓存：立即返回，不阻塞当前渲染。
+ * 刷新完成后写入磁盘，**下一次**整篇重载才会用上内联主题；
+ * 在完成之前，预览文档继续使用远程 `@import`（或旧缓存）。
+ */
+export function refreshThemeCssInBackground({
+  sources = THEME_SOURCES,
+  fetchImpl = globalThis.fetch,
+}: ThemeRefreshOptions = {}): void {
+  const key = sources.join('\n');
+  if (backgroundRefreshes.has(key)) return;
+  const task = refreshThemeCss({ sources, fetchImpl })
+    .catch(() => undefined)
+    .finally(() => backgroundRefreshes.delete(key));
+  backgroundRefreshes.set(key, task);
+}
+
+/** 等待所有后台刷新结束（测试/退出前使用） */
+export async function waitForThemeCssRefresh(): Promise<void> {
+  await Promise.all([...backgroundRefreshes.values()]);
 }

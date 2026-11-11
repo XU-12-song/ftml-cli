@@ -117,8 +117,8 @@ export async function render({ remote = false, forceFull = false, resolveModules
   abortInflightRender();
   state.renderAbort = ac;
 
-  // 切换目标站点 → 外壳必须整篇重载并重新获取页面结构/主题；
-  // 其余情况保持「只补丁 #page-content」的快路径。
+  // 切换目标站点 → 外壳必须整篇重载（结构不同）；服务端布局/主题缓存优先，
+  // 只有该站点从没缓存过才会等待联网。其余情况保持「只补丁 #page-content」。
   const siteKey = layoutKey(el.siteInput.value);
   const layoutChanged = state.layoutSite != null && state.layoutSite !== siteKey;
   const wantFull = forceFull || layoutChanged || !previewShellReady();
@@ -133,7 +133,6 @@ export async function render({ remote = false, forceFull = false, resolveModules
       allowNetwork: remote, // 仅手动刷新联网；自动预览走本地 + 磁盘缓存
       resolveModules,       // 一次性真实解析 module；仅本次请求有效
       full: wantFull,
-      refreshLayout: layoutChanged, // 仅切换站点时重新抓取 _template
     }, { signal: ac.signal });
 
     if (ac.signal.aborted) return; // 期间又有更新，本次结果作废

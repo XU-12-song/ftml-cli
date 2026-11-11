@@ -40,8 +40,14 @@ const FETCH_TIMEOUT_MS = 8000;
 const SITE_NAME_RE = /^[a-z0-9-]+$/;
 const ABSOLUTE_REF = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 
+/** 布局同步周期：30 天。过期后先用缓存直出，再后台刷新 */
+export const LAYOUT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 /** 进程内缓存；key 为归一化站点名 */
-const memo = new Map<string, SiteLayout>();
+const memo = new Map<string, LayoutCacheEntry>();
+
+/** 后台刷新任务（同一站点只跑一个） */
+const backgroundRefreshes = new Map<string, Promise<unknown>>();
 
 /**
  * 站点名归一化：空 → 默认沙盒站；支持 `https://www.scp-cn.wikidot.com/...`
@@ -171,19 +177,25 @@ export function parseSiteLayoutHtml(site: string, html: string): SiteLayout | nu
 }
 
 /** 读取磁盘缓存；不存在/损坏/旧版本返回 null */
-function readDisk(site: string): SiteLayout | null {
+function readDisk(site: string): LayoutCacheEntry | null {
   try {
     const raw = JSON.parse(fs.readFileSync(cachePathFor(site), 'utf8')) as LayoutCacheEntry;
     if (raw.v !== CACHE_VERSION) return null;
     if (typeof raw.containerStructure !== 'string' || !raw.containerStructure) return null;
     if (!Array.isArray(raw.themes)) return null;
-    return { site, containerStructure: raw.containerStructure, themes: raw.themes };
+    return {
+      v: CACHE_VERSION,
+      site,
+      fetchedAt: Number.isFinite(raw.fetchedAt) ? raw.fetchedAt : 0,
+      containerStructure: raw.containerStructure,
+      themes: raw.themes,
+    };
   } catch {
     return null;
   }
 }
 
-function writeDisk(layout: SiteLayout): void {
+function writeDisk(layout: SiteLayout): LayoutCacheEntry {
   const p = cachePathFor(layout.site);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   const entry: LayoutCacheEntry = {
@@ -194,18 +206,23 @@ function writeDisk(layout: SiteLayout): void {
     themes: layout.themes,
   };
   fs.writeFileSync(p, JSON.stringify(entry), 'utf8');
+  return entry;
+}
+
+/** 同步读取缓存条目（含 fetchedAt）：进程内 memo → 磁盘，不联网 */
+function readLayoutEntry(site: string): LayoutCacheEntry | null {
+  const hit = memo.get(site);
+  if (hit) return hit;
+  const disk = readDisk(site);
+  if (disk) memo.set(site, disk);
+  return disk;
 }
 
 /**
  * 同步读取布局：进程内 memo → 磁盘（容忍过期），不联网。
  */
 export function readSiteLayout(site?: string | null): SiteLayout | null {
-  const name = normalizeSiteName(site);
-  const hit = memo.get(name);
-  if (hit) return hit;
-  const disk = readDisk(name);
-  if (disk) memo.set(name, disk);
-  return disk;
+  return readLayoutEntry(normalizeSiteName(site));
 }
 
 async function fetchLayout(site: string, fetchImpl: typeof fetch): Promise<SiteLayout> {
@@ -217,25 +234,62 @@ async function fetchLayout(site: string, fetchImpl: typeof fetch): Promise<SiteL
   if (!html.trim()) throw new Error('空响应');
   const layout = parseSiteLayoutHtml(site, html);
   if (!layout) throw new Error('页面结构解析失败：缺少 #container 或 #page-content');
-  writeDisk(layout);
-  memo.set(site, layout);
+  const entry = writeDisk(layout);
+  memo.set(site, entry);
   return layout;
 }
 
 /**
- * 获取布局：有缓存（且未要求 refresh）直接返回；否则按需联网。
- * 联网失败时回退旧缓存；完全没有则返回 null（调用方使用硬编码外壳）。
+ * 后台刷新布局：立即返回，不阻塞当前渲染。
+ * 同一站点同时只跑一个任务；完成后下次整篇重载才使用新结构。
+ */
+export function refreshSiteLayoutInBackground(
+  site?: string | null,
+  { fetchImpl = globalThis.fetch, allowNetwork = true }: SiteLayoutOptions = {},
+): void {
+  const name = normalizeSiteName(site);
+  if (backgroundRefreshes.has(name)) return;
+  const task = refreshSiteLayout(name, { fetchImpl, allowNetwork })
+    .catch(() => undefined)
+    .finally(() => backgroundRefreshes.delete(name));
+  backgroundRefreshes.set(name, task);
+}
+
+/** 等待所有后台布局刷新结束（测试/退出前使用） */
+export async function waitForSiteLayoutRefresh(): Promise<void> {
+  await Promise.all([...backgroundRefreshes.values()]);
+}
+
+/**
+ * 获取布局：缓存优先。
+ * - 有缓存：立即返回；过期（默认 30 天）时在后台刷新，本次仍用旧结构。
+ * - 无缓存：才等待联网（没有结构无法渲染），失败返回 null（回退内置外壳）。
  */
 export async function getSiteLayout(
   site?: string | null,
-  { fetchImpl = globalThis.fetch, allowNetwork = true, refresh = false }: SiteLayoutOptions = {},
+  {
+    fetchImpl = globalThis.fetch,
+    allowNetwork = true,
+    refresh = false,
+    maxAgeMs = LAYOUT_TTL_MS,
+  }: SiteLayoutOptions = {},
 ): Promise<SiteLayout | null> {
   const name = normalizeSiteName(site);
-  const cached = readSiteLayout(name);
-  if (cached && !refresh) return cached;
-  if (!allowNetwork) return cached;
+  const cached = readLayoutEntry(name);
+  if (refresh) {
+    if (!allowNetwork) return cached;
+    const result = await refreshSiteLayout(name, { fetchImpl, allowNetwork });
+    return result.layout ?? cached;
+  }
+  if (cached) {
+    if (allowNetwork && Date.now() - cached.fetchedAt >= maxAgeMs) {
+      refreshSiteLayoutInBackground(name, { fetchImpl, allowNetwork });
+    }
+    return cached;
+  }
+  if (!allowNetwork) return null;
   const result = await refreshSiteLayout(name, { fetchImpl, allowNetwork });
-  return result.layout ?? cached;
+  return result.layout;
 }
 
 /**

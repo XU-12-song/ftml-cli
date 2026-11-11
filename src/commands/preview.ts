@@ -15,8 +15,8 @@ import { loadTemplates } from '../core/expand.js';
 import { loadConfig } from '../infra/config.js';
 import { renderPreview } from '../render/preview.js';
 import { buildPreviewDocument } from '../render/preview-page.js';
-import { refreshThemeCss, THEME_SOURCES } from '../render/theme.js';
-import { normalizeSiteName, refreshSiteLayout } from '../infra/layout.js';
+import { readThemeCss, refreshThemeCssInBackground, THEME_SOURCES } from '../render/theme.js';
+import { getSiteLayout, normalizeSiteName } from '../infra/layout.js';
 import { buildPageContext } from '../render/context.js';
 import { formatDiagnostics } from '../render/diagnostics.js';
 import { createClient } from '../infra/wikidot.js';
@@ -82,19 +82,16 @@ export async function preview(
     : config.outputAbs + '.html';
   const outAbs = options.output ? path.resolve(options.output) : defaultOut;
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
-  // 目标站点结构 + 主题：CLI 是一次性输出，直接联网刷新；失败回退内置沙盒外壳。
+  // 目标站点结构：缓存优先（只有无缓存才联网），失败回退内置沙盒外壳。
   const layoutSite = normalizeSiteName(options.site || config.site);
-  const { layout, error: layoutError } = await refreshSiteLayout(layoutSite);
-  if (layoutError) {
-    console.error(`警告: 站点结构获取失败（${layoutSite}: ${layoutError}），预览使用内置外壳`);
-  }
+  const layout = await getSiteLayout(layoutSite);
   const themeSources = layout?.themes?.length ? layout.themes : THEME_SOURCES;
 
-  // 主题就地取回内联：产出文件是 file:// 直接打开的，不能指望它每次都能联网拉
-  // @import（失败即整页无样式），内联后离线打开也是正常配色。
-  const { css: themeCss, errors: themeErrors } = await refreshThemeCss({ sources: themeSources });
-  for (const e of themeErrors) {
-    console.error(`警告: 主题样式表获取失败（${e.url}: ${e.message}），该份退回远程 @import`);
+  // 主题缓存命中就直接内联；缺失时输出文件先用远程 @import（浏览器打开时自行加载），
+  // 同时在后台抓取整条 @import 链，下一次生成即可用上缓存。
+  const { css: themeCss, missing: themeMissing } = readThemeCss({ sources: themeSources });
+  if (themeMissing.length) {
+    refreshThemeCssInBackground({ sources: themeSources });
   }
   const document = buildPreviewDocument({
     html,

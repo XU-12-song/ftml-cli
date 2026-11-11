@@ -13,6 +13,7 @@ import {
   parseSiteLayoutHtml,
   readSiteLayout,
   refreshSiteLayout,
+  waitForSiteLayoutRefresh,
 } from '../src/infra/layout.js';
 import { homeCacheDir } from '../src/infra/paths.js';
 import { useIsolatedHome } from './helpers/fixtures.js';
@@ -137,6 +138,31 @@ test('getSiteLayout：首次抓取并缓存，后续不再联网', async () => {
   assert.ok(again);
   assert.equal(calls.length, 1);
   assert.ok(readSiteLayout('scp-cn'));
+});
+
+test('getSiteLayout：过期缓存先返回旧值，后台刷新后再更新', async () => {
+  const calls = [];
+  await refreshSiteLayout('scp-cn', { fetchImpl: okFetch(TEMPLATE_HTML, calls) });
+  assert.equal(calls.length, 1);
+
+  // maxAgeMs=0：缓存一律视为过期；本次仍返回旧值，不等待网络
+  let release;
+  const slowFetch = async (url) => {
+    calls.push(String(url));
+    await new Promise((resolve) => { release = resolve; });
+    return { ok: true, status: 200, text: async () => TEMPLATE_HTML };
+  };
+  const stale = await getSiteLayout('scp-cn', { fetchImpl: slowFetch, maxAgeMs: 0 });
+  assert.ok(stale); // 网络还没返回就已经拿到旧布局
+  assert.equal(calls.length, 2); // 后台请求已发出
+
+  release();
+  await waitForSiteLayoutRefresh();
+  assert.equal(calls.length, 2); // 后台补齐
+  const entry = JSON.parse(
+    fs.readFileSync(path.join(homeCacheDir(), 'layout', 'scp-cn.json'), 'utf8')
+  );
+  assert.ok(Date.now() - entry.fetchedAt < 5000); // 时间戳已更新
 });
 
 test('refreshSiteLayout：强制联网；失败时返回旧缓存与错误信息', async () => {

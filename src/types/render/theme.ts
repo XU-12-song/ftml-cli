@@ -16,6 +16,8 @@ export interface ThemeCssOptions {
 export interface ThemeCssResult {
   css: string;
   missing: string[];
+  /** 任一来源缺失或已过 TTL（css 仍可能是可用的旧缓存） */
+  stale: boolean;
 }
 
 /** refreshThemeCss 的可选项 */

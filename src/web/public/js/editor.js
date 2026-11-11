@@ -8,6 +8,7 @@ import { openNameDialog, openPromptDialog } from './dialogs.js';
 import { saveFile, persistEditor, render, renderRemote, scheduleSaveRender } from './preview.js';
 import { createFtmlEditor } from './cm-editor.js';
 import { applyStoredTarget } from './target.js';
+import { rememberLastOpened } from './session.js';
 
 /** 新页面/组件的默认骨架（多行：[[div]] 独占一行才被 @wdprlib/parser 解析为块标签） */
 export const STARTER_SOURCE = `[[div class="page-block"]]
@@ -78,6 +79,7 @@ export async function openFile(relPath) {
   try {
     const data = await api('GET', `/api/projects/${encodeURIComponent(state.projectId)}/file?path=${encodeURIComponent(relPath)}`);
     state.filePath = data.path;
+    rememberLastOpened(state.projectId, data.path);
     el.editor.value = data.source;
     el.editor.setFileKind(state.filePath.endsWith('.ftmx') ? 'template' : 'source');
     el.editor.setDiagnostics([]); // 旧文件的诊断作废，等本次 render 回填

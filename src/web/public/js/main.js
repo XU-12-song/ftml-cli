@@ -32,6 +32,7 @@ import { initPalette } from './palette.js';
 import { initKeymap } from './keymap.js';
 import { initTheme } from './theme.js';
 import { initSelectMenus } from './select-menu.js';
+import { clearLastOpened, readLastOpened } from './session.js';
 
 /** 规范化路径用于比较（Windows 大小写与分隔符不敏感） */
 function samePath(a, b) {
@@ -102,7 +103,21 @@ async function boot() {
   await refreshAuth();
   await checkGitEnv();
 
-  const opened = initialTarget ? await applyOpenTarget(initialTarget) : false;
+  let restored = false;
+  if (!initialTarget) {
+    // 没有外部打开目标（双击文件/桌面壳传入）时，恢复上次离开前的页面
+    const last = readLastOpened();
+    if (last && state.projects.some((p) => p.id === last.projectId)) {
+      state.projectId = last.projectId;
+      el.projectSelect.value = last.projectId;
+      await refreshSidebar();
+      await openFile(last.filePath);
+      restored = state.filePath === last.filePath;
+      if (!restored) clearLastOpened(); // 文件已被删除/改名
+    }
+  }
+
+  const opened = initialTarget ? await applyOpenTarget(initialTarget) : restored;
   if (!opened) {
     if (state.projects.length === 0) {
       showWelcome(); // 无项目时展示欢迎面板（新建 / 添加 / 登录）

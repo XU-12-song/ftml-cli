@@ -6,7 +6,7 @@
  * 非 git 项目 deploy 报错、loadConfig({ root }) 多项目支持。
  */
 
-import { test, beforeEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,7 +27,8 @@ import {
   latestOnly,
 } from '../src/web/handlers/index.js';
 import { loadConfig } from '../src/infra/config.js';
-import { clearLayoutCache } from '../src/infra/layout.js';
+import { clearLayoutCache, waitForSiteLayoutRefresh } from '../src/infra/layout.js';
+import { waitForThemeCssRefresh } from '../src/render/theme.js';
 import { saveSettings } from '../src/domain/settings.js';
 import { init } from '../src/commands/init.js';
 import { projectGit, commitAll } from '../src/infra/git.js';
@@ -47,6 +48,11 @@ globalThis.fetch = async (url, opts) => {
 
 // 布局 memo 是进程级的，必须在用例间清空；磁盘缓存随 withHome 隔离。
 beforeEach(() => clearLayoutCache());
+// 后台刷新是 fire-and-forget：等它落定，避免跨用例写缓存
+afterEach(async () => {
+  await waitForThemeCssRefresh();
+  await waitForSiteLayoutRefresh();
+});
 
 const tmpdir = () => makeTmpDir({}, { prefix: 'ftml-web-' });
 
@@ -321,10 +327,21 @@ test('render：完整文档使用目标站点布局与主题', async () => {
       assert.ok(r.html.includes('SCP-CN HEADER'));
       assert.ok(r.html.includes('★ Hi'));
       assert.ok(r.html.includes('<title>hello</title>') || r.html.includes('hello'));
-      assert.ok(r.html.includes('body{background:#123}')); // 主题按站点 URL 内联
       assert.ok(!r.html.includes('SCP基金會中文沙盒站'));
       assert.ok(calls.includes('https://scp-cn.wikidot.com/_template'));
-      assert.ok(calls.includes('https://theme.example/site.css'));
+      // 首次加载不等待主题：先用站点主题 URL 的远程 @import 直出
+      assert.ok(r.html.includes('@import url(https://theme.example/site.css)'));
+      assert.ok(!r.html.includes('body{background:#123}'));
+
+      // 后台抓取完成后，下一次完整渲染才内联
+      await waitForThemeCssRefresh();
+      const r2 = await renderProjectFile(
+        root,
+        { path: 'index.ftml', site: 'scp-cn', page: 'hello' },
+        { injectClient: client, fetchImpl: layoutFetch(calls) },
+      );
+      assert.ok(r2.html.includes('body{background:#123}'));
+      assert.ok(!r2.html.includes('@import url(https://theme.example/site.css)'));
     });
   } finally {
     cleanup(root);

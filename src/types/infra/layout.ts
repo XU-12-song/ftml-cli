@@ -26,6 +26,8 @@ export interface SiteLayoutOptions {
   allowNetwork?: boolean;
   /** true 时忽略缓存强制联网 */
   refresh?: boolean;
+  /** 缓存过期阈值（毫秒）；默认 30 天，仅测试需要覆盖 */
+  maxAgeMs?: number;
 }
 
 /** 强制刷新的结果；失败时 layout 为旧缓存（可能为 null） */

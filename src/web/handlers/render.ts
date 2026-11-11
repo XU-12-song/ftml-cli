@@ -16,11 +16,15 @@ import { loadConfig } from '../../infra/config.js';
 import { loadTemplates, expand } from '../../core/expand.js';
 import { renderPreview } from '../../render/preview.js';
 import { buildPreviewDocument } from '../../render/preview-page.js';
-import { readThemeCss, refreshThemeCss, THEME_SOURCES } from '../../render/theme.js';
+import {
+  readThemeCss,
+  refreshThemeCss,
+  refreshThemeCssInBackground,
+  THEME_SOURCES,
+} from '../../render/theme.js';
 import {
   getSiteLayout,
   normalizeSiteName,
-  readSiteLayout,
   refreshSiteLayout,
 } from '../../infra/layout.js';
 import { buildPageContext } from '../../render/context.js';
@@ -142,20 +146,22 @@ export async function renderProjectFile(
         // 站点结构/主题只在完整文档时处理：片段补丁路径保持零网络、零磁盘布局读取。
         layoutSite = normalizeSiteName(config.site);
         const fetchImpl = env.fetchImpl;
-        let layout = body?.refreshLayout
+        // 缓存优先：有缓存立即返回（过期则后台刷新）；只有完全没有缓存才等待。
+        // refreshLayout 仅用于显式的「强制同步」，普通站点切换不再触发。
+        const layout = body?.refreshLayout
           ? (await refreshSiteLayout(layoutSite, { fetchImpl })).layout
-          : readSiteLayout(layoutSite);
-        if (!layout && !body?.refreshLayout) {
-          layout = await getSiteLayout(layoutSite, { fetchImpl });
-        }
+          : await getSiteLayout(layoutSite, { fetchImpl });
         checkpoint(); // 联网获取布局期间若已有更新的请求，放弃本次
 
-        // 主题按站点主题 URL 取；缓存缺失或站点切换时联网刷新。
+        // 主题缓存优先：命中就直接内联；缺失或过期时先用远程 @import 立即出图，
+        // 同时后台抓取整条 @import 链，下一次整篇重载再使用内联缓存。
         const themeSources = layout?.themes?.length ? layout.themes : THEME_SOURCES;
         let theme = readThemeCss({ sources: themeSources });
-        if (body?.refreshLayout || theme.missing.length) {
+        if (body?.refreshLayout) {
           await refreshThemeCss({ sources: themeSources, fetchImpl });
           theme = readThemeCss({ sources: themeSources });
+        } else if (theme.missing.length || theme.stale) {
+          refreshThemeCssInBackground({ sources: themeSources, fetchImpl });
         }
         document = buildPreviewDocument({
           html,
