@@ -27,6 +27,14 @@ export interface RenderBody {
   refreshLayout?: boolean;
 }
 
+/** 非致命网络问题：用于前端 toast，不影响本次渲染结果 */
+export interface RenderWarning {
+  code: 'layout-network-error' | 'theme-network-error';
+  message: string;
+  site?: string;
+  url?: string;
+}
+
 /** renderProjectFile 的返回值（失败时 html/fragment/styles 为 null） */
 export interface RenderResult {
   html: string | null;
@@ -42,6 +50,8 @@ export interface RenderResult {
   problems: Problem[];
   /** 本次完整文档使用的布局站点（片段响应不返回） */
   layoutSite?: string;
+  /** 布局/主题网络失败提示（前端每会话只 toast 一次） */
+  warnings?: RenderWarning[];
 }
 
 /** validateProjectFile 的请求体 */

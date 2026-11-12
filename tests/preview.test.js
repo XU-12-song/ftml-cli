@@ -10,7 +10,15 @@ import { parseFtmx } from '../src/core/parse-ftmx.js';
 import { loadTemplates } from '../src/core/expand.js';
 import { clearMtimeCache } from '../src/infra/mtime-cache.js';
 import { readPageCache } from '../src/infra/cache.js';
-import { THEME_SOURCES, absolutizeUrls, readThemeCss, refreshThemeCss } from '../src/render/theme.js';
+import {
+  THEME_SOURCES,
+  absolutizeUrls,
+  clearThemeRefreshFailures,
+  getThemeRefreshFailure,
+  readThemeCss,
+  refreshThemeCss,
+  refreshThemeCssInBackground,
+} from '../src/render/theme.js';
 import { CONTENT_MARKER, TITLE_MARKER } from '../src/infra/layout.js';
 import { DEFAULT_MODULE_PLACEHOLDERS } from '../src/domain/settings.js';
 import { makeTmpDir, cleanup, useIsolatedHome } from './helpers/fixtures.js';
@@ -550,6 +558,33 @@ test('refreshThemeCss：HTTP 错误响应视为失败', async () => {
   assert.equal(r.fetched.length, 0);
   assert.equal(r.errors.length, THEME_SOURCES.length);
   assert.ok(r.errors[0].message.includes('503'));
+});
+
+test('refreshThemeCssInBackground：失败后不再自动重试，手动刷新可恢复', async () => {
+  clearThemeRefreshFailures();
+  let calls = 0;
+  const failing = async () => {
+    calls++;
+    throw new Error('offline');
+  };
+
+  const task = refreshThemeCssInBackground({ fetchImpl: failing });
+  assert.ok(task);
+  await task;
+  assert.equal(calls, THEME_SOURCES.length);
+  assert.match(getThemeRefreshFailure() ?? '', /offline/);
+
+  // 后台自动路径被跳过
+  assert.equal(refreshThemeCssInBackground({ fetchImpl: failing }), null);
+  assert.equal(calls, THEME_SOURCES.length);
+
+  // 显式刷新仍会重试，成功后清除失败记忆
+  const bodies = new Map(THEME_SOURCES.map((u, i) => [u, `/* ${i} */ body{color:#333}`]));
+  const r = await refreshThemeCss({
+    fetchImpl: async (url) => ({ ok: true, status: 200, text: async () => bodies.get(url) }),
+  });
+  assert.equal(r.errors.length, 0);
+  assert.equal(getThemeRefreshFailure(), null);
 });
 
 // ---------- __ftmlPatch：预览外壳原地热补丁（父页同源调用）----------

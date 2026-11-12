@@ -368,6 +368,9 @@
     <ul id="palette-list"></ul>
   </dialog>
 
+  <!-- 非阻塞提示（网络抓取失败等；每会话同一类只提示一次） -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
   <!-- 前端打包产物（源文件在 js/，改动后 `npm run build:web` 重新生成） -->
   <script type="module" src="dist/app.js"></script>
 </body>

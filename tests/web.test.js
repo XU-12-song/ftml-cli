@@ -28,7 +28,7 @@ import {
 } from '../src/web/handlers/index.js';
 import { loadConfig } from '../src/infra/config.js';
 import { clearLayoutCache, waitForSiteLayoutRefresh } from '../src/infra/layout.js';
-import { waitForThemeCssRefresh } from '../src/render/theme.js';
+import { clearThemeRefreshFailures, waitForThemeCssRefresh } from '../src/render/theme.js';
 import { saveSettings } from '../src/domain/settings.js';
 import { init } from '../src/commands/init.js';
 import { projectGit, commitAll } from '../src/infra/git.js';
@@ -46,8 +46,11 @@ globalThis.fetch = async (url, opts) => {
   return realFetch(url, opts);
 };
 
-// 布局 memo 是进程级的，必须在用例间清空；磁盘缓存随 withHome 隔离。
-beforeEach(() => clearLayoutCache());
+// 布局/主题的失败记忆是进程级的，必须在用例间清空；磁盘缓存随 withHome 隔离。
+beforeEach(() => {
+  clearLayoutCache();
+  clearThemeRefreshFailures();
+});
 // 后台刷新是 fire-and-forget：等它落定，避免跨用例写缓存
 afterEach(async () => {
   await waitForThemeCssRefresh();
@@ -431,6 +434,39 @@ test('render：布局抓取失败时回退内置外壳，仍返回完整文档',
       assert.equal(r.layoutSite, 'scp-cn');
       assert.ok(r.html.includes('SCP基金會中文沙盒站'));
       assert.ok(r.html.includes('★ Hi'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：布局/主题网络失败 → 回退并带 warning；本会话不自动重试', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      const { client } = fakeClient();
+      let templateCalls = 0;
+      const fail = async (url) => {
+        if (String(url).includes('_template')) templateCalls++;
+        throw new Error('offline');
+      };
+      const body = { path: 'index.ftml', site: 'scp-cn', page: 'hello' };
+      const env = { injectClient: client, fetchImpl: fail };
+
+      const r = await renderProjectFile(root, body, env);
+      assert.ok(r.html.includes('SCP基金會中文沙盒站')); // 已回退内置外壳
+      const codes = (r.warnings || []).map((w) => w.code);
+      assert.ok(codes.includes('layout-network-error'));
+      assert.ok(codes.includes('theme-network-error'));
+      assert.equal(templateCalls, 1);
+
+      const r2 = await renderProjectFile(root, body, env);
+      assert.ok((r2.warnings || []).some((w) => w.code === 'layout-network-error'));
+      assert.equal(templateCalls, 1); // 本会话不再自动重试
+
+      await renderProjectFile(root, { ...body, refreshLayout: true }, env);
+      assert.equal(templateCalls, 2); // 显式刷新会重试
     });
   } finally {
     cleanup(root);

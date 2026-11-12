@@ -17,12 +17,14 @@ import { loadTemplates, expand } from '../../core/expand.js';
 import { renderPreview } from '../../render/preview.js';
 import { buildPreviewDocument } from '../../render/preview-page.js';
 import {
+  getThemeRefreshFailure,
   readThemeCss,
   refreshThemeCss,
   refreshThemeCssInBackground,
   THEME_SOURCES,
 } from '../../render/theme.js';
 import {
+  getLayoutFailure,
   getSiteLayout,
   normalizeSiteName,
   refreshSiteLayout,
@@ -40,8 +42,33 @@ import type { HandlerEnv } from '../../types/web/handlers/shared.ts';
 import type {
   RenderBody,
   RenderResult,
+  RenderWarning,
   ValidateBody,
 } from '../../types/web/handlers/render.ts';
+
+/**
+ * 首次缺主题缓存时，最多等这么久拿错误信息（拿不到就继续后台抓取）。
+ * 网络被阻断时通常很快失败，可以当场 toast；慢网络则立即回退，不拖住预览。
+ */
+const THEME_INITIAL_WAIT_MS = 1000;
+
+function delay(ms: number): Promise<null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    // 不让等待计时器拖住进程退出
+    if (typeof timer === 'object' && typeof timer.unref === 'function') timer.unref();
+  });
+}
+
+function themeErrorText(errors: { url: string; message: string }[]): string {
+  return errors
+    .map((e) => {
+      let host = e.url;
+      try { host = new URL(e.url).host; } catch { /* 保留原 URL */ }
+      return `${host}：${e.message}`;
+    })
+    .join('；');
+}
 
 /** 渲染失败时的统一返回：不抛 500，把异常转成 problems 让前端定位 */
 function failedRender(
@@ -140,6 +167,7 @@ export async function renderProjectFile(
       });
       const title = config.page || page.fullName;
       const wantFull = body?.full !== false;
+      const warnings: RenderWarning[] = [];
       let document: string | null = null;
       let layoutSite: string | undefined;
       if (wantFull) {
@@ -148,9 +176,21 @@ export async function renderProjectFile(
         const fetchImpl = env.fetchImpl;
         // 缓存优先：有缓存立即返回（过期则后台刷新）；只有完全没有缓存才等待。
         // refreshLayout 仅用于显式的「强制同步」，普通站点切换不再触发。
-        const layout = body?.refreshLayout
-          ? (await refreshSiteLayout(layoutSite, { fetchImpl })).layout
-          : await getSiteLayout(layoutSite, { fetchImpl });
+        // 某站点本会话已失败时不再等待下一次超时，直接回退内置外壳。
+        const refreshed = body?.refreshLayout
+          ? await refreshSiteLayout(layoutSite, { fetchImpl })
+          : null;
+        const layout = refreshed ? refreshed.layout : await getSiteLayout(layoutSite, { fetchImpl });
+        if (!layout) {
+          const reason = refreshed?.error ?? getLayoutFailure(layoutSite);
+          if (reason) {
+            warnings.push({
+              code: 'layout-network-error',
+              site: layoutSite,
+              message: `无法获取站点「${layoutSite}」的页面结构（${reason}）。已使用内置外壳继续；本会话不再自动重试，可用「联网刷新」重试。`,
+            });
+          }
+        }
         checkpoint(); // 联网获取布局期间若已有更新的请求，放弃本次
 
         // 主题缓存优先：命中就直接内联；缺失或过期时先用远程 @import 立即出图，
@@ -158,10 +198,37 @@ export async function renderProjectFile(
         const themeSources = layout?.themes?.length ? layout.themes : THEME_SOURCES;
         let theme = readThemeCss({ sources: themeSources });
         if (body?.refreshLayout) {
-          await refreshThemeCss({ sources: themeSources, fetchImpl });
+          const refreshedTheme = await refreshThemeCss({ sources: themeSources, fetchImpl });
           theme = readThemeCss({ sources: themeSources });
+          if (refreshedTheme.errors.length) {
+            warnings.push({
+              code: 'theme-network-error',
+              site: layoutSite,
+              message: `无法获取站点「${layoutSite}」的主题样式（${themeErrorText(refreshedTheme.errors)}）。已回退远程/默认样式，可用「联网刷新」重试。`,
+            });
+          }
         } else if (theme.missing.length || theme.stale) {
-          refreshThemeCssInBackground({ sources: themeSources, fetchImpl });
+          const knownFailure = getThemeRefreshFailure(themeSources);
+          if (theme.missing.length && knownFailure) {
+            warnings.push({
+              code: 'theme-network-error',
+              site: layoutSite,
+              message: `无法获取站点「${layoutSite}」的主题样式（${knownFailure}）。已回退远程/默认样式；本会话不再自动重试，可用「联网刷新」重试。`,
+            });
+          } else {
+            const task = refreshThemeCssInBackground({ sources: themeSources, fetchImpl });
+            // 只影响提示时机，不影响回退：最多等一小会儿拿错误，拿不到就继续后台抓。
+            if (theme.missing.length && task) {
+              const result = await Promise.race([ task, delay(THEME_INITIAL_WAIT_MS) ]);
+              if (result?.errors.length) {
+                warnings.push({
+                  code: 'theme-network-error',
+                  site: layoutSite,
+                  message: `无法获取站点「${layoutSite}」的主题样式（${themeErrorText(result.errors)}）。已回退远程/默认样式；本会话不再自动重试，可用「联网刷新」重试。`,
+                });
+              }
+            }
+          }
         }
         document = buildPreviewDocument({
           html,
@@ -192,6 +259,7 @@ export async function renderProjectFile(
         moduleResolution,
         problems,
         layoutSite,
+        warnings,
       };
     } catch (e) {
       if (e instanceof SupersededError) throw e; // 被更新的请求取代：交回 409 处理，不能当成渲染问题

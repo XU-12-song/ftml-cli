@@ -12,6 +12,10 @@
 import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, isAbortError } from './api.js';
 import { showDiagnostics, includeSummary, renderProblems } from './ui.js';
+import { showToastOnce } from './toast.js';
+
+/** 本会话出现过布局/主题网络失败：手动「联网刷新」才需要重试它们 */
+let networkRetryNeeded = false;
 
 export async function saveFile(relPath, source) {
   await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/save`, { path: relPath, source });
@@ -104,13 +108,14 @@ export function layoutKey(raw) {
 
 /**
  * 渲染当前文件。
- * @param {{ remote?: boolean, forceFull?: boolean, resolveModules?: boolean }} [opts]
+ * @param {{ remote?: boolean, forceFull?: boolean, resolveModules?: boolean, refreshLayout?: boolean }} [opts]
  *   remote=true 时允许联网解析远程 [[include]]（手动刷新路径）；默认 false：
  *   只解析本地文件 + 磁盘缓存，落盘即预览不再等网络。
  *   forceFull=true 时强制整篇重载（补丁失败后的回退路径）。
  *   resolveModules=true 时一次性真实解析 module（命令面板显式触发，不写入 state）。
+ *   refreshLayout=true 时显式重抓站点结构与主题（手动重试网络失败）。
  */
-export async function render({ remote = false, forceFull = false, resolveModules = false } = {}) {
+export async function render({ remote = false, forceFull = false, resolveModules = false, refreshLayout = false } = {}) {
   if (!state.projectId || !state.filePath) return;
   // 最新者胜：先取消上一次在飞的渲染，并立刻占住槽位（否则后发者会漏掉它的控制器）
   const ac = new AbortController();
@@ -121,7 +126,7 @@ export async function render({ remote = false, forceFull = false, resolveModules
   // 只有该站点从没缓存过才会等待联网。其余情况保持「只补丁 #page-content」。
   const siteKey = layoutKey(el.siteInput.value);
   const layoutChanged = state.layoutSite != null && state.layoutSite !== siteKey;
-  const wantFull = forceFull || layoutChanged || !previewShellReady();
+  const wantFull = forceFull || refreshLayout || layoutChanged || !previewShellReady();
 
   try {
     await persistEditor(); // 落盘不加 signal：即便本次渲染被取代，最新内容也应写入磁盘
@@ -132,10 +137,18 @@ export async function render({ remote = false, forceFull = false, resolveModules
       page: el.pageInput.value.trim() || undefined,
       allowNetwork: remote, // 仅手动刷新联网；自动预览走本地 + 磁盘缓存
       resolveModules,       // 一次性真实解析 module；仅本次请求有效
+      refreshLayout,        // 显式重试站点布局/主题网络抓取
       full: wantFull,
     }, { signal: ac.signal });
 
     if (ac.signal.aborted) return; // 期间又有更新，本次结果作废
+    const warnings = r.warnings || [];
+    if (warnings.length) {
+      networkRetryNeeded = true;
+      showRenderWarnings(warnings);
+    } else if (refreshLayout && (r.html != null || r.fragment != null)) {
+      networkRetryNeeded = false; // 手动重试已恢复（渲染本身失败时保留待重试状态）
+    }
     if (r.layoutSite) state.layoutSite = r.layoutSite;
 
     state.lastIncludes = r.includes || [];
@@ -195,10 +208,19 @@ export async function render({ remote = false, forceFull = false, resolveModules
   }
 }
 
+/** 布局/主题网络失败：渲染已回退，toast 只做说明；同一站点每会话一次 */
+function showRenderWarnings(warnings) {
+  for (const w of warnings || []) {
+    if (!w?.message) continue;
+    showToastOnce(`${w.code}:${w.site ?? ''}`, w.message);
+  }
+}
+
 /** 手动刷新：允许联网解析远程 [[include]]（顶栏「联网刷新」/ Ctrl+Alt+Shift+R） */
 export function renderRemote() {
   clearTimeout(state.saveTimer);
-  return render({ remote: true });
+  // 仅在出现过布局/主题网络失败时重试；正常刷新 include 不必重抓站点资源。
+  return render({ remote: true, refreshLayout: networkRetryNeeded });
 }
 
 /**

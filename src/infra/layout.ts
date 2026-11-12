@@ -50,6 +50,17 @@ const memo = new Map<string, LayoutCacheEntry>();
 const backgroundRefreshes = new Map<string, Promise<unknown>>();
 
 /**
+ * 本进程内抓取失败的站点 → 失败原因。
+ * 网络不可用时，避免每次打开/每次自动预览都重新等待超时；显式刷新仍会重试。
+ */
+const layoutFailures = new Map<string, string>();
+
+/** 最近一次抓取失败的原因；无失败或已恢复返回 null */
+export function getLayoutFailure(site?: string | null): string | null {
+  return layoutFailures.get(normalizeSiteName(site)) ?? null;
+}
+
+/**
  * 站点名归一化：空 → 默认沙盒站；支持 `https://www.scp-cn.wikidot.com/...`
  * 之类的输入；非法字符回落到默认站点（预览不应因目标配置异常而中断）。
  */
@@ -248,6 +259,8 @@ export function refreshSiteLayoutInBackground(
   { fetchImpl = globalThis.fetch, allowNetwork = true }: SiteLayoutOptions = {},
 ): void {
   const name = normalizeSiteName(site);
+  // 本会话已失败：不再自动重试（手动 refreshSiteLayout 不受限制）
+  if (layoutFailures.has(name)) return;
   if (backgroundRefreshes.has(name)) return;
   const task = refreshSiteLayout(name, { fetchImpl, allowNetwork })
     .catch(() => undefined)
@@ -264,6 +277,7 @@ export async function waitForSiteLayoutRefresh(): Promise<void> {
  * 获取布局：缓存优先。
  * - 有缓存：立即返回；过期（默认 30 天）时在后台刷新，本次仍用旧结构。
  * - 无缓存：才等待联网（没有结构无法渲染），失败返回 null（回退内置外壳）。
+ * - 本进程内失败过的站点不再自动联网，直接回退；强刷/手动刷新才重试。
  */
 export async function getSiteLayout(
   site?: string | null,
@@ -288,6 +302,8 @@ export async function getSiteLayout(
     return cached;
   }
   if (!allowNetwork) return null;
+  // 本会话已失败：直接回退，不再等待下一次网络超时
+  if (layoutFailures.has(name)) return null;
   const result = await refreshSiteLayout(name, { fetchImpl, allowNetwork });
   return result.layout;
 }
@@ -302,11 +318,15 @@ export async function refreshSiteLayout(
   const name = normalizeSiteName(site);
   if (!allowNetwork) return { layout: readSiteLayout(name) };
   try {
-    return { layout: await fetchLayout(name, fetchImpl) };
+    const layout = await fetchLayout(name, fetchImpl);
+    layoutFailures.delete(name);
+    return { layout };
   } catch (e) {
+    const message = (e as Error)?.message ?? String(e);
+    layoutFailures.set(name, message);
     return {
       layout: readSiteLayout(name),
-      error: (e as Error)?.message ?? String(e),
+      error: message,
     };
   }
 }
@@ -314,5 +334,6 @@ export async function refreshSiteLayout(
 /** 清空进程内与磁盘缓存（测试用） */
 export function clearLayoutCache(): void {
   memo.clear();
+  layoutFailures.clear();
   fs.rmSync(layoutCacheDir(), { recursive: true, force: true });
 }

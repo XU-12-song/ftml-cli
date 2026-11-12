@@ -247,27 +247,64 @@ export async function refreshThemeCss({
       }
     })
   );
+  const key = sourcesKey(sources);
+  if (errors.length) refreshFailures.set(key, formatErrors(errors));
+  else refreshFailures.delete(key);
   return { css: readThemeCss({ sources }).css, fetched, errors };
 }
 
 /** 同一组来源同时只跑一个后台刷新任务 */
-const backgroundRefreshes = new Map<string, Promise<unknown>>();
+const backgroundRefreshes = new Map<string, Promise<ThemeRefreshResult | undefined>>();
+
+/** 本进程内失败过的来源组 → 失败描述；避免每次预览都重复等待 */
+const refreshFailures = new Map<string, string>();
+
+function sourcesKey(sources: readonly string[]): string {
+  return sources.join('\n');
+}
+
+/** 最近一次主题抓取失败描述；无失败或已恢复返回 null */
+export function getThemeRefreshFailure(sources: readonly string[] = THEME_SOURCES): string | null {
+  return refreshFailures.get(sourcesKey(sources)) ?? null;
+}
+
+/** 清空失败记忆（测试用） */
+export function clearThemeRefreshFailures(): void {
+  refreshFailures.clear();
+}
+
+function formatErrors(errors: ThemeRefreshResult['errors']): string {
+  return errors
+    .map((e) => {
+      let host = e.url;
+      try { host = new URL(e.url).host; } catch { /* 保留原 URL */ }
+      return `${host}：${e.message}`;
+    })
+    .join('；');
+}
 
 /**
  * 后台刷新主题缓存：立即返回，不阻塞当前渲染。
  * 刷新完成后写入磁盘，**下一次**整篇重载才会用上内联主题；
  * 在完成之前，预览文档继续使用远程 `@import`（或旧缓存）。
+ *
+ * 本进程内已失败过的来源组不再自动重试，避免每次预览都等一次超时；
+ * 显式调用 refreshThemeCss 仍会重试。返回值供调用方做短时等待取错误，
+ * 已跳过或已在跑时返回现有任务（跳过时为 null）。
  */
 export function refreshThemeCssInBackground({
   sources = THEME_SOURCES,
   fetchImpl = globalThis.fetch,
-}: ThemeRefreshOptions = {}): void {
-  const key = sources.join('\n');
-  if (backgroundRefreshes.has(key)) return;
+}: ThemeRefreshOptions = {}): Promise<ThemeRefreshResult | undefined> | null {
+  const key = sourcesKey(sources);
+  if (refreshFailures.has(key)) return null;
+  const running = backgroundRefreshes.get(key);
+  if (running) return running;
   const task = refreshThemeCss({ sources, fetchImpl })
     .catch(() => undefined)
     .finally(() => backgroundRefreshes.delete(key));
   backgroundRefreshes.set(key, task);
+  return task;
 }
 
 /** 等待所有后台刷新结束（测试/退出前使用） */

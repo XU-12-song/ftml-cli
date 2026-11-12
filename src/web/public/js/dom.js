@@ -106,6 +106,7 @@ export const el = {
   welcomeAddProject: $('welcome-add-project'),
   welcomeLogin: $('welcome-login'),
   welcomeClose: $('welcome-close'),
+  toastContainer: $('toast-container'),
 };
 
 export const state = {

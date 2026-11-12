@@ -8,6 +8,7 @@ import {
   DEFAULT_SITE,
   TITLE_MARKER,
   clearLayoutCache,
+  getLayoutFailure,
   getSiteLayout,
   normalizeSiteName,
   parseSiteLayoutHtml,
@@ -192,6 +193,28 @@ test('refreshSiteLayout：结构不完整的响应不覆盖旧缓存', async () 
   });
   assert.ok(broken.layout);
   assert.match(broken.error, /页面结构解析失败/);
+});
+
+test('getSiteLayout：失败后本会话不再自动重试，手动刷新可恢复', async () => {
+  const calls = [];
+  const failing = async (url) => {
+    calls.push(String(url));
+    throw new Error('offline');
+  };
+  assert.equal(await getSiteLayout('scp-cn', { fetchImpl: failing }), null);
+  assert.equal(calls.length, 1);
+  assert.match(getLayoutFailure('scp-cn'), /offline/);
+
+  // 第二次直接回退，不再等网络
+  assert.equal(await getSiteLayout('scp-cn', { fetchImpl: failing }), null);
+  assert.equal(calls.length, 1);
+
+  // 显式刷新会重试，成功后清除失败记忆
+  const ok = await refreshSiteLayout('scp-cn', { fetchImpl: okFetch(TEMPLATE_HTML, calls) });
+  assert.ok(ok.layout);
+  assert.equal(calls.length, 2);
+  assert.equal(getLayoutFailure('scp-cn'), null);
+  assert.ok(await getSiteLayout('scp-cn', { fetchImpl: failing }));
 });
 
 test('clearLayoutCache：清空磁盘与进程内缓存', async () => {
