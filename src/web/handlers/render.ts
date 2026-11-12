@@ -16,6 +16,7 @@ import { loadConfig } from '../../infra/config.js';
 import { loadTemplates, expand } from '../../core/expand.js';
 import { renderPreview } from '../../render/preview.js';
 import { buildPreviewDocument } from '../../render/preview-page.js';
+import { localizeModuleCss } from '../../render/module-css.js';
 import {
   getThemeRefreshFailure,
   readThemeCss,
@@ -154,9 +155,11 @@ export async function renderProjectFile(
 
     try {
       checkpoint(); // 联网建客户端期间若已有更新的请求，放弃本次
-      const { html, styles, htmlBlocks, diagnostics, includes, moduleResolution } = await renderPreview(expanded, {
+      // web 预览始终使用 separate：module CSS 集中放进文档的 #ftml-styles，
+      // 片段补丁只更新这一处；也便于统一本地化其中的远程 @import。
+      const rendered = await renderPreview(expanded, {
         page,
-        styleMode: (body?.styleMode ?? settings.renderStyleMode) as 'inline' | 'separate',
+        styleMode: 'separate',
         includeBaseDir: path.dirname(config.sourceAbs),
         includeTemplates: templates,
         client,
@@ -165,14 +168,34 @@ export async function renderProjectFile(
         moduleMode: resolveModules ? 'real' : 'placeholder',
         modulePlaceholders: settings.modulePlaceholders,
       });
+      const { html, htmlBlocks, diagnostics, includes, moduleResolution } = rendered;
+      const warnings: RenderWarning[] = [];
+      const cssSite = normalizeSiteName(config.site);
+
+      // module CSS 里的远程 @import：缓存优先内联；未命中时保留为 @import
+      // （统一提升到规则之前，避免被 CSS 规范忽略）并后台抓取。
+      const localized = await localizeModuleCss(rendered.styles ?? [], {
+        baseUrl: `https://${cssSite}.wikidot.com/`,
+        fetchImpl: env.fetchImpl,
+        force: body?.refreshLayout === true,
+      });
+      let styles = localized.css ? [localized.css] : [];
+      if (localized.failures.length) {
+        // 失败信息已带 host（theme.ts 的 formatErrors），这里不再重复拼接
+        warnings.push({
+          code: 'module-css-network-error',
+          site: cssSite,
+          message: `无法获取 include 的模块样式（${localized.failures.map((f) => f.message).join('；')}）。该样式表未命中本地缓存且联网抓取失败，远程 @import 可能无法加载；本会话不再自动重试，可用「联网刷新」重试。`,
+        });
+      }
+
       const title = config.page || page.fullName;
       const wantFull = body?.full !== false;
-      const warnings: RenderWarning[] = [];
       let document: string | null = null;
       let layoutSite: string | undefined;
       if (wantFull) {
         // 站点结构/主题只在完整文档时处理：片段补丁路径保持零网络、零磁盘布局读取。
-        layoutSite = normalizeSiteName(config.site);
+        layoutSite = cssSite;
         const fetchImpl = env.fetchImpl;
         // 缓存优先：有缓存立即返回（过期则后台刷新）；只有完全没有缓存才等待。
         // refreshLayout 仅用于显式的「强制同步」，普通站点切换不再触发。

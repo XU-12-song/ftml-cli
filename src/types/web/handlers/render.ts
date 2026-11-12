@@ -29,7 +29,7 @@ export interface RenderBody {
 
 /** 非致命网络问题：用于前端 toast，不影响本次渲染结果 */
 export interface RenderWarning {
-  code: 'layout-network-error' | 'theme-network-error';
+  code: 'layout-network-error' | 'theme-network-error' | 'module-css-network-error';
   message: string;
   site?: string;
   url?: string;

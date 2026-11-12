@@ -20,6 +20,7 @@ import {
   refreshThemeCssInBackground,
 } from '../src/render/theme.js';
 import { CONTENT_MARKER, TITLE_MARKER } from '../src/infra/layout.js';
+import { localizeModuleCss } from '../src/render/module-css.js';
 import { DEFAULT_MODULE_PLACEHOLDERS } from '../src/domain/settings.js';
 import { makeTmpDir, cleanup, useIsolatedHome } from './helpers/fixtures.js';
 import { fakeRemoteClient, fakeWorld } from './helpers/fake-wikidot.js';
@@ -585,6 +586,43 @@ test('refreshThemeCssInBackground：失败后不再自动重试，手动刷新�
   });
   assert.equal(r.errors.length, 0);
   assert.equal(getThemeRefreshFailure(), null);
+});
+
+test('localizeModuleCss：缓存命中内联，未命中提升为 @import 并报告失败', async () => {
+  clearThemeRefreshFailures();
+  const okUrl = 'https://cdn.example/module.css';
+  await refreshThemeCss({
+    sources: [okUrl],
+    fetchImpl: async () => ({ ok: true, status: 200, text: async () => '.win95{color:red}' }),
+  });
+
+  const failUrl = 'https://cdn.example/missing.css';
+  const r = await localizeModuleCss(
+    [`:root{--x:1}\n@import url("${failUrl}");\n@import url(${okUrl});`],
+    {
+      baseUrl: 'https://site.wikidot.com/',
+      fetchImpl: async () => { throw new Error('offline'); },
+      waitMs: 50,
+    }
+  );
+
+  assert.ok(r.css.includes('.win95{color:red}'));
+  assert.ok(!r.css.includes(okUrl));
+  // 未命中的 @import 必须在所有规则之前，否则浏览器会整条忽略
+  assert.ok(r.css.startsWith(`@import url("${failUrl}");`), r.css);
+  assert.ok(r.css.indexOf('@import') < r.css.indexOf(':root'));
+  assert.equal(r.failures.length, 1);
+  assert.equal(r.failures[0].url, failUrl);
+
+  // 同一失败地址不再自动重试，但仍会返回失败信息
+  const r2 = await localizeModuleCss([`@import url(${failUrl});`], {
+    baseUrl: 'https://site.wikidot.com/',
+    fetchImpl: async () => { throw new Error('should not retry'); },
+    waitMs: 50,
+  });
+  assert.ok(r2.css.includes(failUrl));
+  assert.equal(r2.failures.length, 1);
+  clearThemeRefreshFailures();
 });
 
 // ---------- __ftmlPatch：预览外壳原地热补丁（父页同源调用）----------

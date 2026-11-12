@@ -545,6 +545,67 @@ test('render：布局/主题网络失败 → 回退并带 warning；本会话不
   }
 });
 
+test('render：module CSS 远程 @import 本地化后内联（片段路径）', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      writeFileSync(
+        path.join(root, 'index.ftml'),
+        '[[module CSS]]\n@import url(https://cdn.example/mod.css);\n[[/module]]\n[[div class="mod"]]x[[/div]]\n',
+      );
+      const { client } = fakeClient();
+      const fetchImpl = async (url) => {
+        if (String(url).includes('mod.css')) {
+          return { ok: true, status: 200, text: async () => '.mod{color:blue}' };
+        }
+        throw new Error('unexpected fetch');
+      };
+
+      const r = await renderProjectFile(
+        root,
+        { path: 'index.ftml', site: 'scp-cn', page: 'hello', full: false },
+        { injectClient: client, fetchImpl },
+      );
+      const css = (r.styles || []).join('\n');
+      assert.ok(css.includes('.mod{color:blue}'));
+      assert.ok(!css.includes('@import'));
+      assert.ok(r.fragment.includes('class="mod"'));
+      assert.ok(!r.fragment.includes('<style')); // web 预览统一走 separate
+      assert.ok(!(r.warnings || []).some((w) => w.code === 'module-css-network-error'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('render：module CSS 远程 @import 失败 → 提升到规则之前并带 warning', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      writeFileSync(
+        path.join(root, 'index.ftml'),
+        '[[module CSS]]\n:root{--a:1}\n@import url(https://cdn.example/gone.css);\n[[/module]]\n[[div]]x[[/div]]\n',
+      );
+      const { client } = fakeClient();
+      const fail = async () => { throw new Error('offline'); };
+
+      const r = await renderProjectFile(
+        root,
+        { path: 'index.ftml', site: 'scp-cn', page: 'hello', full: false },
+        { injectClient: client, fetchImpl: fail },
+      );
+      const css = (r.styles || []).join('\n');
+      assert.ok(css.startsWith('@import url("https://cdn.example/gone.css");'), css);
+      assert.ok(css.indexOf('@import') < css.indexOf(':root'), css);
+      assert.ok((r.warnings || []).some((w) => w.code === 'module-css-network-error'));
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
 test('render：编辑态默认不联网；allowNetwork 才补拉远程 include；useRemoteInclude 总开关可拦截', async () => {
   const root = makeFixtureProject();
   try {
