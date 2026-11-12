@@ -7,7 +7,6 @@ import { renderList, highlightActive, renderProblems } from './ui.js';
 import { openNameDialog, openPromptDialog } from './dialogs.js';
 import { saveFile, persistEditor, render, renderRemote, scheduleSaveRender } from './preview.js';
 import { createFtmlEditor } from './cm-editor.js';
-import { applyStoredTarget } from './target.js';
 import { rememberLastOpened } from './session.js';
 
 /** 新页面/组件的默认骨架（多行：[[div]] 独占一行才被 @wdprlib/parser 解析为块标签） */
@@ -86,7 +85,6 @@ export async function openFile(relPath) {
     renderProblems([]);           // 旧文件的问题列表同样作废
     el.fileSelect.value = data.path;
     highlightActive();
-    applyStoredTarget(); // 恢复本地记住的目标页面并刷新状态栏指示器
     el.editor.focus();
     setStatus('已打开 ' + relPath);
     render();

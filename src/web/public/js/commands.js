@@ -53,7 +53,7 @@ export const COMMANDS = [
   { group: '发布', title: '提交小版本（本地）', key: 'Ctrl+Alt+B', keywords: 'submit minor commit local version', enabled: hasProject, run: submitCurrent },
   { group: '发布', title: '部署（创建大版本）', key: 'Ctrl+Alt+P', keywords: 'deploy publish submit', enabled: hasFile, run: deployCurrent },
   { group: '发布', title: '校验当前文件', key: 'Ctrl+Alt+E', keywords: 'validate lint check', enabled: hasFile, run: validateCurrent },
-  { group: '发布', title: '目标页面设置…', key: 'Ctrl+Alt+U', keywords: 'target site page', enabled: hasFile, run: openTargetDialog },
+  { group: '发布', title: '目标页面设置…', key: 'Ctrl+Alt+U', keywords: 'target site page', enabled: hasProject, run: openTargetDialog },
 
   // ---- 视图 ----
   { group: '视图', title: '切换配色主题（深色 / 浅色）', keywords: 'theme color dark light appearance 配色 主题', run: cycleTheme },

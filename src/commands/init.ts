@@ -11,7 +11,7 @@
  *   components/  templates/
  *   git init                （若当前目录还不是 git 仓库）
  *
- * site/page 元数据按源文件名存放：.ftml/index.json ↔ index.ftml（submit 时写入）。
+ * site/page 是项目级配置（.ftmlrc.json）；.ftml/<源文件名>.json 只保留 lastRev 等元数据。
  */
 
 import fs from 'node:fs';

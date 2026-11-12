@@ -1,13 +1,13 @@
 /**
  * handlers/files.js — 项目作用域的文件树与文件读写
  *
- * sidebar（自动补全数据源）、读/写源文件、保存目标 site/page 元数据。
+ * sidebar（自动补全数据源）、读/写源文件、读取/保存项目级 site/page。
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { loadConfig, saveProjectMeta } from '../../infra/config.js';
+import { loadConfig, readProjectTarget, saveProjectTarget } from '../../infra/config.js';
 import { parseFtmx } from '../../core/parse-ftmx.js';
 import { projectGit, isRepo, isClean } from '../../infra/git.js';
 import { HttpError, resolveInProject, findProject } from './shared.js';
@@ -107,16 +107,14 @@ export function saveProjectFile(id: string, body: SaveFileBody): SaveFileResult 
   return { path: relPath };
 }
 
-/** 保存 site/page 到 .ftml/<源文件名>.json 元数据（前端目标页面设置） */
+/** 读取项目级目标；顺带把旧版 .ftml/<file>.json 的 site/page 迁移到项目配置 */
+export function getProjectTarget(id: string): SaveTargetResult {
+  const p = findProject(id);
+  return readProjectTarget(p.root);
+}
+
+/** 保存项目级 site/page 到项目配置文件（.ftmlrc.json 等） */
 export function saveTargetPage(id: string, body: SaveTargetBody): SaveTargetResult {
   const p = findProject(id);
-  const relPath = body?.path || 'index.ftml';
-  const abs = resolveInProject(p.root, relPath);
-  if (!fs.existsSync(abs)) throw new HttpError(404, `文件不存在: ${relPath}`);
-  const fields: SaveTargetBody = {};
-  if (body.site) fields.site = body.site;
-  if (body.page) fields.page = body.page;
-  if (body.lastRev !== undefined) fields.lastRev = body.lastRev;
-  saveProjectMeta(abs, fields, p.root);
-  return loadConfig({ root: p.root, source: relPath });
+  return saveProjectTarget(p.root, body?.site, body?.page);
 }

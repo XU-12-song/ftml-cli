@@ -206,6 +206,14 @@ function apiRouter(env: HandlerEnv): express.Router {
     res.json(await handlers.deleteProject(req.params.id));
   }));
 
+  // 项目级目标：读取时顺带迁移旧版 <file>.json 元数据
+  router.get('/projects/:id/target', wrap(async (req, res) => {
+    res.json(await handlers.getProjectTarget(req.params.id));
+  }));
+  router.post('/projects/:id/target', wrap(async (req, res) => {
+    res.json(await handlers.saveTargetPage(req.params.id, req.body));
+  }));
+
   // 项目作用域操作：/projects/:id/:action
   const actions: Record<string, (req: Request) => unknown> = {
     sidebar: (req: Request) => handlers.getSidebar(req.params.id),
@@ -213,7 +221,6 @@ function apiRouter(env: HandlerEnv): express.Router {
     save: (req: Request) => handlers.saveProjectFile(req.params.id, req.body),
     render: (req: Request) => handlers.renderProjectFile(req.params.id, req.body, env),
     validate: (req: Request) => handlers.validateProjectFile(req.params.id, req.body),
-    target: (req: Request) => handlers.saveTargetPage(req.params.id, req.body),
     versions: (req: Request) => handlers.listProjectVersions(req.params.id),
     submit: (req: Request) => handlers.submitProject(req.params.id, req.body),
     deploy: (req: Request) => handlers.deployProject(req.params.id, req.body, env),

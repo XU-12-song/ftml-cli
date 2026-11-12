@@ -1,29 +1,39 @@
 /**
  * target.js — 部署目标页面（站点 / 页面）：状态栏指示器 + 设置对话框
  *
- * 输入框沿用 id `site-input` / `page-input`，只是从顶栏移入对话框，
- * 因此 preview.js / versions.js 里对 el.siteInput / el.pageInput 的引用无需改动。
+ * site/page 是**项目级**配置，存 `.ftmlrc.json` 等项目配置文件（服务端读写）。
+ * 打开项目/切换项目时从项目配置加载；保存时写回项目配置。
+ * 输入框沿用 id `site-input` / `page-input`，preview.js / versions.js 直接读取。
  */
 import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime } from './api.js';
 import { render } from './preview.js';
 
-/** 每个「项目 + 文件」各记一份目标，存 localStorage */
-export function targetKey() {
-  return `ftml:target:${state.projectId}:${state.filePath}`;
+function clearInputs() {
+  el.siteInput.value = '';
+  el.pageInput.value = '';
 }
 
-/** 打开文件时恢复该文件记住的目标页面，并刷新状态栏指示器 */
-export function applyStoredTarget() {
-  const raw = localStorage.getItem(targetKey());
-  if (raw) {
-    try {
-      const { site, page } = JSON.parse(raw);
-      if (site) el.siteInput.value = site;
-      if (page) el.pageInput.value = page;
-    } catch { /* 记录损坏则忽略 */ }
+/** 从项目配置加载目标；切换项目时调用，旧请求返回后会被丢弃 */
+export async function loadProjectTarget() {
+  if (!state.projectId) {
+    clearInputs();
+    refreshTargetIndicator();
+    return;
   }
-  refreshTargetIndicator();
+  const projectId = state.projectId;
+  try {
+    const r = await api('GET', `/api/projects/${encodeURIComponent(projectId)}/target`);
+    if (state.projectId !== projectId) return; // 期间已切换项目
+    el.siteInput.value = r.site || '';
+    el.pageInput.value = r.page || '';
+    refreshTargetIndicator();
+  } catch (e) {
+    if (state.projectId !== projectId) return;
+    clearInputs();
+    refreshTargetIndicator();
+    setError(`读取目标页面失败: ${e.message}`);
+  }
 }
 
 /** 状态栏右侧：镜像当前站点 / 页面；未设置时为灰色提示 */
@@ -43,8 +53,8 @@ export function refreshTargetIndicator() {
 }
 
 export function openTargetDialog() {
-  if (!state.projectId || !state.filePath) {
-    setError('请先打开一个文件');
+  if (!state.projectId) {
+    setError('请先选择项目');
     return;
   }
   el.targetDialog.showModal();
@@ -52,19 +62,23 @@ export function openTargetDialog() {
 }
 
 export async function saveTarget() {
-  if (!state.projectId || !state.filePath) return;
+  if (!state.projectId) {
+    setError('请先选择项目');
+    return;
+  }
   const site = el.siteInput.value.trim();
   const page = el.pageInput.value.trim();
   try {
-    await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/target`, {
-      path: state.filePath, site, page,
+    const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/target`, {
+      site, page,
     });
-    if (site || page) localStorage.setItem(targetKey(), JSON.stringify({ site, page }));
+    // 以服务端规范化后的值为准（空串表示清除）
+    el.siteInput.value = r.site || '';
+    el.pageInput.value = r.page || '';
     refreshTargetIndicator();
     el.targetDialog.close();
-    setStatus(`目标页面已保存（${fmtTime()}）`);
-    // 站点可能变了：render 内部会判断是否需要整篇重载（切换站点）
-    await render();
+    setStatus(`目标页面已保存到项目配置（${fmtTime()}）`);
+    if (state.filePath) await render();
   } catch (e) {
     setError(e.message);
   }

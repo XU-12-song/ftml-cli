@@ -5,6 +5,7 @@ import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, showLog } from './api.js';
 import { openNameDialog } from './dialogs.js';
 import { refreshSidebar, clearEditor } from './editor.js';
+import { loadProjectTarget } from './target.js';
 
 export async function loadProjects() {
   try {
@@ -32,7 +33,7 @@ export async function loadProjects() {
 }
 
 export function initProjects() {
-  el.projectSelect.addEventListener('change', () => {
+  el.projectSelect.addEventListener('change', async () => {
     state.projectId = el.projectSelect.value || null;
     state.filePath = null;
     el.fileSelect.value = '';
@@ -40,10 +41,12 @@ export function initProjects() {
 
     // 没有项目时下拉只有「（无项目，添加…）」占位项：直接进入添加流程
     if (!state.projectId) {
+      await loadProjectTarget();
       openAddProject();
       return;
     }
-    refreshSidebar();
+    await loadProjectTarget();
+    await refreshSidebar();
   });
 
   // 顶栏控件已移除，以下动作函数统一由命令面板（Ctrl+K）调用
@@ -63,6 +66,7 @@ export async function openAddProject() {
     if (p) {
       state.projectId = p.id;
       el.projectSelect.value = p.id;
+      await loadProjectTarget();
       await refreshSidebar();
     }
   } catch (e) {
@@ -89,7 +93,10 @@ export async function removeCurrentProject() {
       const next = state.projects[0];
       state.projectId = next.id;
       el.projectSelect.value = next.id;
+      await loadProjectTarget();
       await refreshSidebar();
+    } else {
+      await loadProjectTarget(); // 清空输入框/状态栏指示器
     }
     setStatus(`已从工作区移除 ${name}`);
   } catch (e) {
@@ -131,6 +138,7 @@ export async function openNewRepo() {
     state.projectId = r.root;
     el.projectSelect.value = r.root;
     showLog('新建仓库', r.logs || []);
+    await loadProjectTarget();
     await refreshSidebar();
     setStatus(`已创建仓库 ${r.name}（${r.root}）`);
   } catch (e) {

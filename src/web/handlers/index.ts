@@ -19,6 +19,7 @@ export {
   getSidebar,
   readProjectFile,
   saveProjectFile,
+  getProjectTarget,
   saveTargetPage,
 } from './files.js';
 export {

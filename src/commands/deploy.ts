@@ -20,7 +20,7 @@ import path from 'node:path';
 import { build } from './build.js';
 import { validate } from './validate.js';
 import { submit, requireMessage, appendHistory } from './submit.js';
-import { loadConfig, saveProjectMeta } from '../infra/config.js';
+import { loadConfig, saveProjectMeta, saveProjectTarget } from '../infra/config.js';
 import { projectGit, commitAll, isRepo, tagCommit, pushCurrent } from '../infra/git.js';
 import { assertGitReady } from '../infra/gitenv.js';
 import { addMajor, nextMajorVersion, writeMajorSnapshot } from '../domain/versions.js';
@@ -142,7 +142,9 @@ export async function deploy(options: DeployOptions): Promise<DeployResult> {
     wikidotVersion: revisionsCount,
     type: 'major',
   });
-  saveProjectMeta(config.sourceAbs, { site: siteName, page: pageName, lastRev: revisionsCount }, config.root);
+  // 目标站点/页面是项目级配置：部署成功后写回项目配置；lastRev 仍按文件记录
+  saveProjectTarget(config.root, siteName, pageName);
+  saveProjectMeta(config.sourceAbs, { lastRev: revisionsCount }, config.root);
   console.log(`✓ 已发布 ${siteName}:${pageName}（修订 ${revisionsCount}）`);
 
   // 7. 一次 submit：本地提交 + 小版本号

@@ -175,9 +175,15 @@ ftml web --open                       # 启动后用系统浏览器打开
 
 ### site / page 来源（优先级从高到低）
 
+`site` / `page` 是**项目级**配置，Web 编辑器和部署成功后会写回项目配置文件。
+
 1. 命令行 `--site` / `--page`
-2. 配置文件 `ftml.config.json` / `.ftmlrc.json` / `.ftmlrc`
-3. 项目元数据 `.ftml/<源文件名>.json`（submit/deploy/revert 时自动写入）
+2. 项目配置文件 `ftml.config.json` / `.ftmlrc.json` / `.ftmlrc`
+3. 旧版元数据 `.ftml/<源文件名>.json`（仅为未迁移项目保留；Web 打开项目或部署时会自动迁移到配置文件并删除旧字段）
+
+旧项目有多个源文件各自记录目标时，迁移优先采用配置 `source`（默认 `index.ftml`）对应的元数据，其次按文件名排序；`site` / `page` 分别取第一个非空值。
+
+Web 编辑器保存目标时：已有配置文件就写回该文件，没有则创建 `.ftmlrc.json`。清空站点/页面会删除对应字段。
 
 ### 环境变量
 

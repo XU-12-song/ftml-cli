@@ -13,12 +13,12 @@
  *   --to <rev>  退化为按 git 修订回退（hash / HEAD~n 透传给 git revert，即撤销该提交）
  *
  * 未指定 --to 时默认 HEAD（撤销最近一次提交），保持旧行为。
- * site/page 优先级：命令行 > 配置文件 > .ftml/<源文件名>.json 元数据
+ * site/page 优先级：命令行 > 项目配置 > 旧版 .ftml/<源文件名>.json 元数据（未迁移时）
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfig, saveProjectMeta } from '../infra/config.js';
+import { loadConfig, saveProjectMeta, saveProjectTarget } from '../infra/config.js';
 import { pushPageSource } from '../infra/wikidot.js';
 import { projectGit, commitAll, gitRevert, isRepo, isClean, showFileAt, headHash } from '../infra/git.js';
 import { loadTemplates, expand } from '../core/expand.js';
@@ -235,7 +235,8 @@ export async function revert(options: RevertOptions): Promise<RevertResult> {
     wikidotVersion: revisionsCount,
     type: 'revert',
   });
-  saveProjectMeta(config.sourceAbs, { site: siteName, page: pageName, lastRev: revisionsCount }, config.root);
+  saveProjectTarget(config.root, siteName, pageName);
+  saveProjectMeta(config.sourceAbs, { lastRev: revisionsCount }, config.root);
   console.log(`✓ 已回退 ${to}（本地 ${String(hash).slice(0, 7)}），线上 ${siteName}:${pageName} 回到 ${remote.from}`);
   return { hash, versions: listVersions(config.root) };
 }

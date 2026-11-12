@@ -17,7 +17,9 @@ import {
   listProjects,
   createProject,
   getSidebar,
+  getProjectTarget,
   saveProjectFile,
+  saveTargetPage,
   readProjectFile,
   renderProjectFile,
   validateProjectFile,
@@ -193,6 +195,76 @@ test('save/read 文件往返 + 路径越界拒绝', async () => {
       // 目录穿越：../ 越界拒绝
       assert.throws(() => saveProjectFile(root, { path: '../evil.txt', source: 'x' }), /路径越界/);
       assert.throws(() => readProjectFile(root, '..%2Fetc%2Fpasswd'), /路径越界|不存在/);
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('target：项目级读写、清空与旧元数据迁移', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      // 模拟旧版：site/page 记在 .ftml/<源文件>.json
+      const metaDir = path.join(root, '.ftml');
+      mkdirSync(metaDir, { recursive: true });
+      writeFileSync(
+        path.join(metaDir, 'index.json'),
+        JSON.stringify({ site: 'old-site', page: 'old-page', lastRev: 3 }),
+      );
+      writeFileSync(path.join(root, '.ftmlrc.json'), '{}');
+
+      // 读取时迁移：写入项目配置，并从元数据删除 site/page（保留 lastRev）
+      const t1 = getProjectTarget(root);
+      assert.equal(t1.site, 'old-site');
+      assert.equal(t1.page, 'old-page');
+      const cfg = JSON.parse(readFileSync(path.join(root, '.ftmlrc.json'), 'utf8'));
+      assert.equal(cfg.site, 'old-site');
+      assert.equal(cfg.page, 'old-page');
+      const meta = JSON.parse(readFileSync(path.join(metaDir, 'index.json'), 'utf8'));
+      assert.equal(meta.site, undefined);
+      assert.equal(meta.page, undefined);
+      assert.equal(meta.lastRev, 3);
+
+      // 保存与清空都写项目配置；清空后旧元数据不应把值带回来
+      const saved = saveTargetPage(root, { site: 'new-site', page: ' new-page ' });
+      assert.equal(saved.site, 'new-site');
+      assert.equal(saved.page, 'new-page');
+      assert.equal(saveTargetPage(root, { site: '', page: '' }).site, null);
+      const t2 = getProjectTarget(root);
+      assert.equal(t2.site, null);
+      assert.equal(t2.page, null);
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('target：已有 ftml.config.json 时写回该文件并保留其它字段', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      writeFileSync(
+        path.join(root, 'ftml.config.json'),
+        JSON.stringify({ watch: true, output: 'dist/custom.ftml' }),
+      );
+
+      const saved = saveTargetPage(root, { site: 'scp-cn', page: 'custom-page' });
+      assert.equal(saved.file, path.join(root, 'ftml.config.json'));
+
+      const cfg = JSON.parse(readFileSync(path.join(root, 'ftml.config.json'), 'utf8'));
+      assert.deepEqual(cfg, {
+        watch: true,
+        output: 'dist/custom.ftml',
+        site: 'scp-cn',
+        page: 'custom-page',
+      });
+      // 不会另外新建/改写 .ftmlrc.json
+      const rc = JSON.parse(readFileSync(path.join(root, '.ftmlrc.json'), 'utf8'));
+      assert.equal(rc.page, 'hello');
+      assert.equal(getProjectTarget(root).page, 'custom-page');
     });
   } finally {
     cleanup(root);
@@ -670,8 +742,11 @@ test('deploy：构建 + 校验 + 提交 Wikidot + git 提交 + history/元数据
       assert.equal(history[0].type, 'major');
       assert.equal(history[1].type, 'submit');
       const meta = JSON.parse(readFileSync(path.join(root, '.ftml', 'index.json'), 'utf8'));
-      assert.equal(meta.site, 'scp-cn');
+      assert.equal(meta.site, undefined); // site/page 已改为项目级配置
       assert.equal(meta.lastRev, 7);
+      const cfg = JSON.parse(readFileSync(path.join(root, '.ftmlrc.json'), 'utf8'));
+      assert.equal(cfg.site, 'scp-cn');
+      assert.equal(cfg.page, 'hello');
 
       // 版本清单：1 个大版本 + 其下 1 个小版本 + 大版本快照
       const versions = JSON.parse(readFileSync(path.join(root, '.ftml', 'versions.json'), 'utf8'));

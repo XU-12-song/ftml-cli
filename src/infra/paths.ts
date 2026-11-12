@@ -5,7 +5,8 @@
  *   <项目根>/.ftml/
  *     history.json              提交历史（submit/revert 追加，JSON 数组）
  *     versions.json             版本清单（大版本 x / 小版本 x.y，见 versions.js）
- *     <源文件名>.json           site/page 元数据（index.json ↔ index.ftml）
+ *     <源文件名>.json           lastRev 等元数据（index.json ↔ index.ftml）；
+ *                               旧版 site/page 会在读取时迁移到项目配置
  *
  * 用户级共享目录（跨 ftml 项目共用）：
  *   ~/.ftml-cli/

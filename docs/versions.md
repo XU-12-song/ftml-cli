@@ -101,7 +101,7 @@ ftml revert --no-wikidot --to 1.2  # 只做本地
   versions.json           { "major": [...], "minor": [...] }
   versions/<x>.ftml       大版本发布时的入口快照
   history.json            提交 / 部署 / 回退历史
-  <源文件名>.json          site / page / lastRev 元数据
+  <源文件名>.json          lastRev 等元数据（site / page 为项目级，存 .ftmlrc.json）
 ```
 
 `versions.json` 示例：

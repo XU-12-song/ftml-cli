@@ -33,6 +33,7 @@ import { initKeymap } from './keymap.js';
 import { initTheme } from './theme.js';
 import { initSelectMenus } from './select-menu.js';
 import { clearLastOpened, readLastOpened } from './session.js';
+import { loadProjectTarget } from './target.js';
 
 /** 规范化路径用于比较（Windows 大小写与分隔符不敏感） */
 function samePath(a, b) {
@@ -72,6 +73,7 @@ async function applyOpenTarget(target) {
   }
   state.projectId = entry.id;
   el.projectSelect.value = entry.id;
+  await loadProjectTarget();
   await refreshSidebar();
   if (target.file) await openFile(target.file);
   return true;
@@ -110,6 +112,7 @@ async function boot() {
     if (last && state.projects.some((p) => p.id === last.projectId)) {
       state.projectId = last.projectId;
       el.projectSelect.value = last.projectId;
+      await loadProjectTarget();
       await refreshSidebar();
       await openFile(last.filePath);
       restored = state.filePath === last.filePath;
