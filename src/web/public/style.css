@@ -4,24 +4,31 @@
  * 组织顺序：
  *   1. 设计 token
  *      1a 原始 token（字号 / 间距 / 圆角 / 动效 / 布局）
- *      1b 主题配色（深色「雾蓝夜」/ 浅色「暖纸白」）
+ *      1b 主题配色：
+ *          calm  Calm Docs IDE（浅色纸墨，默认）
+ *          dark  雾蓝夜
+ *          light 暖纸白
  *   2. 基础重置 / 排版 / 滚动条 / 焦点
  *   3. 顶栏
  *   4. 侧边栏
- *   5. 主区（编辑器 + 预览）
+ *   5. 主区（编辑器 + 预览 + 视图模式）
  *   6. 状态栏
  *   7. 自动补全 / 问题面板 / 对话框 / 命令面板
  *   8. 禅模式
  *   9. 响应式 / 可用性
+ *   10. Toast
  *
- * 主题通过 <html data-theme="dark|light"> 切换；组件一律引用语义变量，
- * 不在组件规则里写死颜色。布局分栏统一用 flex（flex: 1 1 0）。
+ * 主题通过 <html data-theme="calm|dark|light"> 切换；组件一律引用语义变量，
+ * 不在组件规则里写死颜色。:root 的兜底配色刻意设为 calm：即使主题脚本
+ * 未能执行，首屏也是安静的纸墨浅色，而不是深色。
  * ============================================================ */
 
 /* ---------- 1a. 原始 token ---------- */
 :root {
-  /* 字体 */
+  /* 字体：界面用系统无衬线，纸墨主题的标题借用系统衬线，编辑器用等宽 */
   --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Noto Serif SC",
+           "Songti SC", "SimSun", Georgia, serif;
   --mono: "SF Mono", "JetBrains Mono", Consolas, Menlo, monospace;
 
   /* 字号 */
@@ -64,8 +71,74 @@
   --control-h-lg: 34px;
 }
 
-/* ---------- 1b. 主题：深色「雾蓝夜」 ---------- */
+/* ---------- 1b. 主题：Calm Docs IDE（纸墨浅色，默认） ----------
+ * 纸面不反光、墨色不过黑；层级用手感很轻的细线而不是阴影。
+ * 唯一强调色是冷墨蓝，只在「可操作 / 当前项 / 快捷键」处出现。
+ * ------------------------------------------------------------ */
 :root,
+:root[data-theme="calm"] {
+  color-scheme: light;
+
+  /* 表面层次：纸画布 < 侧栏纸 < 浮起纸页 */
+  --bg: #f6f4ee;
+  --bg-soft: #f0eee7;
+  --bg-elevated: #fcfbf7;
+  --bg-input: #fffdf9;
+  --bg-hover: #eae7de;
+  --bg-active: #e2ded3;
+  --border: #e2ddd3;
+  --border-strong: #c9c3b7;
+  --border-soft: rgba(38, 41, 45, 0.055);
+
+  /* 墨色前景 */
+  --fg: #26292d;
+  --fg-dim: #5c626a;
+  --fg-faint: #686f77; /* 纸底上 ≈4.7:1，满足 WCAG AA 正文对比度 */
+
+  /* 强调 / 语义色：冷墨蓝 + 低饱和印章色 */
+  --accent: #2d5a7e;
+  --accent-hover: #244a69;
+  --accent-soft: rgba(45, 90, 126, 0.085);
+  --accent-selection: rgba(45, 90, 126, 0.22);
+  --danger: #a83a2e;
+  --danger-soft: rgba(168, 58, 46, 0.08);
+  --ok: #2e6b4e;
+  --warn: #8a5b12;
+  --warn-soft: rgba(138, 91, 18, 0.09);
+
+  /* 编辑器专用 */
+  --selection: rgba(45, 90, 126, 0.16);
+  --active-line: rgba(45, 90, 126, 0.045);
+
+  /* 层级只用表面色、细边框和 outline 表达，不使用 box-shadow */
+
+  /* 专用表面 */
+  --topbar-bg: #fbfaf6;
+  --sidebar-bg: #f0eee7;
+  --statusbar-bg: #efede6;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c626a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --preview-bg: #ffffff;
+  --scroll-thumb: #d8d2c6;
+  --scroll-thumb-hover: #c4bdb0;
+  --backdrop: rgba(46, 42, 35, 0.30);
+
+  /* 语法高亮：纸墨彩度整体压低，标签/链接用墨蓝，字面量用紫墨 */
+  --syn-tag: #2d5a7e;
+  --syn-attr: #1f6a6a;
+  --syn-op: #6a6f75;
+  --syn-string: #8f5c1f;
+  --syn-atom: #4a6b32;
+  --syn-bracket: #7a7f86;
+  --syn-content: #33383d;
+  --syn-comment: #68755f;
+  --syn-literal: #6a4a82;
+  --syn-link: #2d5a7e;
+  --syn-heading: #1f2327;
+  --syn-mono: #6a4a82;
+  --syn-sep: #9a9fa5;
+}
+
+/* ---------- 1b. 主题：深色「雾蓝夜」 ---------- */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
@@ -100,10 +173,7 @@
   --selection: rgba(110, 168, 254, 0.28);
   --active-line: rgba(255, 255, 255, 0.035);
 
-  /* 阴影 / 焦点 */
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
-  --shadow: 0 18px 52px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.40);
-  --ring: 0 0 0 2px rgba(110, 168, 254, 0.45);
+  /* 层级只用表面色、细边框和 outline 表达，不使用 box-shadow */
 
   /* 专用表面 */
   --topbar-bg: linear-gradient(180deg, #1a1e24 0%, #171a1f 100%);
@@ -162,9 +232,7 @@
   --selection: rgba(37, 99, 235, 0.18);
   --active-line: rgba(37, 99, 235, 0.045);
 
-  --shadow-sm: 0 4px 14px rgba(44, 40, 32, 0.10);
-  --shadow: 0 18px 52px rgba(44, 40, 32, 0.18), 0 2px 10px rgba(44, 40, 32, 0.08);
-  --ring: 0 0 0 2px rgba(37, 99, 235, 0.28);
+  /* 层级只用表面色、细边框和 outline 表达，不使用 box-shadow */
 
   --topbar-bg: linear-gradient(180deg, #faf8f5 0%, #f5f3ef 100%);
   --sidebar-bg: #f3f0eb;
@@ -188,6 +256,36 @@
   --syn-heading: #1c2026;
   --syn-mono: #7b3fbf;
   --syn-sep: #9aa0a9;
+}
+
+/* ---------- 1c. Calm Docs IDE 的纸墨性格 ----------
+ * 只做少量“像纸”的表达：标题用衬线、徽标不用全大写、
+ * 纸面上不放渐变和发光。其余结构完全复用同一套组件。
+ * ------------------------------------------------------------ */
+:root[data-theme="calm"] .brand-name {
+  font-family: var(--serif);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+:root[data-theme="calm"] .brand-sub {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  vertical-align: 0;
+}
+:root[data-theme="calm"] dialog h3 {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+:root[data-theme="calm"] .welcome-item strong {
+  font-family: var(--serif);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+:root[data-theme="calm"] .brand-mark {
+  background: var(--accent);
 }
 
 /* ---------- 2. 基础 ---------- */
@@ -236,8 +334,8 @@ svg { display: block; }
   background-clip: padding-box;
 }
 
-/* 键盘导航焦点环：只在键盘操作时出现，鼠标点击不显示 */
-:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
+/* 键盘导航焦点环：只用 outline，不使用 box-shadow / 圆角组合 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .hidden { display: none !important; }
 .flex-1 { flex: 1; }
@@ -273,7 +371,6 @@ svg { display: block; }
   border-radius: var(--radius);
   background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   color: #fff;
-  box-shadow: 0 2px 10px var(--accent-soft);
 }
 .brand-name {
   font-weight: 650;
@@ -297,6 +394,51 @@ svg { display: block; }
 .group { display: flex; align-items: center; gap: var(--sp-3); }
 .group .sep { width: 1px; height: 20px; background: var(--border); margin: 0 var(--sp-1); }
 
+/* 顶栏命令搜索：把 Ctrl+K 从隐藏快捷键变成可见入口（issue #10：功能可发现） */
+.search-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--sp-3);
+  min-width: 172px;
+  height: var(--control-h);
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-3) 0 var(--sp-4);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--fs-sm);
+  transition: background-color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.search-trigger:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+.search-trigger svg { flex-shrink: 0; opacity: 0.72; }
+.search-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.search-trigger-key,
+.palette-foot kbd {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--fg-faint);
+  font: var(--fs-2xs)/1.4 var(--mono);
+}
+
 /* 表单控件 */
 select, input {
   height: var(--control-h);
@@ -309,7 +451,7 @@ select, input {
   font-family: inherit;
   outline: none;
   transition: border-color var(--dur-fast), background-color var(--dur-fast),
-              box-shadow var(--dur-fast);
+              outline-color var(--dur-fast);
 }
 
 /* 原生下拉箭头在 Windows 上是系统样式；去掉它，改用主题色 chevron */
@@ -326,7 +468,8 @@ select {
 select:hover, input:hover { border-color: var(--border-strong); }
 select:focus, input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 0;
 }
 
 #project-select { min-width: 130px; max-width: 200px; }
@@ -343,7 +486,6 @@ select:focus, input:focus {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
   overflow-y: auto;
   animation: select-menu-in var(--dur-fast) var(--ease);
 }
@@ -420,7 +562,6 @@ select:focus, input:focus {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 .btn-primary svg { opacity: 0.95; }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
@@ -447,12 +588,14 @@ select:focus, input:focus {
 .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 .btn[disabled]:active { transform: none; }
 
-/* 键盘焦点环必须压过 .btn-primary 的静态阴影 */
+/* 键盘焦点环：统一用 outline，避免 box-shadow 与圆角叠加 */
 .btn:focus-visible,
 select:focus-visible,
 input:focus-visible,
+.search-trigger:focus-visible,
+.sb-search input:focus-visible,
 .sb-add:focus-visible,
-.status-target:focus-visible { box-shadow: var(--ring); }
+.status-target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* 联网刷新：手动补拉远程 include 的唯一可见入口 */
 #remote-btn:hover { color: var(--accent); }
@@ -476,8 +619,10 @@ input:focus-visible,
 /* 主题按钮：按当前生效主题显示太阳 / 月亮 */
 #theme-btn .icon-sun,
 #theme-btn .icon-moon { width: 15px; height: 15px; }
-:root[data-theme="dark"] #theme-btn .icon-moon { display: none; }
-:root[data-theme="light"] #theme-btn .icon-sun { display: none; }
+/* 图标表示当前配色家族：深色显示月亮，浅色系（calm / light）显示太阳 */
+:root[data-theme="dark"] #theme-btn .icon-sun { display: none; }
+:root[data-theme="calm"] #theme-btn .icon-moon,
+:root[data-theme="light"] #theme-btn .icon-moon { display: none; }
 #theme-btn:hover { color: var(--accent); }
 
 /* 桌面端侧边栏常驻，☰ 抽屉按钮无意义 → 默认隐藏，移动端再显示 */
@@ -485,6 +630,60 @@ input:focus-visible,
 
 /* 桌面端禅模式走 Ctrl+Shift+F，顶栏禅按钮只在移动端出现 */
 #zen-btn { display: none; }
+
+/* 侧边栏快速筛选：列表由业务代码重建，筛选状态由 layout.js 持续套用 */
+.sb-search {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 var(--sp-4) var(--sp-5);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  transition: border-color var(--dur-fast), outline-color var(--dur-fast);
+}
+.sb-search:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 0;
+}
+.sb-search svg { flex-shrink: 0; }
+.sb-search input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-size: var(--fs-sm);
+}
+.sb-search input:hover,
+.sb-search input:focus { border: none; outline: none; box-shadow: none; }
+.sb-search input::-webkit-search-cancel-button { display: none; }
+.sb-search-clear {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--fg-faint);
+  font-size: var(--fs-2xs);
+  line-height: 1;
+}
+.sb-search-clear:hover { color: var(--fg); background: var(--bg-hover); }
+.sb-filter-empty {
+  margin: 0 var(--sp-6) var(--sp-5);
+  color: var(--fg-faint);
+  font-size: var(--fs-xs);
+  font-style: italic;
+}
 
 /* ---------- 4. 侧边栏 ---------- */
 #body { flex: 1; display: flex; min-height: 0; }
@@ -563,7 +762,16 @@ input:focus-visible,
 .sb-list li.active {
   background: var(--accent-soft);
   color: var(--fg);
-  box-shadow: inset 2px 0 0 var(--accent);
+}
+/* 当前项标记：独立细条，不再用 inset box-shadow 叠在圆角上 */
+.sb-list li.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
 }
 .sb-list li .sb-keys {
   display: block;
@@ -579,6 +787,9 @@ input:focus-visible,
   font-style: italic;
 }
 .sb-list li.sb-muted:hover { background: transparent; }
+.sb-list li.filtered { display: none; }
+/* 筛选时隐藏没有任何命中项的整组，避免大片空标题 */
+#sidebar.is-filtering .sb-group:not(:has(.sb-list li:not(.filtered))) { display: none; }
 
 /* 代码片段行：名称 + 前缀 + 悬停删除，均不横向溢出 */
 .sb-list li.snip-row {
@@ -704,7 +915,6 @@ body.split-resizing-y * { cursor: row-resize !important; user-select: none !impo
   border: 1px solid var(--border-strong) !important;
   border-radius: var(--radius-sm) !important;
   color: var(--fg) !important;
-  box-shadow: var(--shadow) !important;
   overflow: hidden;
 }
 .cm-tooltip-autocomplete > ul > li {
@@ -811,7 +1021,8 @@ body.split-resizing-y * { cursor: row-resize !important; user-select: none !impo
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 0;
   flex-shrink: 0;
 }
 
@@ -912,7 +1123,6 @@ dialog {
   color: var(--fg);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
   overflow-y: auto;
 }
 dialog[open] { animation: dialog-in var(--dur) var(--ease); }
@@ -984,9 +1194,13 @@ dialog textarea {
   font: var(--fs-sm)/1.5 var(--mono);
   resize: vertical;
   outline: none;
-  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+  transition: border-color var(--dur-fast), outline-color var(--dur-fast);
 }
-dialog textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+dialog textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 0;
+}
 
 #snippet-dialog { min-width: 380px; max-width: 92vw; }
 #prompt-dialog { min-width: 380px; max-width: 92vw; }
@@ -1155,6 +1369,17 @@ dialog textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(-
 .palette-item.disabled { opacity: 0.4; cursor: default; }
 .palette-item.disabled:hover { background: transparent; }
 .palette-empty { padding: var(--sp-7); text-align: center; color: var(--fg-faint); }
+.palette-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) var(--sp-1);
+  border-top: 1px solid var(--border-soft);
+  color: var(--fg-faint);
+  font-size: var(--fs-2xs);
+}
+.palette-foot span { display: inline-flex; align-items: center; gap: var(--sp-2); }
 
 /* ---------- 8. 禅模式 ---------- */
 /* 只保留编辑区与预览：顶栏 / 侧边栏 / 状态栏全部隐藏 */
@@ -1176,6 +1401,12 @@ body.zen #sidebar-overlay { display: none !important; }
 #zen-exit:hover, #zen-exit:focus-visible { opacity: 1; }
 
 /* ---------- 9a. 响应式（<= 768px） ---------- */
+@media (max-width: 1100px) {
+  /* 空间不足时搜索入口只留图标与快捷键 */
+  .search-trigger { min-width: 0; }
+  .search-trigger-label { display: none; }
+}
+
 @media (max-width: 768px) {
   /* 顶栏换行 */
   #topbar { flex-wrap: wrap; height: auto; padding: var(--sp-3) var(--sp-4); gap: var(--sp-2) var(--sp-3); }
@@ -1291,7 +1522,6 @@ body.zen #sidebar-overlay { display: none !important; }
   border-left: 3px solid var(--warn);
   border-radius: var(--radius);
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-sm);
   color: var(--fg);
   font-size: var(--fs-sm);
   line-height: 1.5;

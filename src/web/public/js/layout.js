@@ -1,5 +1,6 @@
 /**
- * layout.js — 视图布局：移动端侧边栏抽屉、上下分栏、编辑/预览分隔条、禅模式
+ * layout.js — 视图布局：移动端侧边栏抽屉、上下分栏、编辑/预览分隔条、
+ *             侧边栏快速筛选、禅模式
  *
  * 分隔条：
  *   - 左右布局：横向拖动（↔ / col-resize）
@@ -169,6 +170,62 @@ export function toggleLayout() {
   applySplitAxis();
 }
 
+/* ------------------------------------------------------------------ *
+ * 侧边栏快速筛选（issue #10：快速找到功能/文件）
+ * ------------------------------------------------------------------ */
+
+function initSidebarFilter() {
+  const input = el.sidebarFilter;
+  if (!input) return;
+  const clearBtn = el.sidebarFilterClear;
+  const lists = [...document.querySelectorAll('#sidebar .sb-list')];
+
+  const apply = () => {
+    const q = input.value.trim().toLowerCase();
+    let visible = 0;
+    for (const ul of lists) {
+      for (const li of ul.children) {
+        const text = (li.textContent || '').toLowerCase();
+        const hidden = !!q && !text.includes(q);
+        li.classList.toggle('filtered', hidden);
+        if (!hidden) visible++;
+      }
+    }
+    clearBtn?.classList.toggle('hidden', !q);
+    el.sidebar?.classList.toggle('is-filtering', !!q);
+    el.sidebarFilterEmpty?.classList.toggle('hidden', !q || visible > 0);
+  };
+
+  const clear = () => {
+    input.value = '';
+    apply();
+    input.focus();
+  };
+
+  input.addEventListener('input', apply);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); clear(); input.blur(); }
+  });
+  clearBtn?.addEventListener('click', clear);
+
+  // 列表由业务代码随时重建：监听子节点变化后重新套用当前筛选
+  const mo = new MutationObserver(apply);
+  for (const ul of lists) mo.observe(ul, { childList: true, subtree: true });
+  apply();
+}
+
+/** 聚焦侧边栏筛选框（命令面板用；移动端同时展开抽屉） */
+export function focusSidebarFilter() {
+  const input = el.sidebarFilter;
+  if (!input) return;
+  if (window.matchMedia?.('(max-width: 768px)')?.matches) {
+    $('sidebar')?.classList.add('open');
+    $('sidebar-overlay')?.classList.remove('hidden');
+  }
+  input.focus();
+  input.select();
+}
+
 export function initLayout() {
   const menuToggle = $('menu-toggle');
   const sidebar = $('sidebar');
@@ -190,6 +247,7 @@ export function initLayout() {
 
   // ---- 编辑/预览分隔条 ----
   initSplitter();
+  initSidebarFilter();
 
   // ---- 禅模式 ----
   el.zenBtn?.addEventListener('click', () => {

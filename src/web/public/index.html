@@ -1,24 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark" data-theme-pref="auto">
+<html lang="zh-CN" data-theme="calm" data-theme-pref="calm">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#171a1f">
+  <meta name="theme-color" content="#f0eee7">
   <title>ftml web 编辑器</title>
   <!--
     主题防闪烁：在样式表加载前按 localStorage / 系统偏好写入 data-theme。
-    localStorage 的 ftml-theme 由 js/theme.js 维护（auto / dark / light）。
+    localStorage 的 ftml-theme 由 js/theme.js 维护（calm / auto / dark / light）。
+    默认 Calm Docs IDE（浅色纸墨）；auto 才跟随系统深/浅。
   -->
   <script>
     (function () {
       try {
-        var pref = localStorage.getItem('ftml-theme') || 'auto';
-        if (pref !== 'dark' && pref !== 'light') pref = 'auto';
+        var pref = localStorage.getItem('ftml-theme') || 'calm';
+        if (pref !== 'calm' && pref !== 'dark' && pref !== 'light') pref = 'auto';
         var system = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
           ? 'light' : 'dark';
         document.documentElement.dataset.theme = pref === 'auto' ? system : pref;
         document.documentElement.dataset.themePref = pref;
-      } catch (e) { /* 隐私模式 / 禁用存储：保持默认深色 */ }
+      } catch (e) { /* 隐私模式 / 禁用存储：保持默认浅色纸墨 */ }
     })();
   </script>
   <link rel="stylesheet" href="style.css">
@@ -40,6 +41,12 @@
       <select id="project-select" title="项目" aria-label="项目"></select>
       <select id="file-select" title="源文件" aria-label="源文件"></select>
     </div>
+
+    <button id="palette-btn" class="search-trigger" title="搜索命令与功能（Ctrl+K）" aria-label="搜索命令">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <span class="search-trigger-label">搜索命令</span>
+      <kbd class="search-trigger-key">Ctrl K</kbd>
+    </button>
 
     <span class="flex-1"></span>
 
@@ -69,9 +76,6 @@
       <button id="zen-btn" class="btn btn-icon btn-ghost" title="禅模式（Ctrl+Shift+F）" aria-label="禅模式">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
       </button>
-      <button id="palette-btn" class="btn btn-icon btn-ghost" title="命令面板（Ctrl+K）" aria-label="命令面板">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg>
-      </button>
       <button id="theme-btn" class="btn btn-icon btn-ghost" title="切换配色主题" aria-label="切换配色主题">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
@@ -86,6 +90,12 @@
   <div id="sidebar-overlay" class="hidden"></div>
   <div id="body">
     <aside id="sidebar">
+      <div class="sb-search">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+        <input id="sidebar-filter" type="search" placeholder="筛选模板、组件、文件…" aria-label="筛选侧边栏" autocomplete="off" spellcheck="false">
+        <button id="sidebar-filter-clear" class="sb-search-clear hidden" type="button" title="清除筛选" aria-label="清除筛选">✕</button>
+      </div>
+      <p id="sidebar-filter-empty" class="sb-filter-empty hidden">没有匹配的条目</p>
       <section class="sb-group">
         <div class="sb-head">
           <span>模板</span>
@@ -229,6 +239,7 @@
       <h3>编辑器设置</h3>
       <label class="dlg-label" for="settings-theme">配色主题</label>
       <select id="settings-theme">
+        <option value="calm">Calm Docs IDE（纸墨浅色，默认）</option>
         <option value="auto">跟随系统</option>
         <option value="dark">雾蓝夜（深色）</option>
         <option value="light">暖纸白（浅色）</option>
@@ -357,15 +368,20 @@
         </span>
       </button>
     </div>
-    <p class="dlg-hint">熟悉命令？按 <kbd>Ctrl+K</kbd> 打开命令面板。命令行用法见 GitHub 上的 docs/getting-started.md。</p>
+    <p class="dlg-hint">熟悉命令？按 <kbd>Ctrl+K</kbd> 或点顶栏「搜索命令」找全部功能。命令行用法见 GitHub 上的 docs/getting-started.md。</p>
     <div class="dialog-btns">
       <button id="welcome-close" type="button" class="btn">稍后</button>
     </div>
   </dialog>
 
   <dialog id="palette-dialog" class="palette">
-    <input id="palette-input" placeholder="输入命令名称…（面板内按 Esc 关闭）" autocomplete="off" spellcheck="false">
+    <input id="palette-input" placeholder="搜索命令或功能…（Esc 关闭）" autocomplete="off" spellcheck="false">
     <ul id="palette-list"></ul>
+    <div class="palette-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+      <span><kbd>Enter</kbd> 执行</span>
+      <span><kbd>Esc</kbd> 关闭</span>
+    </div>
   </dialog>
 
   <!-- 非阻塞提示（网络抓取失败等；每会话同一类只提示一次） -->

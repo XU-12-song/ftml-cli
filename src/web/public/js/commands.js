@@ -23,7 +23,7 @@ import { resolveModulesReal } from './preview.js';
 import { openSettings } from './settings.js';
 import { runDoctor } from './git.js';
 import { toggleLogin } from './auth.js';
-import { toggleLayout, toggleZen } from './layout.js';
+import { toggleLayout, toggleZen, focusSidebarFilter } from './layout.js';
 import { openTargetDialog } from './target.js';
 import { cycleTheme } from './theme.js';
 import { showWelcome } from './onboarding.js';
@@ -56,9 +56,10 @@ export const COMMANDS = [
   { group: '发布', title: '目标页面设置…', key: 'Ctrl+Alt+U', keywords: 'target site page', enabled: hasProject, run: openTargetDialog },
 
   // ---- 视图 ----
-  { group: '视图', title: '切换配色主题（深色 / 浅色）', keywords: 'theme color dark light appearance 配色 主题', run: cycleTheme },
+  { group: '视图', title: '切换配色主题（纸墨 / 深色 / 浅色）', keywords: 'theme color dark light calm appearance 配色 主题 纸墨', run: cycleTheme },
   { group: '视图', title: '编辑器设置…', key: 'Ctrl+,', keywords: 'settings preferences', run: openSettings },
-  { group: '视图', title: '切换编辑·预览布局', key: 'Ctrl+Alt+S', keywords: 'layout split vertical horizontal', run: toggleLayout },
+  { group: '视图', title: '切换编辑·预览布局（左右 / 上下）', key: 'Ctrl+Alt+S', keywords: 'layout split vertical horizontal', run: toggleLayout },
+  { group: '视图', title: '筛选侧边栏文件…', keywords: 'filter find sidebar search 筛选 查找 侧栏', run: focusSidebarFilter },
   { group: '视图', title: '禅模式', key: 'Ctrl+Shift+F', keywords: 'zen focus distraction', run: toggleZen },
   { group: '视图', title: 'git 环境检测', key: 'Ctrl+Alt+H', keywords: 'git doctor environment health', run: runDoctor },
 

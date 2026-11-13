@@ -79,7 +79,7 @@ const TOKEN_TAGS = {
 
 /**
  * 配色：全部引用 style.css 的主题变量（--syn-*），因此同一套高亮规则
- * 在「雾蓝夜 / 暖纸白」之间自动切换，不需要维护两份颜色表。
+ * 在「Calm Docs IDE / 雾蓝夜 / 暖纸白」之间自动切换，不需要维护多份颜色表。
  */
 const ftmlHighlightStyle = HighlightStyle.define([
   // 标签名（开 `[[div]]` 与闭 `[[/div]]` 同色）
@@ -133,15 +133,17 @@ const CM_RULES = {
 
 /**
  * 生成某套配色的 CM6 主题。
- * dark 标记影响 CM 内部对选区/原生控件的默认假设，必须与生效主题一致。
+ * dark 标记影响 CM 内部对选区/原生控件的默认假设，必须与生效主题一致；
+ * calm（纸墨浅色）与 light 同属浅色语义。
  */
 function cmThemeFor(theme) {
-  return EditorView.theme(CM_RULES, { dark: theme !== 'light' });
+  return EditorView.theme(CM_RULES, { dark: theme === 'dark' });
 }
 
 /** 读取当前生效主题（index.html 内联脚本已提前设置 data-theme） */
 function currentTheme() {
-  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  const t = document.documentElement.dataset.theme;
+  return t === 'light' || t === 'calm' ? t : 'dark';
 }
 
 /* ------------------------------------------------------------------ *
@@ -412,10 +414,11 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
       };
     },
 
-    /** 切换编辑器配色（'dark' | 'light'），由 theme.js 调用 */
+    /** 切换编辑器配色（'calm' | 'dark' | 'light'），由 theme.js 调用 */
     setTheme(theme) {
+      const t = theme === 'calm' || theme === 'light' ? theme : 'dark';
       view.dispatch({
-        effects: themeCompartment.reconfigure(cmThemeFor(theme === 'light' ? 'light' : 'dark')),
+        effects: themeCompartment.reconfigure(cmThemeFor(t)),
       });
     },
 

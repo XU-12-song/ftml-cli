@@ -8,7 +8,7 @@
  *     "autoPreview": true,          是否开启输入即预览
  *     "renderStyleMode": "inline",  预览渲染模式（inline / module）
  *     "useRemoteInclude": true,     渲染时是否联网解析远程 [[include]]
- *     "theme": "auto",              编辑器配色（auto / dark / light）
+ *     "theme": "calm",              编辑器配色（calm / auto / dark / light）
  *     "modulePlaceholders": { … }   快速预览时各 module 的占位数据
  *   }
  *
@@ -65,7 +65,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   autoPreview: true,
   renderStyleMode: 'inline',
   useRemoteInclude: true,
-  theme: 'auto',
+  theme: 'calm',
   modulePlaceholders: DEFAULT_MODULE_PLACEHOLDERS,
 });
 
@@ -167,7 +167,9 @@ export function normalizeSettings(raw: unknown = {}): Settings {
   }
   if (src.useRemoteInclude !== undefined) out.useRemoteInclude = Boolean(src.useRemoteInclude);
   if (src.theme !== undefined) {
-    out.theme = src.theme === 'dark' || src.theme === 'light' ? src.theme : 'auto';
+    out.theme = src.theme === 'calm' || src.theme === 'dark' || src.theme === 'light'
+      ? src.theme
+      : 'auto';
   }
   if (src.modulePlaceholders !== undefined) {
     out.modulePlaceholders = normalizeModulePlaceholders(src.modulePlaceholders);

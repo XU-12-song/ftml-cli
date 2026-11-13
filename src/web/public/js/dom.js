@@ -22,6 +22,10 @@ export const el = {
   paletteInput: $('palette-input'),
   paletteList: $('palette-list'),
   accountBtn: $('account-btn'),
+  sidebar: $('sidebar'),
+  sidebarFilter: $('sidebar-filter'),
+  sidebarFilterClear: $('sidebar-filter-clear'),
+  sidebarFilterEmpty: $('sidebar-filter-empty'),
   templateList: $('template-list'),
   componentList: $('component-list'),
   sourceList: $('source-list'),
@@ -126,7 +130,7 @@ export const state = {
     autoPreview: true,
     renderStyleMode: 'inline',
     useRemoteInclude: true,
-    theme: 'auto', // auto / dark / light；initTheme 会先按 localStorage 覆盖
+    theme: 'calm', // calm / auto / dark / light；initTheme 会先按 localStorage 覆盖
     modulePlaceholders: {
       listPages: { count: 3, title: '示例页面 {n}', text: '这是占位正文。', tags: '示例 占位', date: '2024-01-01', rating: 10 },
       listUsers: { count: 1, name: 'user-{n}', title: '示例用户 {n}' },

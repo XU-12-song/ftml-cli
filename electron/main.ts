@@ -268,7 +268,8 @@ function registerIpc(): void {
 
   ipcMain.handle('ftml:set-theme', (event, theme) => {
     if (!isTrustedSender(event)) return;
-    nativeTheme.themeSource = theme === 'light' ? 'light' : 'dark';
+    // calm（纸墨浅色）与 light 都映射到原生浅色标题栏
+    nativeTheme.themeSource = theme === 'dark' ? 'dark' : 'light';
   });
 
   ipcMain.on('ftml:projects-changed', (event) => {
@@ -281,7 +282,8 @@ function registerIpc(): void {
 function initialThemeSource(): 'light' | 'dark' {
   try {
     const { theme } = loadSettings();
-    if (theme === 'light' || theme === 'dark') return theme;
+    if (theme === 'dark') return 'dark';
+    if (theme === 'calm' || theme === 'light') return 'light';
   } catch {
     /* 配置损坏时回退系统 */
   }

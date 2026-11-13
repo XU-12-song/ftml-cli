@@ -52,7 +52,7 @@ HTTP 层用 **express**（静态文件 + JSON API），业务逻辑复用 CLI �
 | `autoPreview` | `true` | 是否开启输入即预览 |
 | `renderStyleMode` | `inline` | 预览渲染模式（透传给 `@wdprlib/render` 的 `styleMode`） |
 | `useRemoteInclude` | `true` | 渲染时是否联网解析本地缺失的 `[[include]]` |
-| `theme` | `auto` | 编辑器配色：`auto` / `dark` / `light` |
+| `theme` | `calm` | 编辑器配色：`calm`（纸墨浅色，默认）/ `auto` / `dark` / `light` |
 
 ## 代码片段
 

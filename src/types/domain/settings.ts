@@ -3,7 +3,7 @@
  */
 
 /** @description 编辑器配色 */
-export type Theme = "auto" | "dark" | "light";
+export type Theme = "calm" | "auto" | "dark" | "light";
 
 /** @description 预览渲染模式 */
 export type RenderStyleMode = "inline" | "module";
