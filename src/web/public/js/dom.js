@@ -35,6 +35,7 @@ export const el = {
   editorContainer: $('editor-container'),
   editor: null, // CM6 门面，initEditor() 时创建并赋值
   preview: $('preview'),
+  previewTarget: $('preview-target'),
   statusText: $('status-text'),
   statusDiag: $('status-diagnostics'),
   statusError: $('status-error'),
@@ -139,6 +140,8 @@ export const state = {
     },
   },
   lastIncludes: [], // 最近一次渲染的 include 来源（local/cache/remote/miss）
+  previewMode: 'index', // 预览目标：index（项目首页）/ follow（跟随当前编辑）/ custom（指定文件）
+  previewPath: null,    // previewMode=custom 时的相对路径
   gitEnv: null,     // 最近一次 git 环境体检结果（detectGitEnv 响应）
   problems: [],     // 最近一次渲染的统一问题列表（含行号/堆栈）
   auth: { loggedIn: false, username: '' }, // Wikidot 登录状态（账号按钮 / 命令面板共用）

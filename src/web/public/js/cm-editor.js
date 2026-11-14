@@ -307,48 +307,61 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
   // 主题放进 Compartment：切换主题时只重配配色、保留文档/光标/撤销栈
   const themeCompartment = new Compartment();
 
+  // 重建 State（切换文件）会丢掉 StateField 里的注入数据；这里缓存宿主设置过的
+  // 模板表与文件类型，重建后原样恢复，避免语义校验短暂失效。
+  const semanticSnapshot = { templates: new Map(), kind: 'source' };
+
+  /** 每次建 State 都要用当前主题，否则切换文件会把配色重置回启动时的主题 */
+  const baseExtensions = () => [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    highlightActiveLine(),
+    highlightSpecialChars(),
+    history(),
+    drawSelection(),
+    dropCursor(),
+    indentOnInput(),
+    EditorView.lineWrapping,
+    hint ? placeholder(hint) : [],
+    StreamLanguage.define(ftmlStreamParser),
+    syntaxHighlighting(ftmlHighlightStyle),
+    semanticData,
+    semanticPlugin,
+    autocompletion({
+      override: [ ftmlCompletion ],
+      activateOnTyping: true,
+      closeOnBlur: true,
+      maxRenderedOptions: 12,
+      icons: true,
+    }),
+    themeCompartment.of(cmThemeFor(currentTheme())),
+    keymap.of([ ...defaultKeymap, ...historyKeymap, indentWithTab ]),
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged && !suppress) emit('input');
+    }),
+  ];
+
   const view = new EditorView({
     parent,
-    state: EditorState.create({
-      doc,
-      extensions: [
-        lineNumbers(),
-        highlightActiveLineGutter(),
-        highlightActiveLine(),
-        highlightSpecialChars(),
-        history(),
-        drawSelection(),
-        dropCursor(),
-        indentOnInput(),
-        EditorView.lineWrapping,
-        hint ? placeholder(hint) : [],
-        StreamLanguage.define(ftmlStreamParser),
-        syntaxHighlighting(ftmlHighlightStyle),
-        semanticData,
-        semanticPlugin,
-        autocompletion({
-          override: [ ftmlCompletion ],
-          activateOnTyping: true,
-          closeOnBlur: true,
-          maxRenderedOptions: 12,
-          icons: true,
-        }),
-        themeCompartment.of(cmThemeFor(currentTheme())),
-        keymap.of([ ...defaultKeymap, ...historyKeymap, indentWithTab ]),
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged && !suppress) emit('input');
-        }),
-      ],
-    }),
+    state: EditorState.create({ doc, extensions: baseExtensions() }),
   });
 
-  /** 整篇替换（程序化，不触发 input） */
+  /**
+   * 整篇替换（程序化，不触发 input）。
+   * 用 setState 重建文档而不是在原文档上 dispatch：打开另一个文件时必须清空
+   * 撤销栈，否则 Ctrl+Z 会退回上一个文件的内容。主题等配置由 Compartment
+   * 重新带入当前值。
+   */
   function setDoc(text) {
     const str = text == null ? '' : String(text);
     suppress = true;
+    view.setState(EditorState.create({ doc: str, extensions: baseExtensions() }));
+    // 恢复模板表 / 文件类型（诊断按文件作废，由调用方重新注入）
     view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: str },
-      selection: { anchor: 0 },
+      effects: [
+        setTemplatesEffect.of(semanticSnapshot.templates),
+        setKindEffect.of(semanticSnapshot.kind),
+      ],
     });
     suppress = false;
   }
@@ -432,12 +445,15 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
     /** 注入当前项目模板名 → 声明键表（sidebar 的 templates） */
     setTemplates(map) {
       const m = map instanceof Map ? new Map(map) : new Map(Object.entries(map || {}));
+      semanticSnapshot.templates = m;
       view.dispatch({ effects: setTemplatesEffect.of(m) });
     },
 
     /** 标记当前文件类型：'template'（.ftmx，检查 { key }）或 'source' */
     setFileKind(kind) {
-      view.dispatch({ effects: setKindEffect.of(kind || 'source') });
+      const k = kind || 'source';
+      semanticSnapshot.kind = k;
+      view.dispatch({ effects: setKindEffect.of(k) });
     },
 
     /** 选中区间并滚动到可见（问题列表点击跳转用）；越界自动收敛到文档范围 */

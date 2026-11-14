@@ -8,6 +8,7 @@ import { loadConfig, loadProjectMeta, saveProjectMeta } from '../src/infra/confi
 import { init } from '../src/commands/init.js';
 import { build } from '../src/commands/build.js';
 import { projectGit, commitAll, gitRevert, isClean, isRepo } from '../src/infra/git.js';
+import { isInteractive } from '../src/infra/prompt.js';
 import { makeTmpDir, cleanup } from './helpers/fixtures.js';
 
 const tmpdir = () => makeTmpDir({}, { prefix: 'ftml-ut-' });
@@ -247,5 +248,18 @@ test('gitRevert：冲突时还原工作区，不把仓库留在 revert 半途', 
     assert.equal(revertHead.trim(), '');
   } finally {
     cleanup(root);
+  }
+});
+
+// ---------- 交互式检测（web 服务禁止占用终端） ----------
+
+test('isInteractive：FTML_NONINTERACTIVE=1 时始终为非交互', () => {
+  const prev = process.env.FTML_NONINTERACTIVE;
+  try {
+    process.env.FTML_NONINTERACTIVE = '1';
+    assert.equal(isInteractive(), false);
+  } finally {
+    if (prev === undefined) delete process.env.FTML_NONINTERACTIVE;
+    else process.env.FTML_NONINTERACTIVE = prev;
   }
 });

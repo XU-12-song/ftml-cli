@@ -21,6 +21,7 @@ import { api, setError } from './api.js';
 import { initProjects, loadProjects, removeCurrentProject } from './projects.js';
 import { initOnboarding, showWelcome } from './onboarding.js';
 import { initEditor, refreshSidebar, openFile } from './editor.js';
+import { initPreviewTarget, render } from './preview.js';
 import { initSnippets, loadSnippets } from './snippets.js';
 import { initSettings, loadSettings } from './settings.js';
 import { initVersions } from './versions.js';
@@ -76,6 +77,7 @@ async function applyOpenTarget(target) {
   await loadProjectTarget();
   await refreshSidebar();
   if (target.file) await openFile(target.file);
+  else if (!state.filePath) render(); // 无外部文件：默认预览项目首页
   return true;
 }
 
@@ -127,6 +129,7 @@ async function boot() {
     }
     if (state.projectId) {
       await refreshSidebar();
+      if (!state.filePath) render(); // 恢复不到上次文件时，预览回退到项目首页
     }
   }
 
@@ -143,6 +146,7 @@ initTarget();
 initProjects();
 initOnboarding();
 initEditor();
+initPreviewTarget();
 initSnippets();
 initSettings();
 initVersions();

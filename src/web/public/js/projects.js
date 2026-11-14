@@ -5,6 +5,7 @@ import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, showLog } from './api.js';
 import { openNameDialog } from './dialogs.js';
 import { refreshSidebar, clearEditor } from './editor.js';
+import { render } from './preview.js';
 import { loadProjectTarget } from './target.js';
 
 export async function loadProjects() {
@@ -47,6 +48,8 @@ export function initProjects() {
     }
     await loadProjectTarget();
     await refreshSidebar();
+    // 未打开文件时也先按默认目标（项目首页）渲染一次，避免预览区空白
+    if (!state.filePath) render();
   });
 
   // 顶栏控件已移除，以下动作函数统一由命令面板（Ctrl+K）调用

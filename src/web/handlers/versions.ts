@@ -65,6 +65,9 @@ export async function deployProject(
       page: body?.page,
       message: body?.message,
       noValidate: body?.noValidate,
+      // Web 端已在对话框里确认过；服务进程仍可能挂在 TTY 上，不能再让
+      // CLI 的 readline 抢答，否则浏览器请求会一直等终端输入。
+      yes: true,
       clientFactory: env.injectClient ? () => env.injectClient! : undefined,
     })
   );
@@ -89,6 +92,7 @@ export async function revertProject(
       noWikidot: !!body?.noWikidot,
       autoCommit: true, // web 自动保存导致工作区常脏
       rebuild: true,    // dist/ 被 gitignore，git revert 后重建产物再回推
+      yes: true,        // Web 端已确认；避免在服务进程的 TTY 上等待输入
       clientFactory: env.injectClient ? () => env.injectClient! : undefined,
     })
   );

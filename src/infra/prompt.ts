@@ -7,8 +7,13 @@
 
 import { createInterface } from 'node:readline/promises';
 
-/** 当前是否处于可交互终端 */
+/**
+ * 当前是否处于可交互终端。
+ * web 服务即使从终端启动也必须视为非交互：请求来自浏览器，阻塞在 stdin
+ * 会让浏览器操作一直等终端输入。
+ */
 export function isInteractive(): boolean {
+  if (process.env.FTML_NONINTERACTIVE === '1') return false;
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
 

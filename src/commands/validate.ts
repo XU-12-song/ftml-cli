@@ -40,7 +40,8 @@ export function collectProblems(
   const warnings: string[] = [];
 
   // div 平衡（组件本身可能刻意不平衡，≤10 记为警告，超出才报错）
-  const divOpen = count(src, /\[\[div(?=\s|\]|$)/g);
+  // `_` 后缀变体（[[div_ ...]]）仍用普通 [[/div]] 闭合，计数时必须一并算上。
+  const divOpen = count(src, /\[\[div_?(?=\s|\]|$)/g);
   const divClose = count(src, /\[\[\/div\]\]/g);
   const divDiff = divOpen - divClose;
   if (divDiff !== 0) {

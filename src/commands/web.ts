@@ -12,6 +12,9 @@ import { startWebServer } from '../web/start.js';
 import type { WebOptions } from '../types/commands/web.ts';
 
 export async function web(options: WebOptions): Promise<never> {
+  // web 进程可能仍挂在 TTY 上，但后续命令由浏览器请求触发：禁止任何
+  // readline 交互，避免浏览器操作卡在终端等待输入。
+  process.env.FTML_NONINTERACTIVE = '1';
   // startWebServer 负责 root 校验、addProject、主题预热、监听与真实端口
   const { url } = await startWebServer({
     root: options.root,

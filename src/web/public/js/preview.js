@@ -17,6 +17,129 @@ import { showToastOnce } from './toast.js';
 /** 本会话出现过布局/主题网络失败：手动「联网刷新」才需要重试它们 */
 let networkRetryNeeded = false;
 
+const PREVIEW_TARGET_KEY = 'ftml-preview-target:';
+
+/** 路径比较（Windows 大小写 / 分隔符不敏感） */
+function samePath(a, b) {
+  const norm = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/** 项目首页：优先根目录 index.ftml，其次任意子目录下的 index.ftml */
+function findIndexSource() {
+  const sources = state.sources || [];
+  return sources.find((s) => s.toLowerCase() === 'index.ftml')
+    || sources.find((s) => s.toLowerCase().endsWith('/index.ftml'))
+    || null;
+}
+
+/** 当前预览目标文件（项目没有 index.ftml 时回退到当前编辑文件） */
+export function previewTargetPath() {
+  if (state.previewMode === 'follow') return state.filePath || null;
+  if (state.previewMode === 'custom') return state.previewPath || state.filePath || null;
+  return findIndexSource() || state.filePath || null;
+}
+
+/** 每个项目单独记住预览目标，避免切换项目后互相影响 */
+let prefLoadedFor = null;
+function ensurePreviewTargetPref(projectId) {
+  if (prefLoadedFor === projectId) return;
+  prefLoadedFor = projectId || null;
+  state.previewMode = 'index';
+  state.previewPath = null;
+  if (!projectId) return;
+  try {
+    const raw = localStorage.getItem(PREVIEW_TARGET_KEY + projectId);
+    const p = raw ? JSON.parse(raw) : null;
+    if (p?.mode === 'index' || p?.mode === 'follow' || p?.mode === 'custom') {
+      state.previewMode = p.mode;
+    }
+    if (typeof p?.path === 'string' && p.path) state.previewPath = p.path;
+  } catch {
+    /* 损坏的偏好直接忽略，使用默认首页 */
+  }
+}
+
+function savePreviewTargetPref() {
+  if (!state.projectId) return;
+  try {
+    localStorage.setItem(PREVIEW_TARGET_KEY + state.projectId, JSON.stringify({
+      mode: state.previewMode,
+      path: state.previewPath || undefined,
+    }));
+  } catch {
+    /* localStorage 不可用（隐私模式等）时仅本次会话生效 */
+  }
+}
+
+/** 刷新预览目标下拉：项目首页 / 跟随当前编辑 / 指定任意源文件 */
+export function refreshPreviewTargetOptions() {
+  const select = el.previewTarget;
+  if (!select) return;
+  ensurePreviewTargetPref(state.projectId);
+
+  const sources = state.sources || [];
+  const index = findIndexSource();
+
+  if (!state.projectId) {
+    select.innerHTML = '';
+    select.appendChild(new Option('（无项目）', ''));
+    select.disabled = true;
+    return;
+  }
+  select.disabled = sources.length === 0;
+
+  // 记住的指定文件已被删除/改名：回退到项目首页，避免渲染 404
+  if (state.previewMode === 'custom'
+      && !sources.some((s) => samePath(s, state.previewPath))) {
+    state.previewMode = 'index';
+    state.previewPath = null;
+    savePreviewTargetPref();
+  }
+
+  select.innerHTML = '';
+  select.appendChild(new Option(index ? `项目首页 · ${index}` : '项目首页（未找到 index.ftml，回退当前文件）', '@index'));
+  select.appendChild(new Option('跟随当前编辑文件', '@follow'));
+  if (!index) select.options[0].disabled = true;
+
+  for (const src of sources) {
+    if (index && samePath(src, index)) continue; // 首页项已代表该文件
+    select.appendChild(new Option(src, src));
+  }
+
+  if (state.previewMode === 'custom' && state.previewPath) {
+    select.value = state.previewPath;
+  } else if (state.previewMode === 'follow') {
+    select.value = '@follow';
+  } else {
+    select.value = '@index';
+  }
+}
+
+/** 预览目标下拉的 change 事件：特殊值 @index / @follow，其余为指定源文件 */
+function onPreviewTargetChange() {
+  const v = el.previewTarget.value;
+  if (v === '@index') setPreviewTarget('index');
+  else if (v === '@follow') setPreviewTarget('follow');
+  else if (v) setPreviewTarget('custom', v);
+}
+
+/** 装配预览工具条（main.js 启动时调用一次） */
+export function initPreviewTarget() {
+  el.previewTarget?.addEventListener('change', onPreviewTargetChange);
+  refreshPreviewTargetOptions();
+}
+
+/** 切换预览目标并立即重渲染 */
+export function setPreviewTarget(mode, path = null) {
+  state.previewMode = mode === 'follow' || mode === 'custom' ? mode : 'index';
+  state.previewPath = mode === 'custom' ? path : null;
+  savePreviewTargetPref();
+  refreshPreviewTargetOptions();
+  render();
+}
+
+
 export async function saveFile(relPath, source) {
   await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/save`, { path: relPath, source });
 }
@@ -107,7 +230,7 @@ export function layoutKey(raw) {
 }
 
 /**
- * 渲染当前文件。
+ * 渲染预览目标页面（默认项目首页 index.ftml，可切换为当前编辑文件或指定源文件）。
  * @param {{ remote?: boolean, forceFull?: boolean, resolveModules?: boolean, refreshLayout?: boolean }} [opts]
  *   remote=true 时允许联网解析远程 [[include]]（手动刷新路径）；默认 false：
  *   只解析本地文件 + 磁盘缓存，落盘即预览不再等网络。
@@ -116,7 +239,9 @@ export function layoutKey(raw) {
  *   refreshLayout=true 时显式重抓站点结构与主题（手动重试网络失败）。
  */
 export async function render({ remote = false, forceFull = false, resolveModules = false, refreshLayout = false } = {}) {
-  if (!state.projectId || !state.filePath) return;
+  const previewPath = previewTargetPath();
+  if (!state.projectId || !previewPath) return;
+  const previewingCurrent = samePath(previewPath, state.filePath);
   // 最新者胜：先取消上一次在飞的渲染，并立刻占住槽位（否则后发者会漏掉它的控制器）
   const ac = new AbortController();
   abortInflightRender();
@@ -129,10 +254,12 @@ export async function render({ remote = false, forceFull = false, resolveModules
   const wantFull = forceFull || refreshLayout || layoutChanged || !previewShellReady();
 
   try {
-    await persistEditor(); // 落盘不加 signal：即便本次渲染被取代，最新内容也应写入磁盘
+    // 当前编辑内容始终落盘：预览目标可能通过 include 引用正在编辑的组件/模板，
+    // 不落盘的话预览看到的仍是旧内容。
+    if (state.filePath) await persistEditor();
     if (ac.signal.aborted) return;
     const r = await api('POST', `/api/projects/${encodeURIComponent(state.projectId)}/render`, {
-      path: state.filePath,
+      path: previewPath,
       site: el.siteInput.value.trim() || undefined,
       page: el.pageInput.value.trim() || undefined,
       allowNetwork: remote, // 仅手动刷新联网；自动预览走本地 + 磁盘缓存
@@ -152,10 +279,14 @@ export async function render({ remote = false, forceFull = false, resolveModules
     if (r.layoutSite) state.layoutSite = r.layoutSite;
 
     state.lastIncludes = r.includes || [];
-    renderProblems(r.problems || []);
-    showDiagnostics(r.diagnostics || [], r.diagnosticReport || '', r.problems || []);
-    // 语义层波浪线：同时覆盖 wdpr 诊断与 expand 阶段的组件/模板错误
-    el.editor.setDiagnostics(mergeDiagnostics(r.diagnostics, r.problems));
+    // 诊断只回填到「正在预览的那个文件」：预览首页/指定文件时，编辑器里可能
+    // 开着另一个文件，把目标文件的诊断画到当前文件上会错位。
+    if (previewingCurrent) {
+      renderProblems(r.problems || []);
+      showDiagnostics(r.diagnostics || [], r.diagnosticReport || '', r.problems || []);
+      // 语义层波浪线：同时覆盖 wdpr 诊断与 expand 阶段的组件/模板错误
+      el.editor.setDiagnostics(mergeDiagnostics(r.diagnostics, r.problems));
+    }
 
     // 模板展开 / 渲染失败：服务端 html 与 fragment 均为 null，不刷新预览；
     // 只在状态栏提示，不自动弹窗打断输入
@@ -198,7 +329,8 @@ export async function render({ remote = false, forceFull = false, resolveModules
       ? '（有未命中的远程 include，点顶栏「联网刷新」补拉）'
       : '';
     const moduleNote = resolveModules ? '，模块已真实解析' : '';
-    setStatus(`已保存并渲染（${fmtTime()}）${includeSummary()}${moduleNote}${hint}`);
+    const targetNote = previewingCurrent ? '' : ` · 预览 ${previewPath}`;
+    setStatus(`已保存并渲染（${fmtTime()}）${targetNote}${includeSummary()}${moduleNote}${hint}`);
   } catch (e) {
     // 被更新的渲染取代（客户端已中止 / 服务端 409）：静默，交回给后发的那次
     if (isAbortError(e) || e?.superseded || ac.signal.aborted) return;

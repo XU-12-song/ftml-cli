@@ -5,7 +5,7 @@ import { el, state } from './dom.js';
 import { api, setError, setStatus, fmtTime, showLog } from './api.js';
 import { renderList, highlightActive, renderProblems } from './ui.js';
 import { openNameDialog, openPromptDialog } from './dialogs.js';
-import { saveFile, persistEditor, render, renderRemote, scheduleSaveRender } from './preview.js';
+import { saveFile, persistEditor, render, renderRemote, scheduleSaveRender, refreshPreviewTargetOptions } from './preview.js';
 import { createFtmlEditor } from './cm-editor.js';
 import { rememberLastOpened } from './session.js';
 
@@ -31,6 +31,7 @@ export async function refreshSidebar() {
   state.components = data.components.map((c) => c.name);
   state.sources = data.sources;
   state.isRepo = data.isRepo;
+  refreshPreviewTargetOptions(); // 源文件列表变化后刷新「预览目标」下拉
 
   // 三类文件都带扩展名显示（源文件 index.ftml / 模板 card.ftmx / 组件 box.ftml），
   // 便于一眼分清文件类型；模板的键列在次要说明里。

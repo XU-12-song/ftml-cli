@@ -700,6 +700,23 @@ test('validate 端点：干净文件无错误，坏文件报错', async () => {
   }
 });
 
+test('validate 端点：[[div_]] 与 [[/div]] 配对，不误报不平衡', async () => {
+  const root = makeFixtureProject();
+  try {
+    await withHome(async () => {
+      addProject(root);
+      // 11 对超过「差 ≤10 仅告警」阈值：旧计数漏掉 div_ 会直接报错并阻止部署
+      const pair = '[[div_ class="x"]]\n内容\n[[/div]]\n';
+      saveProjectFile(root, { path: 'underscore.ftml', source: pair.repeat(11) });
+      const r = await validateProjectFile(root, { path: 'underscore.ftml' });
+      assert.equal(r.errors.length, 0);
+      assert.deepEqual(r.warnings, []);
+    });
+  } finally {
+    cleanup(root);
+  }
+});
+
 test('validate 端点：[[embed]] 体内裸闭标签给出结构逃逸告警（非错误）', async () => {
   const root = makeFixtureProject();
   try {
