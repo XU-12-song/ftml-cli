@@ -34,7 +34,7 @@ import { buildPageContext } from '../../render/context.js';
 import { formatDiagnostics } from '../../render/diagnostics.js';
 import { diagnosticToProblem, errorToProblem, sortProblems } from '../../render/problems.js';
 import { collectProblems } from '../../commands/validate.js';
-import { createClient } from '../../infra/wikidot.js';
+import { getClient } from '../../infra/session.js';
 import { loadSettings } from '../../domain/settings.js';
 import { HttpError, resolveInProject, findProject, latestOnly, SupersededError } from './shared.js';
 import type { Settings } from '../../types/domain/settings.ts';
@@ -138,14 +138,14 @@ export async function renderProjectFile(
     // 真实解析 module 是一次性、显式触发的联网操作，与 include 的联网开关相互独立。
     const resolveModules = body?.resolveModules === true;
 
+    // 会话层取客户端：injectClient 一次性直用（不拥有、不关闭）；clientFactory
+    // 按工厂引用复用；都没有时走凭证单例——Web/Electron 进程内常驻，编辑器
+    // 反复渲染不再「每次落盘都登录 + close」。
     let client = env.injectClient ?? null;
     let clientError: Error | null = null;
-    let ownsClient = false;
     if (!client && (allowNetwork || resolveModules)) {
       try {
-        // clientFactory 供测试注入（与 versions/deploy 的注入方式一致）
-        client = await (env.clientFactory ?? createClient)();
-        ownsClient = true;
+        client = await getClient({ clientFactory: env.clientFactory });
       } catch (e) {
         client = null;
         // 不要静默：把「为什么连不上远程」带到诊断里，前端问题面板会展示
@@ -288,8 +288,6 @@ export async function renderProjectFile(
       if (e instanceof SupersededError) throw e; // 被更新的请求取代：交回 409 处理，不能当成渲染问题
       // 渲染期异常同样不做 500：转成 problems，保留堆栈供前端展开
       return failedRender(text, relPath, e as Error, settings, p.root);
-    } finally {
-      if (ownsClient) await client?.close?.();
     }
   });
 }

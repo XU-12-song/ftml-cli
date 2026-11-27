@@ -10,6 +10,7 @@ import path from 'node:path';
 import { createServer } from './server.js';
 import { addProject } from './projects.js';
 import { readThemeCss, refreshThemeCss } from '../render/theme.js';
+import { disposeSession } from '../infra/session.js';
 import type { StartWebServerOptions, WebServerController } from '../types/web/start.ts';
 
 /** 预热主题样式表：已有可用缓存时不联网，缺失/过期才拉取 */
@@ -99,6 +100,8 @@ export async function startWebServer({
     closed = true;
     server.closeAllConnections?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    // server 关闭（CLI web / Electron 退出共用此入口）：释放进程内 Wikidot 会话
+    await disposeSession();
   };
 
   return { server, url, host, port: actualPort, token: sessionToken, projectRoot, close };

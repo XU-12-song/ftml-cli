@@ -7,6 +7,7 @@ import { Client } from '@ukwhatn/wikidot';
 
 import { getCredentials, saveCredentials } from '../../infra/credentials.js';
 import { credentialsPath } from '../../infra/paths.js';
+import { resetSession } from '../../infra/session.js';
 import { HttpError } from './shared.js';
 import type {
   AuthLoginBody,
@@ -34,6 +35,8 @@ export async function authLogin(body: AuthLoginBody): Promise<AuthLoginResult> {
   }
   await result.value.close?.();
   saveCredentials({ username: body.username, password: body.password });
+  // 凭证变化：丢弃旧会话，后续部署/渲染按新凭证重新登录
+  await resetSession();
   return { ok: true, username: body.username };
 }
 
@@ -43,5 +46,7 @@ export async function authLogout(): Promise<AuthLogoutResult> {
   } catch {
     /* 文件不存在 */
   }
+  // 凭证已删除：当前进程内会话一并失效
+  await resetSession();
   return { ok: true };
 }

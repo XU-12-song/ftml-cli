@@ -19,7 +19,7 @@ import { readThemeCss, refreshThemeCssInBackground, THEME_SOURCES } from '../ren
 import { getSiteLayout, normalizeSiteName } from '../infra/layout.js';
 import { buildPageContext } from '../render/context.js';
 import { formatDiagnostics } from '../render/diagnostics.js';
-import { createClient } from '../infra/wikidot.js';
+import { getClient } from '../infra/session.js';
 import { loadSettings } from '../domain/settings.js';
 import type { Client } from '@ukwhatn/wikidot';
 import type {
@@ -43,10 +43,11 @@ export async function preview(
   });
   const templates = await loadTemplates(config.templatesDirAbs);
 
-  // 本地找不到的 include 自动用已登录客户端远程拉取；未登录则跳过（渲染占位）
+  // 本地找不到的 include 自动用已登录客户端远程拉取；未登录则跳过（渲染占位）。
+  // 会话层持有客户端：预览结束不 close（CLI 进程退出时统一 dispose）
   let client: Client | null = null;
   try {
-    client = await createClient();
+    client = await getClient();
   } catch {
     client = null; // 无凭证：远程 include 解析关闭
   }
@@ -58,14 +59,6 @@ export async function preview(
     client,
     modulePlaceholders: loadSettings().modulePlaceholders,
   });
-
-  if (client) {
-    try {
-      await client.close();
-    } catch {
-      // 登出失败不阻断预览
-    }
-  }
 
   // 3. 报告解析/渲染诊断（不阻断输出）
   //    诊断完全来自 @wdprlib（parser/render 的 Diagnostic），这里连同

@@ -33,6 +33,7 @@ import { compat } from './commands/compat.js';
 import { init } from './commands/init.js';
 import { web } from './commands/web.js';
 import { detectGitEnv } from './infra/gitenv.js';
+import { disposeSession } from './infra/session.js';
 
 const program = new Command();
 
@@ -244,6 +245,10 @@ async function run<T>(fn: () => T | Promise<T>): Promise<T | undefined> {
   } catch (e) {
     console.error(`错误: ${(e as Error).message}`);
     process.exitCode = 1;
+  } finally {
+    // CLI 是一次性进程：命令结束释放自己拥有的会话（logout 尽力而为，不阻断退出）。
+    // Web/Electron 由 server close / 进程退出时释放（见 infra/session.ts）。
+    await disposeSession().catch(() => {});
   }
 }
 

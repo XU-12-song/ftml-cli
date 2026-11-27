@@ -1,17 +1,24 @@
 /**
  * wikidot.ts — @ukwhatn/wikidot 封装
  *
- * 提供登录客户端创建、站点/页面获取、提交、拉取版本等操作，
- * 统一把 WikidotResult 错误转成抛出的 Error。
+ * 提供登录客户端获取、站点/页面获取、提交、拉取版本等操作，
+ * 统一把 WikidotResult 错误转成抛出的 Error（保留原始错误到 cause，
+ * 供会话层识别 SessionError / LoginRequiredError 触发重登重试）。
  *
- * site/page 缓存：按客户端实例（WeakMap）缓存已获取的 Site / Page 对象，
- * 同一客户端生命周期内重复 getSite/getPage 不再发网络请求（submit/deploy
- * 在同一进程里多次提交时直接复用）。以客户端为键而非全局，避免 client.close()
- * 登出后复用旧会话对象；null（页面不存在）不缓存，防止同进程建页后误判。
+ * site/page 缓存分两层：
+ *   - 会话客户端（src/infra/session.ts 的单例）：走会话级 TTL 缓存
+ *     （Site 10 分钟 / Page 2 分钟），跨操作复用，edit/create 后立即失效；
+ *   - 注入 / 临时客户端：按客户端实例（WeakMap）缓存，同一客户端生命周期内
+ *     重复 getSite/getPage 不再发网络请求；null（页面不存在）不缓存，
+ *     防止同进程建页后误判。
+ *
+ * 客户端生命周期统一收口在会话层（withSession）：操作结束不 close，
+ * CLI 命令结束 / server 关闭 / Electron 退出时由 resetSession / disposeSession
+ * 统一收尾。
  */
 
-import { Client } from '@ukwhatn/wikidot';
 import type {
+  Client,
   Page,
   PageRevision,
   PageRevisionCollection,
@@ -19,8 +26,16 @@ import type {
   Site,
   WikidotResult,
 } from '@ukwhatn/wikidot';
-import { getCredentials } from './credentials.js';
 import { dirtToIdeal, idealToDirt } from '../compat/index.js';
+import {
+  invalidatePage,
+  isSessionClient,
+  sessionCacheGetPage,
+  sessionCacheGetSite,
+  sessionCacheSetPage,
+  sessionCacheSetSite,
+  withSession,
+} from './session.js';
 import type { SourceText } from '../types/common.ts';
 import type {
   ClientFactory,
@@ -31,14 +46,23 @@ import type {
   UpsertPageSourceResult,
 } from '../types/infra/wikidot.ts';
 
+/** unwrap 包装错误：消息格式与旧实现一致，原始错误保留在 cause（会话层识别用） */
+export class WikidotOperationError extends Error {
+  constructor(what: string, cause: unknown) {
+    super(`${what}失败: ${String(cause)}`);
+    this.name = 'WikidotOperationError';
+    this.cause = cause;
+  }
+}
+
 function unwrap<T>(result: WikidotResult<T>, what: string): T {
   if (!result.isOk()) {
-    throw new Error(`${what}失败: ${result.error}`);
+    throw new WikidotOperationError(what, result.error);
   }
   return result.value;
 }
 
-/** client -> Map<siteName, Site>；client -> Map<`site/page`, Page> */
+/** client -> Map<siteName, Site>；client -> Map<`site/page`, Page>（非会话客户端用） */
 const siteCache = new WeakMap<Client, Map<string, Site>>();
 const pageCache = new WeakMap<Client, Map<string, Page>>();
 
@@ -57,55 +81,68 @@ function cacheSet<T>(map: WeakMap<Client, Map<string, T>>, client: Client, key: 
   byClient.set(key, value);
 }
 
-/** 创建已登录客户端（凭证来自 env 或 credentials 文件） */
-export async function createClient(): Promise<Client> {
-  const creds = getCredentials();
-  if (!creds) {
-    throw new Error(
-      '未找到 Wikidot 凭证。请先运行 `ftml login` 或设置环境变量 WIKIDOT_USERNAME / WIKIDOT_PASSWORD'
-    );
-  }
-  const result = await Client.create({
-    username: creds.username,
-    password: creds.password,
-  });
-  if (!result.isOk()) {
-    throw new Error(`登录失败: ${result.error}`);
-  }
-  return result.value;
-}
-
-/** 获取站点对象（同一客户端内缓存，重复获取不发请求） */
+/** 获取站点对象（会话客户端走 TTL 缓存，注入客户端按实例缓存，重复获取不发请求） */
 export async function getSite(client: Client, siteName: string | null | undefined): Promise<Site> {
   if (!siteName) {
     throw new Error('缺少站点名。请在配置文件中设置 site 或使用 --site 选项');
   }
-  const cached = cacheGet(siteCache, client, siteName);
-  if (cached !== undefined) return cached;
+  const sessionHit = sessionCacheGetSite(client, siteName);
+  if (sessionHit !== undefined) return sessionHit;
+  if (!isSessionClient(client)) {
+    const cached = cacheGet(siteCache, client, siteName);
+    if (cached !== undefined) return cached;
+  }
   const site = unwrap(await client.site.get(siteName), '获取站点');
-  cacheSet(siteCache, client, siteName, site);
+  if (isSessionClient(client)) sessionCacheSetSite(client, siteName, site);
+  else cacheSet(siteCache, client, siteName, site);
   return site;
 }
 
 /**
  * 获取页面对象（不存在时返回 null，null 不缓存）
- * 同一客户端内按 `site/page` 缓存。
+ * 会话客户端按 `site/page` 走 TTL 缓存；注入客户端按实例缓存。
  */
 export async function getPage(site: Site, pageName: string | null | undefined): Promise<Page | null> {
   if (!pageName) {
     throw new Error('缺少页面名。请在配置文件中设置 page 或使用 --page 选项');
   }
   const key = `${site.unixName}/${pageName}`;
-  const cached = cacheGet(pageCache, site.client, key);
-  if (cached !== undefined) return cached;
+  if (isSessionClient(site.client)) {
+    const hit = sessionCacheGetPage(site.client, key);
+    if (hit !== undefined) return hit;
+  } else {
+    const cached = cacheGet(pageCache, site.client, key);
+    if (cached !== undefined) return cached;
+  }
   const page = unwrap(await site.page.get(pageName), '获取页面');
-  if (page) cacheSet(pageCache, site.client, key, page);
+  if (page) {
+    if (isSessionClient(site.client)) sessionCacheSetPage(site.client, key, page);
+    else cacheSet(pageCache, site.client, key, page);
+  }
   return page;
 }
 
-/** 编辑页面：source 为完整 FTML 源码，comment 为编辑注释 */
+/**
+ * 并行预取多个页面（部署依赖页预取用）。
+ * 会话客户端下命中 TTL 缓存则零请求；null（不存在）不进缓存。
+ */
+export async function prefetchPages(
+  site: Site,
+  pageNames: readonly string[],
+): Promise<Map<string, Page | null>> {
+  const entries = await Promise.all(
+    pageNames.map(async (name) => [name, await getPage(site, name)] as const)
+  );
+  return new Map(entries);
+}
+
+/** 编辑页面：source 为完整 FTML 源码，comment 为编辑注释；成功后立即失效该页缓存 */
 export async function editPage(page: Page, { source, comment }: EditPageOptions): Promise<void> {
-  return unwrap(await page.edit({ source, comment }), '提交');
+  await unwrap(await page.edit({ source, comment }), '提交');
+  // Page.edit 不会更新 revisionsCount（库实现如此），缓存里的旧对象已不可信。
+  // site 引用缺失（测试桩页面）时跳过失效——那只影响缓存新鲜度，不影响正确性。
+  const siteUnixName = page.site?.unixName;
+  if (siteUnixName) invalidatePage(siteUnixName, page.name);
 }
 
 /**
@@ -137,28 +174,6 @@ export async function revertPage(rev: PageRevision): Promise<Record<string, unkn
   return unwrap(await rev.revert(), '回退');
 }
 
-/**
- * 在同一登录会话里跑一组操作，最后统一关闭客户端。
- *
- * 发布依赖 + 入口页要依次写多个页面，若每个都自建客户端就会重复登录 N 次；
- * 这里把生命周期收拢到一处（注入的 clientFactory 产出的客户端同样关闭，
- * web 测试注入的 fake client 的 close 是空实现）。
- *
- * @param clientFactory 客户端工厂（测试注入用）
- * @param fn
- */
-export async function withClient<T>(
-  clientFactory: ClientFactory | undefined,
-  fn: (client: Client) => Promise<T>,
-): Promise<T> {
-  const client = await (clientFactory || createClient)();
-  try {
-    return await fn(client);
-  } finally {
-    await client.close?.();
-  }
-}
-
 interface PushWithClientArgs {
   siteName: string;
   pageName: string;
@@ -188,8 +203,9 @@ async function pushWithClient(client: Client, { siteName, pageName, source, comm
  * （合法理想源上是恒等变换；只有未闭合行内标签会被补全）。修复记录随返回值
  * 一并给出，供上层提示。
  *
- * 客户端生命周期：传了 `client` 就用调用方的（不关闭，便于一次登录写多个页面）；
- * 否则自建（或走 clientFactory）用完即关。
+ * 客户端生命周期：传了 `client` 就用调用方的（不关闭）；否则走会话层
+ * （withSession：凭证单例或注入的 clientFactory，操作结束不 close，
+ * 会话过期自动重登并只重试一次）。
  */
 export async function pushPageSource({
   siteName,
@@ -204,7 +220,7 @@ export async function pushPageSource({
   }
   const args: PushWithClientArgs = { siteName, pageName, source, comment };
   if (client) return pushWithClient(client, args);
-  return withClient(clientFactory, (c) => pushWithClient(c, args));
+  return withSession((c) => pushWithClient(c, args), { clientFactory });
 }
 
 /**
@@ -212,6 +228,7 @@ export async function pushPageSource({
  *
  * 与 pushPageSource 的区别只在「页面不存在」的处理：pushPageSource 直接报错
  * （避免误建正页），这里则建页——依赖页第一次发布时线上通常还不存在。
+ * 写入成功后立即失效该页缓存。
  */
 export async function upsertPageSource({
   site,
@@ -231,6 +248,7 @@ export async function upsertPageSource({
   }
   // 建页：createOrEdit 未带 pageId，对已存在页面会报错——这里已确认不存在，正合适
   unwrap(await site.page.create(pageName, { source: compat.src, comment }), '创建页面');
+  invalidatePage(site.unixName, pageName);
   return {
     created: true,
     revisionsCount: 1,

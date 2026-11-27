@@ -12,6 +12,7 @@ import { stdin, stdout } from 'node:process';
 import { Client } from '@ukwhatn/wikidot';
 import { envCredentials, saveCredentials } from '../infra/credentials.js';
 import { credentialsPath } from '../infra/paths.js';
+import { resetSession } from '../infra/session.js';
 import type { LoginOptions } from '../types/commands/login.ts';
 
 async function promptHidden(query: string): Promise<string> {
@@ -47,5 +48,7 @@ export async function login(options: LoginOptions): Promise<void> {
   }
 
   saveCredentials({ username, password });
+  // 凭证变化：丢弃旧会话（旧 cookie 可能已失效），下次操作按新凭证重新登录
+  await resetSession();
   console.log(`登录成功（${result.value.username}），凭证已保存到 ${credentialsPath()}`);
 }
