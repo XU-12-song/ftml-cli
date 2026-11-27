@@ -116,6 +116,7 @@ function makeDeployClient({ pages = {}, failEditFor = null, editDelayMs = 5 } = 
   const store = base.store;
   let active = 0;
   let maxActive = 0;
+  const editPromises = [];
 
   const site = base.site;
   site.page = {
@@ -136,21 +137,34 @@ function makeDeployClient({ pages = {}, failEditFor = null, editDelayMs = 5 } = 
     site,
     revisionsCount: 1,
     edit: async ({ source } = {}) => {
-      active++;
-      maxActive = Math.max(maxActive, active);
-      try {
-        await new Promise((resolve) => setTimeout(resolve, editDelayMs));
-        if (failEditFor === name) throw new Error(`boom editing ${name}`);
-        counts.edit.push(name);
-        store.set(name, source);
-        return ok();
-      } finally {
-        active--;
-      }
+      const p = (async () => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, editDelayMs));
+          if (failEditFor === name) throw new Error(`boom editing ${name}`);
+          counts.edit.push(name);
+          store.set(name, source);
+          return ok();
+        } finally {
+          active--;
+        }
+      })();
+      // 占住引用并吞掉失败副本：避免 deploy 中止后仍在跑的编辑成为
+      // 未处理拒绝；settled() 供测试等待所有编辑落定
+      editPromises.push(p.catch(() => {}));
+      return p;
     },
   });
 
-  return { ...base, stats: () => ({ maxActive }) };
+  return {
+    ...base,
+    stats: () => ({ maxActive }),
+    /** 等待所有已发起的 edit（含失败的）全部落定 */
+    settled: async () => {
+      await Promise.all(editPromises);
+    },
+  };
 }
 
 // ---------- 对外契约 ----------
@@ -543,13 +557,26 @@ test('并发部署中某页编辑失败：错误原样上抛（不吞）', async
     await withHome(async () => {
       // 依赖页线上已存在 → 走 edit 分支，box-2 的 edit 才会失败
       const remotePages = { hello: 'old', 'components:box-1': 'x', 'components:box-2': 'x', 'components:box-3': 'x' };
-      const { client } = makeDeployClient({ pages: remotePages, failEditFor: 'components:box-2' });
+      const { client, settled } = makeDeployClient({ pages: remotePages, failEditFor: 'components:box-2' });
       const factory = () => client;
 
-      await assert.rejects(
-        () => quiet(() => deploy(opts(root, { clientFactory: factory }))),
-        /boom editing components:box-2/
-      );
+      // 整个用例（含收尾）都在静音作用域内：deploy 中止后池里在跑的编辑
+      // 仍会落定并打日志，必须等它们结束、console 恢复之前收干——否则
+      // 测试结束后的裸 stdout 写入会污染 node:test 父进程的报告帧，
+      // CI 上表现为文件级 "Unable to deserialize cloned data due to
+      // invalid or unsupported version"（uncaughtException）。
+      await quiet(async () => {
+        await assert.rejects(
+          () => deploy(opts(root, { clientFactory: factory })),
+          /boom editing components:box-2/
+        );
+        await settled();
+        // edit 落定后，deploy 池任务还要经过数跳微任务（editPage →
+        // upsertPageSource → 池函数）才打出「↑更新依赖页」日志，会比
+        // settled() 的完成更晚；再让出一个宏任务，把这条微任务链整个
+        // 冲进静音窗口，杜绝测试结束后的裸 stdout 写入。
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
     });
   } finally {
     cleanup(root);
