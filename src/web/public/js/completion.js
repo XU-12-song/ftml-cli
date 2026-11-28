@@ -147,10 +147,11 @@ function openStackAt(source, pos) {
  * 候选构造
  * ------------------------------------------------------------------ */
 
-function componentOption(c) {
+function componentOption(c, hasClosingQuote) {
   const path = `components/${c}.ftml`;
-  // 触发处已经打了一半 `src="`，收尾的 `"` 由候选补上，省掉手打
-  return { label: path, detail: '组件', type: 'text', apply: path + '"' };
+  // 触发处已经打了一半 `src="`，收尾的 `"` 由候选补上，省掉手打。
+  // 但光标后若已有 `"`（`src=""` 骨架、或用户自己打的），就不能再补，否则变成 `…ftml""`。
+  return { label: path, detail: '组件', type: 'text', apply: hasClosingQuote ? path : path + '"' };
 }
 
 function templateTagOption(n, keys) {
@@ -247,9 +248,11 @@ export function ftmlCompletion(context) {
   if (mComp) {
     const q = mComp.text.slice(mComp.text.lastIndexOf('"') + 1);
     const from = context.pos - q.length;
+    // 光标后是否已经有收尾的 `"`（`src=""` 骨架里光标就落在两个引号之间）
+    const hasClosingQuote = context.state.sliceDoc(context.pos, context.pos + 1) === '"';
     const r = makeResult(
       from,
-      state.components.map((c) => ({ key: `components/${c}.ftml`, group: 0, option: componentOption(c) })),
+      state.components.map((c) => ({ key: `components/${c}.ftml`, group: 0, option: componentOption(c, hasClosingQuote) })),
       q
     );
     if (r) return r;
