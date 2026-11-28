@@ -44,6 +44,8 @@ import {
 } from '../vendor/cm6/cm6.js';
 import { token, startState } from './cm-lexer.js';
 import { ftmlCompletion } from './completion.js';
+import { cssCompletion } from './css-completion.js';
+import { cssHighlightPlugin } from './css-highlight.js';
 import {
   BUILTIN_MACROS,
   diagnosticRanges,
@@ -327,8 +329,9 @@ export function createFtmlEditor({ parent, doc = '', placeholder: hint = '' } = 
     syntaxHighlighting(ftmlHighlightStyle),
     semanticData,
     semanticPlugin,
+    cssHighlightPlugin,
     autocompletion({
-      override: [ ftmlCompletion ],
+      override: [ cssCompletion, ftmlCompletion ],
       activateOnTyping: true,
       closeOnBlur: true,
       maxRenderedOptions: 12,

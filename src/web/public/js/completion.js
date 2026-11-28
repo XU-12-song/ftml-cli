@@ -27,6 +27,7 @@ import { snippetCompletion } from '../vendor/cm6/cm6.js';
 import { state } from './dom.js';
 import { WIKI_MODULES, WIKI_DEFS, WIKI_BY_NAME, wikiInsertAfterOpen, wikiCloseName } from './wiki.js';
 import { lexTokens, pairKey } from './cm-semantics.js';
+import { isCssContext } from './css-completion.js';
 
 /* ------------------------------------------------------------------ *
  * snippet 语法转换：Ace `$0/$1` → CM6 `${}`/`${1}`
@@ -243,6 +244,12 @@ function attrKeysFor(name) {
  * @returns {{from, options, filter:false}|null}
  */
 export function ftmlCompletion(context) {
+  // CSS 上下文（[[module CSS]] / [[style]] / style="…" / [[html]] 内 <style>）
+  // 整体让位给 cssCompletion。CM6 override 的多个 source 是**合并结果**而非短路，
+  // 所以这里必须主动退出：CSS 值里的 `/`（12px/1.5、grid 1/2）不再触发下方 5b 的
+  // 闭合标签简写，裸词 FTML 标签也不会混进 CSS 正文（判定口径见 css-completion.js）。
+  if (isCssContext(context.state.doc.toString(), context.pos)) return null;
+
   // 1. 组件路径: [[component src="
   const mComp = context.matchBefore(/\[\[component\s+src="[^"]*$/);
   if (mComp) {
